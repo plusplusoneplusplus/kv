@@ -1,12 +1,12 @@
 use rocksdb::{TransactionDB, TransactionDBOptions, Options, TransactionOptions, IteratorMode};
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use tracing::error;
 
 pub struct KvDatabase {
     db: Arc<TransactionDB>,
     read_semaphore: Arc<Semaphore>,
-    write_semaphore: Arc<Semaphore>,
+    write_queue_tx: mpsc::UnboundedSender<WriteRequest>,
 }
 
 #[derive(Debug)]
@@ -21,6 +21,17 @@ pub struct OpResult {
     pub error: String,
 }
 
+#[derive(Debug)]
+enum WriteOperation {
+    Put { key: String, value: String },
+    Delete { key: String },
+}
+
+struct WriteRequest {
+    operation: WriteOperation,
+    response_tx: oneshot::Sender<OpResult>,
+}
+
 impl KvDatabase {
     pub fn new(db_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         // Set up RocksDB options
@@ -32,16 +43,117 @@ impl KvDatabase {
         
         // Open transaction database
         let db = TransactionDB::open(&opts, &txn_db_opts, db_path)?;
+        let db = Arc::new(db);
         
-        // Configure concurrency limits (matching Go implementation)
+        // Configure concurrency limits for reads
         let max_read_concurrency = 32;
-        let max_write_concurrency = 16;
+        
+        // Create write queue channel
+        let (write_queue_tx, write_queue_rx) = mpsc::unbounded_channel::<WriteRequest>();
+        
+        // Spawn write worker task to serialize write operations
+        let db_clone = Arc::clone(&db);
+        tokio::spawn(async move {
+            Self::write_worker(db_clone, write_queue_rx).await;
+        });
         
         Ok(Self {
-            db: Arc::new(db),
+            db,
             read_semaphore: Arc::new(Semaphore::new(max_read_concurrency)),
-            write_semaphore: Arc::new(Semaphore::new(max_write_concurrency)),
+            write_queue_tx,
         })
+    }
+
+    async fn write_worker(db: Arc<TransactionDB>, mut write_queue_rx: mpsc::UnboundedReceiver<WriteRequest>) {
+        while let Some(request) = write_queue_rx.recv().await {
+            let result = match request.operation {
+                WriteOperation::Put { key, value } => Self::execute_put(&db, &key, &value),
+                WriteOperation::Delete { key } => Self::execute_delete(&db, &key),
+            };
+            
+            // Send the result back, ignoring if the receiver is dropped
+            let _ = request.response_tx.send(result);
+        }
+    }
+
+    fn execute_put(db: &TransactionDB, key: &str, value: &str) -> OpResult {
+        if key.is_empty() {
+            return OpResult {
+                success: false,
+                error: "key cannot be empty".to_string(),
+            };
+        }
+
+        // Create a transaction for pessimistic locking
+        let txn_opts = TransactionOptions::default();
+        let txn = db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Put the key-value pair within the transaction
+        match txn.put(key, value) {
+            Ok(_) => {
+                match txn.commit() {
+                    Ok(_) => OpResult {
+                        success: true,
+                        error: String::new(),
+                    },
+                    Err(e) => {
+                        error!("Failed to commit transaction: {}", e);
+                        OpResult {
+                            success: false,
+                            error: format!("failed to commit transaction: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to put value: {}", e);
+                let _ = txn.rollback();
+                OpResult {
+                    success: false,
+                    error: format!("failed to put value: {}", e),
+                }
+            }
+        }
+    }
+
+    fn execute_delete(db: &TransactionDB, key: &str) -> OpResult {
+        if key.is_empty() {
+            return OpResult {
+                success: false,
+                error: "key cannot be empty".to_string(),
+            };
+        }
+
+        // Create a transaction for pessimistic locking
+        let txn_opts = TransactionOptions::default();
+        let txn = db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Delete the key within the transaction
+        match txn.delete(key) {
+            Ok(_) => {
+                match txn.commit() {
+                    Ok(_) => OpResult {
+                        success: true,
+                        error: String::new(),
+                    },
+                    Err(e) => {
+                        error!("Failed to commit transaction: {}", e);
+                        OpResult {
+                            success: false,
+                            error: format!("failed to commit transaction: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to delete key: {}", e);
+                let _ = txn.rollback();
+                OpResult {
+                    success: false,
+                    error: format!("failed to delete key: {}", e),
+                }
+            }
+        }
     }
 
     pub async fn get(&self, key: &str) -> Result<GetResult, String> {
@@ -81,104 +193,57 @@ impl KvDatabase {
     }
 
     pub async fn put(&self, key: &str, value: &str) -> OpResult {
-        if key.is_empty() {
+        let (response_tx, response_rx) = oneshot::channel();
+        let write_request = WriteRequest {
+            operation: WriteOperation::Put {
+                key: key.to_string(),
+                value: value.to_string(),
+            },
+            response_tx,
+        };
+
+        // Send write request to the queue
+        if let Err(_) = self.write_queue_tx.send(write_request) {
             return OpResult {
                 success: false,
-                error: "key cannot be empty".to_string(),
+                error: "write queue channel closed".to_string(),
             };
         }
 
-        // Acquire write semaphore to limit concurrent write transactions
-        let _permit = match self.write_semaphore.acquire().await {
-            Ok(permit) => permit,
-            Err(_) => {
-                return OpResult {
-                    success: false,
-                    error: "timeout waiting for write transaction slot".to_string(),
-                };
-            }
-        };
-
-        // Create a transaction for pessimistic locking
-        let txn_opts = TransactionOptions::default();
-        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
-        
-        // Put the key-value pair within the transaction
-        match txn.put(key, value) {
-            Ok(_) => {
-                match txn.commit() {
-                    Ok(_) => OpResult {
-                        success: true,
-                        error: String::new(),
-                    },
-                    Err(e) => {
-                        error!("Failed to commit transaction: {}", e);
-                        OpResult {
-                            success: false,
-                            error: format!("failed to commit transaction: {}", e),
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Failed to put value: {}", e);
-                let _ = txn.rollback();
-                OpResult {
-                    success: false,
-                    error: format!("failed to put value: {}", e),
-                }
-            }
+        // Wait for the response
+        match response_rx.await {
+            Ok(result) => result,
+            Err(_) => OpResult {
+                success: false,
+                error: "failed to receive response from write worker".to_string(),
+            },
         }
     }
 
     pub async fn delete(&self, key: &str) -> OpResult {
-        if key.is_empty() {
+        let (response_tx, response_rx) = oneshot::channel();
+        let write_request = WriteRequest {
+            operation: WriteOperation::Delete {
+                key: key.to_string(),
+            },
+            response_tx,
+        };
+
+        // Send write request to the queue
+        if let Err(_) = self.write_queue_tx.send(write_request) {
             return OpResult {
                 success: false,
-                error: "key cannot be empty".to_string(),
+                error: "write queue channel closed".to_string(),
             };
         }
 
-        // Acquire write semaphore to limit concurrent write transactions
-        let _permit = match self.write_semaphore.acquire().await {
-            Ok(permit) => permit,
-            Err(_) => {
-                return OpResult {
-                    success: false,
-                    error: "timeout waiting for write transaction slot".to_string(),
-                };
-            }
-        };
-
-        // Create a transaction for pessimistic locking
-        let txn_opts = TransactionOptions::default();
-        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
-        
-        // Delete the key within the transaction
-        match txn.delete(key) {
-            Ok(_) => {
-                match txn.commit() {
-                    Ok(_) => OpResult {
-                        success: true,
-                        error: String::new(),
-                    },
-                    Err(e) => {
-                        error!("Failed to commit transaction: {}", e);
-                        OpResult {
-                            success: false,
-                            error: format!("failed to commit transaction: {}", e),
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Failed to delete key: {}", e);
-                let _ = txn.rollback();
-                OpResult {
-                    success: false,
-                    error: format!("failed to delete key: {}", e),
-                }
-            }
+        // Wait for the response
+        match response_rx.await {
+            Ok(result) => result,
+            Err(_) => OpResult {
+                success: false,
+                error: "failed to receive response from write worker".to_string(),
+            },
         }
     }
 
