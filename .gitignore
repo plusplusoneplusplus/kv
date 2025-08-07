@@ -5,6 +5,9 @@ bin/
 server
 .DS_Store
 
+# Benchmark results
+benchmark_results/
+
 # Generated protobuf files
 go/proto/*.pb.go
 
