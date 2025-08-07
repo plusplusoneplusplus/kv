@@ -4,3 +4,9 @@ bin/
 *.log
 server
 .DS_Store
+
+# Generated protobuf files
+go/proto/*.pb.go
+
+# Generated Thrift files
+rust/src/kvstore.rs
