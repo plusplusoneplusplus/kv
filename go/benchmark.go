@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -69,35 +70,45 @@ func main() {
 	// Command line flags
 	var (
 		addr            = flag.String("addr", "localhost:50051", "server address")
-		mode            = flag.String("mode", "mixed", "benchmark mode: mixed, ping")
+		mode            = flag.String("mode", "mixed", "benchmark mode: ping, read, write, mixed")
 		numThreads      = flag.Int("threads", 32, "number of concurrent threads")
 		totalRequests   = flag.Int64("requests", 100000, "total number of requests")
-		writePercentage = flag.Int("write-pct", 30, "percentage of write operations (0-100)")
-		pingPercentage  = flag.Int("ping-pct", 10, "percentage of ping operations (0-100)")
+		writePercentage = flag.Int("write-pct", 30, "percentage of write operations (0-100) - only used in mixed mode")
+		pingPercentage  = flag.Int("ping-pct", 0, "percentage of ping operations (0-100) - only used in mixed mode")
 		keySize         = flag.Int("key-size", 16, "size of keys in bytes")
 		valueSize       = flag.Int("value-size", 100, "size of values in bytes")
 		timeout         = flag.Duration("timeout", 30*time.Second, "timeout for individual operations")
 	)
 	flag.Parse()
 
-	if *writePercentage < 0 || *writePercentage > 100 {
-		log.Fatal("Write percentage must be between 0 and 100")
+	// Show help with examples if requested
+	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		showUsageExamples()
+		return
 	}
 
-	if *pingPercentage < 0 || *pingPercentage > 100 {
-		log.Fatal("Ping percentage must be between 0 and 100")
+	// Validate mode
+	validModes := map[string]bool{
+		"ping":  true,
+		"read":  true,
+		"write": true,
+		"mixed": true,
+	}
+	if !validModes[*mode] {
+		log.Fatal("Mode must be one of: ping, read, write, mixed")
 	}
 
-	if *mode != "mixed" && *mode != "ping" {
-		log.Fatal("Mode must be either 'mixed' or 'ping'")
-	}
-
-	// Auto-adjust mode based on parameters
+	// Validate percentages only for mixed mode
 	if *mode == "mixed" {
-		if *writePercentage == 100 && *pingPercentage == 10 {
-			// User probably wants write-only, adjust ping percentage
-			*pingPercentage = 0
-		} else if *writePercentage + *pingPercentage > 100 {
+		if *writePercentage < 0 || *writePercentage > 100 {
+			log.Fatal("Write percentage must be between 0 and 100")
+		}
+
+		if *pingPercentage < 0 || *pingPercentage > 100 {
+			log.Fatal("Ping percentage must be between 0 and 100")
+		}
+
+		if *writePercentage + *pingPercentage > 100 {
 			log.Fatal("Write percentage + Ping percentage cannot exceed 100")
 		}
 	}
@@ -119,13 +130,18 @@ func main() {
 	fmt.Printf("Mode: %s\n", config.Mode)
 	fmt.Printf("Threads: %d\n", config.NumThreads)
 	fmt.Printf("Total Requests: %d\n", config.TotalRequests)
+	
 	if config.Mode == "mixed" {
 		fmt.Printf("Write Percentage: %d%%\n", config.WritePercentage)
 		fmt.Printf("Ping Percentage: %d%%\n", config.PingPercentage)
 		fmt.Printf("Read Percentage: %d%%\n", 100-config.WritePercentage-config.PingPercentage)
+	}
+	
+	if config.Mode == "read" || config.Mode == "write" || config.Mode == "mixed" {
 		fmt.Printf("Key Size: %d bytes\n", config.KeySize)
 		fmt.Printf("Value Size: %d bytes\n", config.ValueSize)
 	}
+	
 	fmt.Printf("Timeout: %v\n", config.Timeout)
 	fmt.Println()
 
@@ -215,10 +231,14 @@ func (w *Worker) run() {
 		
 		var result *BenchmarkResult
 		
-		if w.config.Mode == "ping" {
-			// Ping-only mode
+		switch w.config.Mode {
+		case "ping":
 			result = w.performPing()
-		} else {
+		case "read":
+			result = w.performRead()
+		case "write":
+			result = w.performWrite()
+		case "mixed":
 			// Mixed mode - determine operation type based on percentages
 			remainder := current % 100
 			
@@ -447,4 +467,33 @@ func printStatistics(stats *Statistics) {
 	fmt.Printf("  P95:     %v\n", stats.P95Latency)
 	fmt.Printf("  P99:     %v\n", stats.P99Latency)
 	fmt.Println()
+}
+
+func showUsageExamples() {
+	fmt.Println("RocksDB Service Benchmark Tool")
+	fmt.Println()
+	fmt.Println("Usage Examples:")
+	fmt.Println()
+	fmt.Println("1. Ping-only benchmark:")
+	fmt.Println("   ./benchmark -mode=ping -requests=10000 -threads=16")
+	fmt.Println()
+	fmt.Println("2. Read-only benchmark:")
+	fmt.Println("   ./benchmark -mode=read -requests=50000 -threads=32 -key-size=20")
+	fmt.Println()
+	fmt.Println("3. Write-only benchmark:")
+	fmt.Println("   ./benchmark -mode=write -requests=25000 -threads=16 -value-size=1024")
+	fmt.Println()
+	fmt.Println("4. Mixed workload (default):")
+	fmt.Println("   ./benchmark -mode=mixed -write-pct=30 -requests=100000")
+	fmt.Println("   # This creates: 30% writes, 70% reads (ping-pct defaults to 0)")
+	fmt.Println()
+	fmt.Println("5. Mixed workload with pings:")
+	fmt.Println("   ./benchmark -mode=mixed -write-pct=30 -ping-pct=10 -requests=100000")
+	fmt.Println("   # This creates: 30% writes, 10% pings, 60% reads")
+	fmt.Println()
+	fmt.Println("6. Custom server address:")
+	fmt.Println("   ./benchmark -addr=192.168.1.100:50051 -mode=ping")
+	fmt.Println()
+	fmt.Println("Available Flags:")
+	flag.PrintDefaults()
 }

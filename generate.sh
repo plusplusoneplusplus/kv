@@ -23,4 +23,8 @@ protoc --go_out=go --go_opt=paths=source_relative \
     --go-grpc_out=go --go-grpc_opt=paths=source_relative \
     proto/kvstore.proto
 
+# Generate C++ code from protobuf (will be handled by CMake)
+# The C++ protobuf generation is handled in the CMakeLists.txt file
+# to ensure proper integration with the build system
+
 echo "Generated gRPC code successfully!"

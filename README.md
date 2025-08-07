@@ -17,6 +17,13 @@ A high-performance gRPC service for key-value operations using RocksDB as the st
 │   │   └── main.rs       # Rust server implementation
 │   ├── Cargo.toml       # Rust dependencies
 │   └── build.rs         # Protobuf build script
+├── cpp/                   # C++ implementation
+│   ├── src/
+│   │   ├── main.cpp      # C++ server implementation
+│   │   ├── kvstore_service.cpp # Service implementation
+│   │   └── kvstore_service.h   # Service header
+│   ├── CMakeLists.txt    # CMake build configuration
+│   └── Makefile         # C++ build automation
 ├── proto/                 # Protocol buffer definitions
 │   └── kvstore.proto     # Service and message definitions
 ├── data/                  # Database storage directory
@@ -36,8 +43,12 @@ A high-performance gRPC service for key-value operations using RocksDB as the st
 ## Prerequisites
 
 - Go 1.21 or later
+- Rust (for Rust implementation)
+- C++ compiler with C++17 support (for C++ implementation)
+- CMake 3.16+ (for C++ implementation)
 - Protocol Buffers compiler (`protoc`)
 - RocksDB development libraries
+- gRPC development libraries (for C++ implementation)
 
 ### Installing RocksDB
 
@@ -58,16 +69,21 @@ sudo yum install epel-release
 sudo yum install rocksdb-devel
 ```
 
-### Installing protoc
+### Installing gRPC and protoc
 
 #### Ubuntu/Debian
 ```bash
-sudo apt-get install protobuf-compiler
+sudo apt-get install protobuf-compiler libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc
 ```
 
 #### macOS
 ```bash
-brew install protobuf
+brew install protobuf grpc
+```
+
+#### CentOS/RHEL
+```bash
+sudo yum install protobuf-compiler grpc-devel protobuf-devel
 ```
 
 ## Setup
@@ -78,17 +94,14 @@ brew install protobuf
 # Generate protobuf files
 make proto
 
-# Build all Go binaries
-make all
-
-# Build Rust server
-make rust
+# Build all servers and clients (Go, Rust, C++)
+make build          # Debug builds
+make build-release  # Release builds
 
 # Or build individually:
-make go-server      # Builds Go rocksdbserver
-make go-client      # Builds Go client (works with both servers)
-make go-benchmark   # Builds Go benchmark tool (works with both servers)
-make rust-server    # Builds Rust rocksdbserver-rust
+make go-deps        # Install Go dependencies
+make rust-deps      # Install Rust dependencies  
+make cpp-deps       # Install C++ dependencies (Ubuntu/Debian)
 ```
 
 ### Manual Setup
@@ -120,9 +133,12 @@ make rust-server    # Builds Rust rocksdbserver-rust
    
    # Rust server
    cd rust && cargo build --bin server && cp target/debug/server ../bin/rocksdbserver-rust
+   
+   # C++ server
+   cd cpp && make debug && cp build/server ../bin/rocksdbserver-cpp
    ```
 
-5. **Build Go client and benchmark (work with both servers):**
+5. **Build Go client and benchmark (work with all servers):**
    ```bash
    cd go && go build -o ../bin/client client.go
    cd go && go build -o ../bin/benchmark benchmark.go
@@ -142,13 +158,19 @@ make rust-server    # Builds Rust rocksdbserver-rust
 ./bin/rocksdbserver-rust
 ```
 
-Both servers will create their own RocksDB databases:
+**C++ Server (port 50051):**
+```bash
+./bin/rocksdbserver-cpp
+```
+
+All servers will create their own RocksDB databases:
 - Go server: `./data/rocksdb` 
 - Rust server: `./data/rocksdb-rust`
+- C++ server: `./data/rocksdb-cpp`
 
 ### Using the client
 
-The client works with both Go and Rust servers. Since both use port 50051, start one server at a time:
+The client works with all three server implementations. Since all use port 50051, start one server at a time:
 
 **Basic operations:**
 ```bash
