@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -15,18 +16,19 @@ import (
 
 // BenchmarkConfig holds configuration for the benchmark
 type BenchmarkConfig struct {
-	ServerAddr        string
-	Mode              string
-	NumThreads        int
-	TotalRequests     int64
-	WritePercentage   int
-	PingPercentage    int
-	KeySize           int
-	ValueSize         int
-	Timeout           time.Duration
-	Protocol          string // "grpc" or "thrift"
-	PrePopulateKeys   int    // Number of keys to pre-populate for reads
-	PrePopulatedKeys  []string // Slice to store pre-populated keys for reads
+	ServerAddr        string        `json:"server_addr"`
+	Mode              string        `json:"mode"`
+	NumThreads        int           `json:"num_threads"`
+	TotalRequests     int64         `json:"total_requests"`
+	WritePercentage   int           `json:"write_percentage"`
+	PingPercentage    int           `json:"ping_percentage"`
+	KeySize           int           `json:"key_size"`
+	ValueSize         int           `json:"value_size"`
+	Timeout           time.Duration `json:"timeout"`
+	Protocol          string        `json:"protocol"` // "grpc" or "thrift"
+	PrePopulateKeys   int           `json:"prepopulate_keys"` // Number of keys to pre-populate for reads
+	PrePopulatedKeys  []string      `json:"-"` // Slice to store pre-populated keys for reads (exclude from JSON)
+	JSONOutputFile    string        `json:"-"` // JSON output file path (exclude from JSON)
 }
 
 // KVOperations defines the interface for key-value operations
@@ -51,18 +53,27 @@ type BenchmarkResult struct {
 
 // Statistics holds aggregated performance metrics
 type Statistics struct {
-	Operation      string
-	Count          int64
-	Success        int64
-	Failed         int64
-	MinLatency     time.Duration
-	MaxLatency     time.Duration
-	AvgLatency     time.Duration
-	P50Latency     time.Duration
-	P90Latency     time.Duration
-	P95Latency     time.Duration
-	P99Latency     time.Duration
-	Throughput     float64 // operations per second
+	Operation      string        `json:"operation"`
+	Count          int64         `json:"count"`
+	Success        int64         `json:"success"`
+	Failed         int64         `json:"failed"`
+	MinLatency     time.Duration `json:"min_latency"`
+	MaxLatency     time.Duration `json:"max_latency"`
+	AvgLatency     time.Duration `json:"avg_latency"`
+	P50Latency     time.Duration `json:"p50_latency"`
+	P90Latency     time.Duration `json:"p90_latency"`
+	P95Latency     time.Duration `json:"p95_latency"`
+	P99Latency     time.Duration `json:"p99_latency"`
+	Throughput     float64       `json:"throughput"` // operations per second
+}
+
+// BenchmarkReport holds the complete benchmark results for JSON output
+type BenchmarkReport struct {
+	Config        *BenchmarkConfig `json:"config"`
+	StartTime     time.Time        `json:"start_time"`
+	EndTime       time.Time        `json:"end_time"`
+	TotalDuration time.Duration    `json:"total_duration"`
+	Statistics    []*Statistics    `json:"statistics"`
 }
 
 // Worker represents a benchmark worker
@@ -96,6 +107,7 @@ func main() {
 		timeout          = flag.Duration("timeout", 30*time.Second, "timeout for individual operations")
 		protocol         = flag.String("protocol", "grpc", "protocol to use: grpc, thrift, raw")
 		prePopulateKeys  = flag.Int("prepopulate", 10000, "number of keys to pre-populate for read operations")
+		jsonOutput       = flag.String("json", "", "output results to JSON file (e.g., results.json)")
 	)
 	flag.Parse()
 
@@ -168,6 +180,7 @@ func main() {
 		Protocol:         *protocol,
 		PrePopulateKeys:  *prePopulateKeys,
 		PrePopulatedKeys: make([]string, 0, *prePopulateKeys),
+		JSONOutputFile:   *jsonOutput,
 	}
 
 	fmt.Printf("=== RocksDB Service Benchmark ===\n")
@@ -201,6 +214,7 @@ func main() {
 }
 
 func runBenchmark(config *BenchmarkConfig) error {
+	startTime := time.Now()
 	// Select client factory based on protocol
 	var clientFactory ClientFactory
 	switch config.Protocol {
@@ -237,7 +251,7 @@ func runBenchmark(config *BenchmarkConfig) error {
 	
 	// Start workers
 	fmt.Printf("Starting %d workers...\n", config.NumThreads)
-	startTime := time.Now()
+	benchmarkStartTime := time.Now()
 	
 	for i := 0; i < config.NumThreads; i++ {
 		wg.Add(1)
@@ -283,13 +297,13 @@ func runBenchmark(config *BenchmarkConfig) error {
 	
 	// Wait for completion
 	<-done
-	endTime := time.Now()
-	totalDuration := endTime.Sub(startTime)
+	benchmarkEndTime := time.Now()
+	totalDuration := benchmarkEndTime.Sub(benchmarkStartTime)
 	
 	fmt.Printf("Benchmark completed in %v\n\n", totalDuration)
 	
 	// Analyze results
-	analyzeResults(allResults, totalDuration)
+	analyzeResults(allResults, totalDuration, config, startTime, benchmarkEndTime)
 	
 	return nil
 }
@@ -404,7 +418,7 @@ func generateRandomString(length int) string {
 	return string(b)
 }
 
-func analyzeResults(results []*BenchmarkResult, totalDuration time.Duration) {
+func analyzeResults(results []*BenchmarkResult, totalDuration time.Duration, config *BenchmarkConfig, startTime, endTime time.Time) {
 	// Separate results by operation type
 	readResults := make([]*BenchmarkResult, 0)
 	writeResults := make([]*BenchmarkResult, 0)
@@ -422,31 +436,85 @@ func analyzeResults(results []*BenchmarkResult, totalDuration time.Duration) {
 	}
 	
 	// Calculate statistics
-	fmt.Println("=== BENCHMARK RESULTS ===")
-	fmt.Printf("Total Duration: %v\n", totalDuration)
-	fmt.Printf("Total Requests: %d\n", len(results))
-	fmt.Println()
+	var allStats []*Statistics
 	
 	if len(readResults) > 0 {
 		readStats := calculateStatistics("READ", readResults, totalDuration)
-		printStatistics(readStats)
+		allStats = append(allStats, readStats)
 	}
 	
 	if len(writeResults) > 0 {
 		writeStats := calculateStatistics("WRITE", writeResults, totalDuration)
-		printStatistics(writeStats)
+		allStats = append(allStats, writeStats)
 	}
 	
 	if len(pingResults) > 0 {
 		pingStats := calculateStatistics("PING", pingResults, totalDuration)
-		printStatistics(pingStats)
+		allStats = append(allStats, pingStats)
 	}
 	
 	// Overall statistics
+	var overallStats *Statistics
 	if len(results) > 0 {
-		overallStats := calculateStatistics("OVERALL", results, totalDuration)
-		printStatistics(overallStats)
+		overallStats = calculateStatistics("OVERALL", results, totalDuration)
+		allStats = append(allStats, overallStats)
 	}
+	
+	// Output results based on configuration
+	if config.JSONOutputFile != "" {
+		// JSON output mode
+		report := &BenchmarkReport{
+			Config:        config,
+			StartTime:     startTime,
+			EndTime:       endTime,
+			TotalDuration: totalDuration,
+			Statistics:    allStats,
+		}
+		
+		if err := writeJSONResults(report, config.JSONOutputFile); err != nil {
+			log.Printf("Failed to write JSON results: %v", err)
+		} else {
+			fmt.Printf("Results written to %s\n", config.JSONOutputFile)
+		}
+		
+		// Also print a summary to console
+		fmt.Println("=== BENCHMARK SUMMARY ===")
+		fmt.Printf("Total Duration: %v\n", totalDuration)
+		fmt.Printf("Total Requests: %d\n", len(results))
+		if overallStats != nil {
+			fmt.Printf("Overall Throughput: %.2f ops/sec\n", overallStats.Throughput)
+			fmt.Printf("Success Rate: %.2f%%\n", float64(overallStats.Success)/float64(overallStats.Count)*100)
+		}
+		fmt.Printf("Detailed results saved to: %s\n", config.JSONOutputFile)
+	} else {
+		// Console output mode (existing behavior)
+		fmt.Println("=== BENCHMARK RESULTS ===")
+		fmt.Printf("Total Duration: %v\n", totalDuration)
+		fmt.Printf("Total Requests: %d\n", len(results))
+		fmt.Println()
+		
+		for _, stats := range allStats {
+			printStatistics(stats)
+		}
+	}
+}
+
+// writeJSONResults writes the benchmark report to a JSON file
+func writeJSONResults(report *BenchmarkReport, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create JSON file: %v", err)
+	}
+	defer file.Close()
+	
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	
+	if err := encoder.Encode(report); err != nil {
+		return fmt.Errorf("failed to encode JSON: %v", err)
+	}
+	
+	return nil
 }
 
 func calculateStatistics(operation string, results []*BenchmarkResult, totalDuration time.Duration) *Statistics {
@@ -575,6 +643,10 @@ func showUsageExamples() {
 	fmt.Println("   ./benchmark -protocol=raw -mode=write -requests=100000 -threads=16")
 	fmt.Println("   ./benchmark -protocol=raw -mode=mixed -write-pct=30 -requests=50000")
 	fmt.Println("   ./benchmark -protocol=raw -addr=/tmp/my-benchmark-db -mode=read")
+	fmt.Println()
+	fmt.Println("9. JSON output for further processing:")
+	fmt.Println("   ./benchmark -mode=mixed -requests=50000 -json=results.json")
+	fmt.Println("   ./benchmark -protocol=thrift -mode=ping -json=/tmp/ping-results.json")
 	fmt.Println()
 	fmt.Println("Available Flags:")
 	flag.PrintDefaults()
