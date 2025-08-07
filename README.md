@@ -116,16 +116,16 @@ make rust-server    # Builds Rust rocksdbserver-rust
 4. **Build servers:**
    ```bash
    # Go server
-   cd go && go build -o ../rocksdbserver main.go
+   cd go && go build -o ../bin/rocksdbserver main.go
    
    # Rust server
-   cd rust && cargo build --bin server && cp target/debug/server ../rocksdbserver-rust
+   cd rust && cargo build --bin server && cp target/debug/server ../bin/rocksdbserver-rust
    ```
 
 5. **Build Go client and benchmark (work with both servers):**
    ```bash
-   cd go && go build -o ../client client.go
-   cd go && go build -o ../benchmark benchmark.go
+   cd go && go build -o ../bin/client client.go
+   cd go && go build -o ../bin/benchmark benchmark.go
    ```
 
 ## Usage
@@ -134,12 +134,12 @@ make rust-server    # Builds Rust rocksdbserver-rust
 
 **Go Server (port 50051):**
 ```bash
-./rocksdbserver
+./bin/rocksdbserver
 ```
 
-**Rust Server (port 50052):**
+**Rust Server (port 50051):**
 ```bash
-./rocksdbserver-rust
+./bin/rocksdbserver-rust
 ```
 
 Both servers will create their own RocksDB databases:
@@ -148,49 +148,27 @@ Both servers will create their own RocksDB databases:
 
 ### Using the client
 
-The Go client works with both Go and Rust servers. Use the `--addr` flag to specify which server to connect to:
+The client works with both Go and Rust servers. Since both use port 50051, start one server at a time:
 
-#### Connect to Go server (default):
+**Basic operations:**
 ```bash
-./client -op put -key "hello" -value "world"
-./client -op get -key "hello"
+# Put a key-value pair
+./bin/client -op put -key "hello" -value "world"
+
+# Get a value by key
+./bin/client -op get -key "hello"
+
+# Delete a key
+./bin/client -op delete -key "hello"
+
+# List all keys
+./bin/client -op list
+
+# List keys with prefix
+./bin/client -op list -prefix "user:" -limit 20
 ```
 
-#### Connect to Rust server:
-```bash
-./client --addr localhost:50052 -op put -key "hello" -value "world"
-./client --addr localhost:50052 -op get -key "hello"
-```
-
-#### Available operations:
-
-**Put a key-value pair:**
-```bash
-./client -op put -key "hello" -value "world"
-```
-
-**Get a value by key:**
-```bash
-./client -op get -key "hello"
-```
-
-**Delete a key:**
-```bash
-./client -op delete -key "hello"
-```
-
-**List all keys:**
-```bash
-./client -op list
-```
-
-#### List keys with prefix
-```bash
-./client -op list -prefix "user:" -limit 20
-```
-
-### Client Options
-
+**Client options:**
 - `-addr`: Server address (default: localhost:50051)
 - `-op`: Operation (get, put, delete, list)
 - `-key`: Key for operation
@@ -198,62 +176,87 @@ The Go client works with both Go and Rust servers. Use the `--addr` flag to spec
 - `-prefix`: Prefix for list operation
 - `-limit`: Limit for list operation (default: 10)
 
+## Benchmarking
+
+The benchmark tool tests performance with mixed read/write workloads on both server implementations.
+
+### Quick Start
+
+```bash
+# Build and run benchmark on Go server
+make all
+./bin/benchmark
+
+# Test Rust server (stop Go server first, start Rust server)
+./bin/benchmark
+```
+
+### Configuration Options
+
+- `-mode`: "mixed" (read/write/ping) or "ping" (latency only)
+- `-threads`: Concurrent threads (default: 32)
+- `-requests`: Total requests (default: 100,000)
+- `-write-pct`: Write percentage 0-100 (default: 30)
+- `-key-size`: Key size in bytes (default: 16)
+- `-value-size`: Value size in bytes (default: 100)
+
+### Example Commands
+
+```bash
+# Read-heavy workload
+./bin/benchmark -write-pct 10 -requests 1000000
+
+# Write-heavy with large values
+./bin/benchmark -write-pct 70 -value-size 1024
+
+# Latency test
+./bin/benchmark -mode ping -threads 1
+
+# Compare servers
+./bin/benchmark > go_results.txt    # Go server
+./bin/benchmark > rust_results.txt  # Rust server (restart)
+```
+
+### Benchmark Output
+
+The benchmark provides detailed performance statistics:
+
+```
+=== MIXED BENCHMARK STATISTICS ===
+Total Operations: 100000
+Successful: 99998 (99.998%)
+Throughput: 15234.56 ops/sec
+
+Latency Statistics:
+  Average: 2.1ms
+  P50: 1.8ms  P90: 3.2ms  P95: 4.1ms  P99: 8.7ms
+```
+
 ## API Reference
 
-### Proto Definition
-
-The service is defined in `proto/kvstore.proto` with the following operations:
-
+**gRPC Service Operations:**
 - `Get(GetRequest) returns (GetResponse)`
-- `Put(PutRequest) returns (PutResponse)`
+- `Put(PutRequest) returns (PutResponse)` 
 - `Delete(DeleteRequest) returns (DeleteResponse)`
 - `ListKeys(ListKeysRequest) returns (ListKeysResponse)`
 
-### Example gRPC calls
-
-Using grpcurl (install with `go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest`):
-
+**Using grpcurl:**
 ```bash
 # Put
 grpcurl -plaintext -d '{"key":"test","value":"data"}' localhost:50051 kvstore.KVStore/Put
 
-# Get
+# Get  
 grpcurl -plaintext -d '{"key":"test"}' localhost:50051 kvstore.KVStore/Get
-
-# List
-grpcurl -plaintext -d '{"prefix":"","limit":10}' localhost:50051 kvstore.KVStore/ListKeys
-
-# Delete
-grpcurl -plaintext -d '{"key":"test"}' localhost:50051 kvstore.KVStore/Delete
-```
-
-## Project Structure
-
-```
-rocksdb_svc/
-├── proto/
-│   └── kvstore.proto      # Protocol buffer definition
-├── kvstore/               # Generated gRPC code (created by generate.sh)
-├── data/                  # RocksDB data directory (created at runtime)
-├── main.go                # gRPC server implementation
-├── client.go              # CLI client
-├── generate.sh            # Script to generate gRPC code
-├── go.mod                 # Go module file
-└── README.md             # This file
 ```
 
 ## Development
 
-To modify the service:
+**To modify the service:**
+1. Edit `proto/kvstore.proto`
+2. Run `./generate.sh` to regenerate gRPC code
+3. Update server implementation and rebuild
 
-1. Edit the protobuf definition in `proto/kvstore.proto`
-2. Run `./generate.sh` to regenerate the gRPC code
-3. Update the server implementation in `main.go`
-4. Rebuild and test
-
-## Notes
-
-- The server uses graceful shutdown on SIGTERM/SIGINT
-- RocksDB options are set to reasonable defaults
-- The client has a 10-second timeout for operations
-- Database files are stored in `./data/rocksdb/`
+**Notes:**
+- Both servers use graceful shutdown (SIGTERM/SIGINT)
+- Database files stored in `./data/rocksdb/` (Go) and `./data/rocksdb-rust/` (Rust)
+- Client timeout: 10 seconds
