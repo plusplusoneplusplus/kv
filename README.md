@@ -1,6 +1,29 @@
 # RocksDB gRPC Service
 
-A simple gRPC service for key-value operations using RocksDB as the storage engine.
+A high-performance gRPC service for key-value operations using RocksDB as the storage engine, with implementations in multiple languages and comprehensive benchmarking capabilities.
+
+## Project Structure
+
+```
+.
+├── go/                     # Go implementation
+│   ├── main.go            # Go server implementation
+│   ├── client.go          # Go client (works with both servers)
+│   ├── benchmark.go       # Go benchmarking tool (works with both servers)
+│   ├── go.mod            # Go module definition
+│   └── kvstore/          # Generated protobuf files for Go
+├── rust/                  # Rust implementation  
+│   ├── src/
+│   │   └── main.rs       # Rust server implementation
+│   ├── Cargo.toml       # Rust dependencies
+│   └── build.rs         # Protobuf build script
+├── proto/                 # Protocol buffer definitions
+│   └── kvstore.proto     # Service and message definitions
+├── data/                  # Database storage directory
+├── generate.sh           # Protobuf code generation script
+├── Makefile             # Build automation
+└── README.md            # This file
+```
 
 ## Features
 
@@ -8,6 +31,7 @@ A simple gRPC service for key-value operations using RocksDB as the storage engi
 - **Put**: Store a key-value pair
 - **Delete**: Remove a key-value pair
 - **ListKeys**: List all keys with optional prefix filtering
+- **Benchmark**: Multi-threaded performance testing with detailed metrics
 
 ## Prerequisites
 
@@ -48,55 +72,114 @@ brew install protobuf
 
 ## Setup
 
+### Quick Start with Makefile
+
+```bash
+# Generate protobuf files
+make proto
+
+# Build all Go binaries
+make all
+
+# Build Rust server
+make rust
+
+# Or build individually:
+make go-server      # Builds Go rocksdbserver
+make go-client      # Builds Go client (works with both servers)
+make go-benchmark   # Builds Go benchmark tool (works with both servers)
+make rust-server    # Builds Rust rocksdbserver-rust
+```
+
+### Manual Setup
+
 1. **Generate gRPC code:**
    ```bash
    chmod +x generate.sh
    ./generate.sh
    ```
 
-2. **Download dependencies:**
+2. **Download Go dependencies:**
    ```bash
-   go mod tidy
+   make go-deps
+   # or manually:
+   cd go && go mod tidy
    ```
 
-3. **Build the server:**
+3. **Download Rust dependencies:**
    ```bash
-   go build -o server main.go
+   make rust-deps
+   # or manually:
+   cd rust && cargo fetch
    ```
 
-4. **Build the client:**
+4. **Build servers:**
    ```bash
-   go build -o client client.go
+   # Go server
+   cd go && go build -o ../rocksdbserver main.go
+   
+   # Rust server
+   cd rust && cargo build --bin server && cp target/debug/server ../rocksdbserver-rust
+   ```
+
+5. **Build Go client and benchmark (work with both servers):**
+   ```bash
+   cd go && go build -o ../client client.go
+   cd go && go build -o ../benchmark benchmark.go
    ```
 
 ## Usage
 
-### Starting the server
+### Starting the servers
 
+**Go Server (port 50051):**
 ```bash
-./server
+./rocksdbserver
 ```
 
-The server will start on port 50051 and create a RocksDB database in the `./data/rocksdb` directory.
+**Rust Server (port 50052):**
+```bash
+./rocksdbserver-rust
+```
+
+Both servers will create their own RocksDB databases:
+- Go server: `./data/rocksdb` 
+- Rust server: `./data/rocksdb-rust`
 
 ### Using the client
 
-#### Put a key-value pair
+The Go client works with both Go and Rust servers. Use the `--addr` flag to specify which server to connect to:
+
+#### Connect to Go server (default):
+```bash
+./client -op put -key "hello" -value "world"
+./client -op get -key "hello"
+```
+
+#### Connect to Rust server:
+```bash
+./client --addr localhost:50052 -op put -key "hello" -value "world"
+./client --addr localhost:50052 -op get -key "hello"
+```
+
+#### Available operations:
+
+**Put a key-value pair:**
 ```bash
 ./client -op put -key "hello" -value "world"
 ```
 
-#### Get a value by key
+**Get a value by key:**
 ```bash
 ./client -op get -key "hello"
 ```
 
-#### Delete a key
+**Delete a key:**
 ```bash
 ./client -op delete -key "hello"
 ```
 
-#### List all keys
+**List all keys:**
 ```bash
 ./client -op list
 ```

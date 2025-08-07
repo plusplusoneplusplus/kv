@@ -1,0 +1,21 @@
+[package]
+name = "rocksdb_server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tonic = "0.10"
+prost = "0.12"
+rocksdb = "0.21"
+tokio-stream = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+futures = "0.3"
+
+[build-dependencies]
+tonic-build = "0.10"

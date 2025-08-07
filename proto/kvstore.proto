@@ -17,6 +17,9 @@ service KVStore {
   
   // List all keys with optional prefix
   rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
+  
+  // Ping for health check and latency testing
+  rpc Ping(PingRequest) returns (PingResponse);
 }
 
 // Request message for Get operation
@@ -62,4 +65,17 @@ message ListKeysRequest {
 // Response message for ListKeys operation
 message ListKeysResponse {
   repeated string keys = 1;
+}
+
+// Request message for Ping operation
+message PingRequest {
+  string message = 1;
+  int64 timestamp = 2;
+}
+
+// Response message for Ping operation
+message PingResponse {
+  string message = 1;
+  int64 timestamp = 2;
+  int64 server_timestamp = 3;
 }

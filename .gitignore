@@ -3,4 +3,7 @@ kvstore/
 *.log
 server
 client
+rocksdbserver
+rocksdbserver-rust
+benchmark
 .DS_Store
