@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package kvstore;
+
+option go_package = "./kvstore";
+
+// The key-value store service definition
+service KVStore {
+  // Get a value by key
+  rpc Get(GetRequest) returns (GetResponse);
+  
+  // Put a key-value pair
+  rpc Put(PutRequest) returns (PutResponse);
+  
+  // Delete a key
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  
+  // List all keys with optional prefix
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
+}
+
+// Request message for Get operation
+message GetRequest {
+  string key = 1;
+}
+
+// Response message for Get operation
+message GetResponse {
+  string value = 1;
+  bool found = 2;
+}
+
+// Request message for Put operation
+message PutRequest {
+  string key = 1;
+  string value = 2;
+}
+
+// Response message for Put operation
+message PutResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Request message for Delete operation
+message DeleteRequest {
+  string key = 1;
+}
+
+// Response message for Delete operation
+message DeleteResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Request message for ListKeys operation
+message ListKeysRequest {
+  string prefix = 1;
+  int32 limit = 2;
+}
+
+// Response message for ListKeys operation
+message ListKeysResponse {
+  repeated string keys = 1;
+}

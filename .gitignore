@@ -1,0 +1,6 @@
+data/
+kvstore/
+*.log
+server
+client
+.DS_Store
