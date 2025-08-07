@@ -452,20 +452,30 @@ func percentile(latencies []time.Duration, p int) time.Duration {
 
 func printStatistics(stats *Statistics) {
 	fmt.Printf("=== %s STATISTICS ===\n", stats.Operation)
-	fmt.Printf("Total Operations: %d\n", stats.Count)
-	fmt.Printf("Successful: %d (%.2f%%)\n", stats.Success, float64(stats.Success)/float64(stats.Count)*100)
-	fmt.Printf("Failed: %d (%.2f%%)\n", stats.Failed, float64(stats.Failed)/float64(stats.Count)*100)
-	fmt.Printf("Throughput: %.2f ops/sec\n", stats.Throughput)
+	
+	// Operations summary table
+	fmt.Printf("┌─────────────────────┬─────────────┬──────────────┬──────────────┐\n")
+	fmt.Printf("│ %-19s │ %-11s │ %-12s │ %-12s │\n", "Metric", "Total", "Successful", "Failed")
+	fmt.Printf("├─────────────────────┼─────────────┼──────────────┼──────────────┤\n")
+	fmt.Printf("│ %-19s │ %-11d │ %-12d │ %-12d │\n", "Operations", stats.Count, stats.Success, stats.Failed)
+	fmt.Printf("│ %-19s │ %-11s │ %11.2f%% │ %11.2f%% │\n", "Percentage", "-", 
+		float64(stats.Success)/float64(stats.Count)*100, float64(stats.Failed)/float64(stats.Count)*100)
+	fmt.Printf("│ %-19s │ %-11.2f │ %-12s │ %-12s │\n", "Throughput (op/s)", stats.Throughput, "-", "-")
+	fmt.Printf("└─────────────────────┴─────────────┴──────────────┴──────────────┘\n")
 	fmt.Println()
 	
-	fmt.Println("Latency Statistics:")
-	fmt.Printf("  Min:     %v\n", stats.MinLatency)
-	fmt.Printf("  Max:     %v\n", stats.MaxLatency)
-	fmt.Printf("  Average: %v\n", stats.AvgLatency)
-	fmt.Printf("  P50:     %v\n", stats.P50Latency)
-	fmt.Printf("  P90:     %v\n", stats.P90Latency)
-	fmt.Printf("  P95:     %v\n", stats.P95Latency)
-	fmt.Printf("  P99:     %v\n", stats.P99Latency)
+	// Latency statistics table
+	fmt.Printf("┌─────────────────────┬─────────────────┐\n")
+	fmt.Printf("│ %-19s │ %-15s │\n", "Latency Metric", "Value")
+	fmt.Printf("├─────────────────────┼─────────────────┤\n")
+	fmt.Printf("│ %-19s │ %-15v │\n", "Minimum", stats.MinLatency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "Average", stats.AvgLatency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "50th Percentile", stats.P50Latency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "90th Percentile", stats.P90Latency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "95th Percentile", stats.P95Latency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "99th Percentile", stats.P99Latency)
+	fmt.Printf("│ %-19s │ %-15v │\n", "Maximum", stats.MaxLatency)
+	fmt.Printf("└─────────────────────┴─────────────────┘\n")
 	fmt.Println()
 }
 
