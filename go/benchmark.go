@@ -32,6 +32,19 @@ type BenchmarkConfig struct {
 	Timeout         time.Duration
 }
 
+// KVOperations defines the interface for key-value operations
+type KVOperations interface {
+	Put(key, value string) *BenchmarkResult
+	Get(key string) *BenchmarkResult
+	Ping(workerID int) *BenchmarkResult
+}
+
+// KVClient implements KVOperations using gRPC client
+type KVClient struct {
+	client  pb.KVStoreClient
+	config  *BenchmarkConfig
+}
+
 // BenchmarkResult holds results for a single operation
 type BenchmarkResult struct {
 	Operation string
@@ -58,12 +71,12 @@ type Statistics struct {
 
 // Worker represents a benchmark worker
 type Worker struct {
-	id       int
-	client   pb.KVStoreClient
-	config   *BenchmarkConfig
-	results  chan *BenchmarkResult
-	wg       *sync.WaitGroup
-	counter  *int64
+	id        int
+	kvOps     KVOperations
+	config    *BenchmarkConfig
+	results   chan *BenchmarkResult
+	wg        *sync.WaitGroup
+	counter   *int64
 }
 
 func main() {
@@ -179,9 +192,13 @@ func runBenchmark(config *BenchmarkConfig) error {
 			defer conn.Close()
 			
 			client := pb.NewKVStoreClient(conn)
+			kvClient := &KVClient{
+				client: client,
+				config: config,
+			}
 			worker := &Worker{
 				id:      workerID,
-				client:  client,
+				kvOps:   kvClient,
 				config:  config,
 				results: results,
 				wg:      &wg,
@@ -233,21 +250,27 @@ func (w *Worker) run() {
 		
 		switch w.config.Mode {
 		case "ping":
-			result = w.performPing()
+			result = w.kvOps.Ping(w.id)
 		case "read":
-			result = w.performRead()
+			key := generateRandomString(w.config.KeySize)
+			result = w.kvOps.Get(key)
 		case "write":
-			result = w.performWrite()
+			key := generateRandomString(w.config.KeySize)
+			value := generateRandomString(w.config.ValueSize)
+			result = w.kvOps.Put(key, value)
 		case "mixed":
 			// Mixed mode - determine operation type based on percentages
 			remainder := current % 100
 			
 			if remainder < int64(w.config.WritePercentage) {
-				result = w.performWrite()
+				key := generateRandomString(w.config.KeySize)
+				value := generateRandomString(w.config.ValueSize)
+				result = w.kvOps.Put(key, value)
 			} else if remainder < int64(w.config.WritePercentage + w.config.PingPercentage) {
-				result = w.performPing()
+				result = w.kvOps.Ping(w.id)
 			} else {
-				result = w.performRead()
+				key := generateRandomString(w.config.KeySize)
+				result = w.kvOps.Get(key)
 			}
 		}
 		
@@ -260,15 +283,13 @@ func (w *Worker) run() {
 	}
 }
 
-func (w *Worker) performWrite() *BenchmarkResult {
-	key := generateRandomString(w.config.KeySize)
-	value := generateRandomString(w.config.ValueSize)
-	
-	ctx, cancel := context.WithTimeout(context.Background(), w.config.Timeout)
+// Put implements KVOperations interface
+func (kv *KVClient) Put(key, value string) *BenchmarkResult {
+	ctx, cancel := context.WithTimeout(context.Background(), kv.config.Timeout)
 	defer cancel()
 	
 	start := time.Now()
-	_, err := w.client.Put(ctx, &pb.PutRequest{
+	_, err := kv.client.Put(ctx, &pb.PutRequest{
 		Key:   key,
 		Value: value,
 	})
@@ -282,15 +303,13 @@ func (w *Worker) performWrite() *BenchmarkResult {
 	}
 }
 
-func (w *Worker) performRead() *BenchmarkResult {
-	// For reads, we'll generate a random key that might or might not exist
-	key := generateRandomString(w.config.KeySize)
-	
-	ctx, cancel := context.WithTimeout(context.Background(), w.config.Timeout)
+// Get implements KVOperations interface
+func (kv *KVClient) Get(key string) *BenchmarkResult {
+	ctx, cancel := context.WithTimeout(context.Background(), kv.config.Timeout)
 	defer cancel()
 	
 	start := time.Now()
-	_, err := w.client.Get(ctx, &pb.GetRequest{Key: key})
+	_, err := kv.client.Get(ctx, &pb.GetRequest{Key: key})
 	latency := time.Since(start)
 	
 	return &BenchmarkResult{
@@ -301,16 +320,17 @@ func (w *Worker) performRead() *BenchmarkResult {
 	}
 }
 
-func (w *Worker) performPing() *BenchmarkResult {
-	ctx, cancel := context.WithTimeout(context.Background(), w.config.Timeout)
+// Ping implements KVOperations interface
+func (kv *KVClient) Ping(workerID int) *BenchmarkResult {
+	ctx, cancel := context.WithTimeout(context.Background(), kv.config.Timeout)
 	defer cancel()
 	
 	// Create ping request with current timestamp
 	timestamp := time.Now().UnixMicro()
-	message := fmt.Sprintf("ping-%d", w.id)
+	message := fmt.Sprintf("ping-%d", workerID)
 	
 	start := time.Now()
-	resp, err := w.client.Ping(ctx, &pb.PingRequest{
+	resp, err := kv.client.Ping(ctx, &pb.PingRequest{
 		Message:   message,
 		Timestamp: timestamp,
 	})
