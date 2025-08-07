@@ -13,21 +13,23 @@ $(BIN_DIR):
 
 # Build all (debug mode)
 build: proto thrift $(BIN_DIR)
-	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go
+	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
 	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/client go/client.go
-	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/benchmark go/benchmark.go
+	cd benchmark && go build $(DEBUG_FLAGS) -o ../$(BIN_DIR)/benchmark .
 	cd rust && cargo build --bin server && cp target/debug/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --bin thrift-server && cp target/debug/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
-	cd cpp && make debug && cp build/rocksdbserver-cpp ../$(BIN_DIR)/rocksdbserver-cpp
+# ignore c++
+# cd cpp && make debug && cp build/rocksdbserver-cpp ../$(BIN_DIR)/rocksdbserver-cpp
 
 # Build all (release mode)
 build-release: proto thrift $(BIN_DIR)
-	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go
+	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
 	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/client go/client.go
-	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/benchmark go/benchmark.go
+	cd benchmark && go build $(RELEASE_FLAGS) -o ../$(BIN_DIR)/benchmark .
 	cd rust && cargo build --release --bin server && cp target/release/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --release --bin thrift-server && cp target/release/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
-	cd cpp && make release && cp build/rocksdbserver-cpp ../$(BIN_DIR)/rocksdbserver-cpp
+# ignore c++
+# cd cpp && make release && cp build/rocksdbserver-cpp ../$(BIN_DIR)/rocksdbserver-cpp
 
 # Generate protobuf files
 proto:

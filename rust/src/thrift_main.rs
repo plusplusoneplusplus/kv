@@ -4,6 +4,7 @@ use std::thread;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
+use tokio::runtime::Handle;
 use tracing::info;
 
 mod db;
@@ -14,19 +15,19 @@ use crate::kvstore::*;
 
 struct KvStoreThriftHandler {
     database: Arc<KvDatabase>,
+    runtime_handle: Handle,
 }
 
 impl KvStoreThriftHandler {
-    fn new(database: Arc<KvDatabase>) -> Self {
-        Self { database }
+    fn new(database: Arc<KvDatabase>, runtime_handle: Handle) -> Self {
+        Self { database, runtime_handle }
     }
 }
 
 impl KVStoreSyncHandler for KvStoreThriftHandler {
     fn handle_get(&self, req: GetRequest) -> thrift::Result<GetResponse> {
-        // Create a new Tokio runtime for this operation
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(self.database.get(&req.key));
+        // Use the shared runtime handle instead of creating a new runtime
+        let result = self.runtime_handle.block_on(self.database.get(&req.key));
         
         match result {
             Ok(get_result) => Ok(GetResponse::new(get_result.value, get_result.found)),
@@ -38,16 +39,14 @@ impl KVStoreSyncHandler for KvStoreThriftHandler {
     }
 
     fn handle_put(&self, req: PutRequest) -> thrift::Result<PutResponse> {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(self.database.put(&req.key, &req.value));
+        let result = self.runtime_handle.block_on(self.database.put(&req.key, &req.value));
         
         let error = if result.error.is_empty() { None } else { Some(result.error) };
         Ok(PutResponse::new(result.success, error))
     }
 
     fn handle_delete_key(&self, req: DeleteRequest) -> thrift::Result<DeleteResponse> {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(self.database.delete(&req.key));
+        let result = self.runtime_handle.block_on(self.database.delete(&req.key));
         
         let error = if result.error.is_empty() { None } else { Some(result.error) };
         Ok(DeleteResponse::new(result.success, error))
@@ -57,8 +56,7 @@ impl KVStoreSyncHandler for KvStoreThriftHandler {
         let prefix = req.prefix.as_deref().unwrap_or("");
         let limit = req.limit.unwrap_or(1000) as u32;
         
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(self.database.list_keys(prefix, limit));
+        let result = self.runtime_handle.block_on(self.database.list_keys(prefix, limit));
         
         match result {
             Ok(keys) => Ok(ListKeysResponse::new(keys)),
@@ -90,8 +88,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = "./data/rocksdb-thrift";
     std::fs::create_dir_all(db_path)?;
 
-    // Create database in a Tokio runtime for initialization
+    // Create a Tokio runtime that will be shared across all requests
     let rt = tokio::runtime::Runtime::new().unwrap();
+    let runtime_handle = rt.handle().clone();
+
+    // Create database in the shared runtime
     let database = rt.block_on(async {
         KvDatabase::new(db_path)
     })?;
@@ -107,13 +108,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match stream {
             Ok(stream) => {
                 let database = Arc::clone(&database);
+                let runtime_handle = runtime_handle.clone();
                 let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
                 
                 thread::spawn(move || {
                     info!("Accepted connection from {}", peer_addr);
                     
-                    // Create handler and processor for this connection
-                    let handler = KvStoreThriftHandler::new(database);
+                    // Create handler and processor for this connection with shared runtime handle
+                    let handler = KvStoreThriftHandler::new(database, runtime_handle);
                     let processor = KVStoreSyncProcessor::new(handler);
                     
                     // Create buffered transports
@@ -124,9 +126,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut input_protocol = TBinaryInputProtocol::new(read_transport, true);
                     let mut output_protocol = TBinaryOutputProtocol::new(write_transport, true);
                     
-                    // Handle the connection
-                    if let Err(e) = processor.process(&mut input_protocol, &mut output_protocol) {
-                        eprintln!("Error processing connection from {}: {}", peer_addr, e);
+                    // Handle the connection in a loop to process multiple requests
+                    loop {
+                        match processor.process(&mut input_protocol, &mut output_protocol) {
+                            Ok(()) => {
+                                // Request processed successfully, continue to next request
+                            }
+                            Err(thrift::Error::Transport(ref e)) if e.kind == thrift::TransportErrorKind::EndOfFile => {
+                                // Client closed connection, exit gracefully
+                                break;
+                            }
+                            Err(e) => {
+                                eprintln!("Error processing request from {}: {}", peer_addr, e);
+                                break;
+                            }
+                        }
                     }
                 });
             }

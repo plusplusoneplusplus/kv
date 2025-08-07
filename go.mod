@@ -3,6 +3,7 @@ module rocksdb_svc
 go 1.18
 
 require (
+	github.com/apache/thrift v0.16.0
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	google.golang.org/grpc v1.50.0
 	google.golang.org/protobuf v1.31.0
