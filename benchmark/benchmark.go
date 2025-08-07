@@ -15,16 +15,18 @@ import (
 
 // BenchmarkConfig holds configuration for the benchmark
 type BenchmarkConfig struct {
-	ServerAddr      string
-	Mode            string
-	NumThreads      int
-	TotalRequests   int64
-	WritePercentage int
-	PingPercentage  int
-	KeySize         int
-	ValueSize       int
-	Timeout         time.Duration
-	Protocol        string // "grpc" or "thrift"
+	ServerAddr        string
+	Mode              string
+	NumThreads        int
+	TotalRequests     int64
+	WritePercentage   int
+	PingPercentage    int
+	KeySize           int
+	ValueSize         int
+	Timeout           time.Duration
+	Protocol          string // "grpc" or "thrift"
+	PrePopulateKeys   int    // Number of keys to pre-populate for reads
+	PrePopulatedKeys  []string // Slice to store pre-populated keys for reads
 }
 
 // KVOperations defines the interface for key-value operations
@@ -83,16 +85,17 @@ func (f *GRPCClientFactory) CreateClient(serverAddr string, config *BenchmarkCon
 func main() {
 	// Command line flags
 	var (
-		addr            = flag.String("addr", "", "server address (defaults: grpc=localhost:50051, thrift=localhost:9090)")
-		mode            = flag.String("mode", "mixed", "benchmark mode: ping, read, write, mixed")
-		numThreads      = flag.Int("threads", 32, "number of concurrent threads")
-		totalRequests   = flag.Int64("requests", 100000, "total number of requests")
-		writePercentage = flag.Int("write-pct", 30, "percentage of write operations (0-100) - only used in mixed mode")
-		pingPercentage  = flag.Int("ping-pct", 0, "percentage of ping operations (0-100) - only used in mixed mode")
-		keySize         = flag.Int("key-size", 16, "size of keys in bytes")
-		valueSize       = flag.Int("value-size", 100, "size of values in bytes")
-		timeout         = flag.Duration("timeout", 30*time.Second, "timeout for individual operations")
-		protocol        = flag.String("protocol", "grpc", "protocol to use: grpc, thrift")
+		addr             = flag.String("addr", "", "server address (defaults: grpc=localhost:50051, thrift=localhost:9090)")
+		mode             = flag.String("mode", "mixed", "benchmark mode: ping, read, write, mixed")
+		numThreads       = flag.Int("threads", 32, "number of concurrent threads")
+		totalRequests    = flag.Int64("requests", 100000, "total number of requests")
+		writePercentage  = flag.Int("write-pct", 30, "percentage of write operations (0-100) - only used in mixed mode")
+		pingPercentage   = flag.Int("ping-pct", 0, "percentage of ping operations (0-100) - only used in mixed mode")
+		keySize          = flag.Int("key-size", 16, "size of keys in bytes")
+		valueSize        = flag.Int("value-size", 100, "size of values in bytes")
+		timeout          = flag.Duration("timeout", 30*time.Second, "timeout for individual operations")
+		protocol         = flag.String("protocol", "grpc", "protocol to use: grpc, thrift, raw")
+		prePopulateKeys  = flag.Int("prepopulate", 10000, "number of keys to pre-populate for read operations")
 	)
 	flag.Parse()
 
@@ -103,6 +106,8 @@ func main() {
 			*addr = "localhost:50051"
 		case "thrift":
 			*addr = "localhost:9090"
+		case "raw":
+			*addr = "./data/rocksdb-benchmark" // local database path for raw mode
 		default:
 			*addr = "localhost:50051" // fallback to gRPC default
 		}
@@ -129,9 +134,10 @@ func main() {
 	validProtocols := map[string]bool{
 		"grpc":   true,
 		"thrift": true,
+		"raw":    true,
 	}
 	if !validProtocols[*protocol] {
-		log.Fatal("Protocol must be one of: grpc, thrift")
+		log.Fatal("Protocol must be one of: grpc, thrift, raw")
 	}
 
 	// Validate percentages only for mixed mode
@@ -150,16 +156,18 @@ func main() {
 	}
 
 	config := &BenchmarkConfig{
-		ServerAddr:      *addr,
-		Mode:            *mode,
-		NumThreads:      *numThreads,
-		TotalRequests:   *totalRequests,
-		WritePercentage: *writePercentage,
-		PingPercentage:  *pingPercentage,
-		KeySize:         *keySize,
-		ValueSize:       *valueSize,
-		Timeout:         *timeout,
-		Protocol:        *protocol,
+		ServerAddr:       *addr,
+		Mode:             *mode,
+		NumThreads:       *numThreads,
+		TotalRequests:    *totalRequests,
+		WritePercentage:  *writePercentage,
+		PingPercentage:   *pingPercentage,
+		KeySize:          *keySize,
+		ValueSize:        *valueSize,
+		Timeout:          *timeout,
+		Protocol:         *protocol,
+		PrePopulateKeys:  *prePopulateKeys,
+		PrePopulatedKeys: make([]string, 0, *prePopulateKeys),
 	}
 
 	fmt.Printf("=== RocksDB Service Benchmark ===\n")
@@ -178,6 +186,9 @@ func main() {
 	if config.Mode == "read" || config.Mode == "write" || config.Mode == "mixed" {
 		fmt.Printf("Key Size: %d bytes\n", config.KeySize)
 		fmt.Printf("Value Size: %d bytes\n", config.ValueSize)
+		if config.Mode == "read" || (config.Mode == "mixed" && 100-config.WritePercentage-config.PingPercentage > 0) {
+			fmt.Printf("Pre-populate Keys: %d\n", config.PrePopulateKeys)
+		}
 	}
 	
 	fmt.Printf("Timeout: %v\n", config.Timeout)
@@ -197,8 +208,22 @@ func runBenchmark(config *BenchmarkConfig) error {
 		clientFactory = &GRPCClientFactory{}
 	case "thrift":
 		clientFactory = &ThriftClientFactory{}
+	case "raw":
+		clientFactory = &RawClientFactory{}
 	default:
 		return fmt.Errorf("unsupported protocol: %s", config.Protocol)
+	}
+
+	// Pre-populate database with keys for read operations if needed
+	needsPrePopulation := config.Mode == "read" || 
+		(config.Mode == "mixed" && 100-config.WritePercentage-config.PingPercentage > 0)
+	
+	if needsPrePopulation && config.PrePopulateKeys > 0 {
+		fmt.Printf("Pre-populating database with %d keys...\n", config.PrePopulateKeys)
+		if err := prePopulateDatabase(clientFactory, config); err != nil {
+			return fmt.Errorf("failed to pre-populate database: %v", err)
+		}
+		fmt.Printf("Pre-population completed.\n\n")
 	}
 
 	// Create results channel
@@ -269,6 +294,50 @@ func runBenchmark(config *BenchmarkConfig) error {
 	return nil
 }
 
+// prePopulateDatabase fills the database with keys for read operations
+func prePopulateDatabase(clientFactory ClientFactory, config *BenchmarkConfig) error {
+	// Create a client for pre-population
+	kvClient, cleanup, err := clientFactory.CreateClient(config.ServerAddr, config)
+	if err != nil {
+		return fmt.Errorf("failed to create client for pre-population: %v", err)
+	}
+	defer cleanup()
+
+	// Generate and store keys
+	for i := 0; i < config.PrePopulateKeys; i++ {
+		// Create a unique key with consistent format
+		keyPrefix := fmt.Sprintf("benchmark_key_%08d", i)
+		remainingKeySize := config.KeySize - len(keyPrefix)
+		
+		var key string
+		if remainingKeySize > 0 {
+			// Add random suffix if there's remaining space
+			randomSuffix := generateRandomString(remainingKeySize)
+			key = keyPrefix + randomSuffix
+		} else {
+			// Use just the prefix if key size is too small
+			key = keyPrefix[:config.KeySize]
+		}
+		
+		value := generateRandomString(config.ValueSize)
+		
+		result := kvClient.Put(key, value)
+		if !result.Success {
+			return fmt.Errorf("failed to pre-populate key %s: %v", key, result.Error)
+		}
+		
+		// Store the key for later use in reads
+		config.PrePopulatedKeys = append(config.PrePopulatedKeys, key)
+		
+		// Progress reporting for large pre-populations
+		if (i+1)%1000 == 0 {
+			fmt.Printf("Pre-populated %d/%d keys...\n", i+1, config.PrePopulateKeys)
+		}
+	}
+	
+	return nil
+}
+
 func (w *Worker) run() {
 	for {
 		// Check if we've reached the total request limit
@@ -283,7 +352,7 @@ func (w *Worker) run() {
 		case "ping":
 			result = w.kvOps.Ping(w.id)
 		case "read":
-			key := generateRandomString(w.config.KeySize)
+			key := w.getReadKey()
 			result = w.kvOps.Get(key)
 		case "write":
 			key := generateRandomString(w.config.KeySize)
@@ -300,7 +369,7 @@ func (w *Worker) run() {
 			} else if remainder < int64(w.config.WritePercentage + w.config.PingPercentage) {
 				result = w.kvOps.Ping(w.id)
 			} else {
-				key := generateRandomString(w.config.KeySize)
+				key := w.getReadKey()
 				result = w.kvOps.Get(key)
 			}
 		}
@@ -312,6 +381,17 @@ func (w *Worker) run() {
 			fmt.Printf("Completed %d requests...\n", current)
 		}
 	}
+}
+
+// getReadKey returns a key for read operations, either from pre-populated keys or generates a random one
+func (w *Worker) getReadKey() string {
+	if len(w.config.PrePopulatedKeys) > 0 {
+		// Use a pre-populated key (with some randomness to distribute load)
+		index := int(time.Now().UnixNano()) % len(w.config.PrePopulatedKeys)
+		return w.config.PrePopulatedKeys[index]
+	}
+	// Fallback to random key if no pre-populated keys available
+	return generateRandomString(w.config.KeySize)
 }
 
 func generateRandomString(length int) string {
@@ -489,6 +569,12 @@ func showUsageExamples() {
 	fmt.Println("7. Using default addresses:")
 	fmt.Println("   ./benchmark -protocol=grpc -mode=ping    # uses localhost:50051")
 	fmt.Println("   ./benchmark -protocol=thrift -mode=ping  # uses localhost:9090")
+	fmt.Println("   ./benchmark -protocol=raw -mode=ping     # uses ./data/rocksdb-benchmark")
+	fmt.Println()
+	fmt.Println("8. Raw RocksDB benchmarking (no network overhead):")
+	fmt.Println("   ./benchmark -protocol=raw -mode=write -requests=100000 -threads=16")
+	fmt.Println("   ./benchmark -protocol=raw -mode=mixed -write-pct=30 -requests=50000")
+	fmt.Println("   ./benchmark -protocol=raw -addr=/tmp/my-benchmark-db -mode=read")
 	fmt.Println()
 	fmt.Println("Available Flags:")
 	flag.PrintDefaults()
