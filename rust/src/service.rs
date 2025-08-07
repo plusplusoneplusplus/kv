@@ -6,18 +6,18 @@ use crate::kvstore::{
 };
 use crate::kvstore::kv_store_server::KvStore;
 
-pub struct KvStoreService {
+pub struct KvStoreGrpcService {
     db: KvDatabase,
 }
 
-impl KvStoreService {
+impl KvStoreGrpcService {
     pub fn new(db: KvDatabase) -> Self {
         Self { db }
     }
 }
 
 #[tonic::async_trait]
-impl KvStore for KvStoreService {
+impl KvStore for KvStoreGrpcService {
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let req = request.into_inner();
         

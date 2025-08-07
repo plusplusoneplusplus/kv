@@ -10,7 +10,7 @@ pub mod kvstore {
 }
 
 use crate::db::KvDatabase;
-use crate::service::KvStoreService;
+use crate::service::KvStoreGrpcService;
 use kvstore::kv_store_server::KvStoreServer;
 
 #[tokio::main]
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create database and server
     let db = KvDatabase::new(db_path)?;
-    let service = KvStoreService::new(db);
+    let service = KvStoreGrpcService::new(db);
     
     let addr = "0.0.0.0:50051".parse()?;
     info!("Starting Rust gRPC server on {}", addr);
