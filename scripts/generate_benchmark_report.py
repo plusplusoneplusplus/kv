@@ -18,6 +18,7 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from pathlib import Path
+import glob
 
 
 class BenchmarkReportGenerator:
@@ -27,8 +28,9 @@ class BenchmarkReportGenerator:
         self.results: Dict[str, Any] = {}
         self.comparison_mode = False
         self.run_dirs: List[str] = []
+        self.templates_dir = Path(__file__).parent / "templates"
     
-    def load_single_run(self, results_dir: str) -> Dict[str, Any]:
+    def load_single_run(self, results_dir: str, enable_averaging: bool = True) -> Dict[str, Any]:
         """Load all JSON result files from a single run directory"""
         results = {}
         results_path = Path(results_dir)
@@ -40,14 +42,50 @@ class BenchmarkReportGenerator:
         if not json_files:
             raise ValueError(f"No JSON files found in '{results_dir}'")
         
+        # Group files by base name (without iteration suffix)
+        file_groups = {}
         for json_file in json_files:
-            test_name = json_file.stem
-            try:
-                with open(json_file, 'r') as f:
-                    results[test_name] = json.load(f)
-            except json.JSONDecodeError as e:
-                print(f"Warning: Failed to parse {json_file}: {e}")
-                continue
+            # Check if this is an iteration file (e.g., "test_iter1.json")
+            if '_iter' in json_file.stem and enable_averaging:
+                base_name = json_file.stem.split('_iter')[0]
+                if base_name not in file_groups:
+                    file_groups[base_name] = []
+                file_groups[base_name].append(json_file)
+            else:
+                # Regular file, load directly
+                test_name = json_file.stem
+                try:
+                    with open(json_file, 'r') as f:
+                        results[test_name] = json.load(f)
+                except json.JSONDecodeError as e:
+                    print(f"Warning: Failed to parse {json_file}: {e}")
+                    continue
+        
+        # Process grouped files (multiple iterations)
+        for base_name, iteration_files in file_groups.items():
+            if len(iteration_files) > 1:
+                # Average the iterations
+                try:
+                    averaged_result = self._average_benchmark_results(iteration_files)
+                    results[base_name] = averaged_result
+                    print(f"Averaged {len(iteration_files)} iterations for {base_name}")
+                except Exception as e:
+                    print(f"Warning: Failed to average iterations for {base_name}: {e}")
+                    # Fallback to first iteration
+                    try:
+                        with open(iteration_files[0], 'r') as f:
+                            results[base_name] = json.load(f)
+                    except json.JSONDecodeError as e2:
+                        print(f"Warning: Failed to parse fallback file {iteration_files[0]}: {e2}")
+                        continue
+            else:
+                # Single iteration, load directly
+                try:
+                    with open(iteration_files[0], 'r') as f:
+                        results[base_name] = json.load(f)
+                except json.JSONDecodeError as e:
+                    print(f"Warning: Failed to parse {iteration_files[0]}: {e}")
+                    continue
         
         return results
     
@@ -67,6 +105,92 @@ class BenchmarkReportGenerator:
             raise ValueError("No valid run directories found")
         
         return all_runs
+    
+    def _average_benchmark_results(self, input_files: List[Path]) -> Dict[str, Any]:
+        """Average multiple benchmark result files into a single result"""
+        if not input_files:
+            raise ValueError("No input files provided")
+        
+        results = []
+        
+        # Load all result files
+        for file_path in input_files:
+            if not file_path.exists():
+                raise FileNotFoundError(f"Input file not found: {file_path}")
+            
+            try:
+                with open(file_path, 'r') as f:
+                    result = json.load(f)
+                    results.append(result)
+            except json.JSONDecodeError as e:
+                raise json.JSONDecodeError(f"Invalid JSON in file {file_path}: {e}", e.doc, e.pos)
+        
+        if not results:
+            raise ValueError("No valid results loaded")
+        
+        # Use the first result as template
+        avg_result = results[0].copy()
+        
+        # Add metadata about averaging
+        avg_result['config']['iterations'] = len(results)
+        avg_result['config']['averaged'] = True
+        
+        # Validate that all results have compatible structures
+        first_stats_count = len(results[0].get('statistics', []))
+        for i, result in enumerate(results[1:], 1):
+            if len(result.get('statistics', [])) != first_stats_count:
+                raise ValueError(f"Incompatible statistics structure in file {input_files[i]}")
+        
+        # Average the statistics
+        for stat_idx, stat in enumerate(avg_result['statistics']):
+            # Collect values from all iterations for this statistic
+            values = {
+                'count': [],
+                'success': [],
+                'failed': [],
+                'min_latency': [],
+                'max_latency': [],
+                'avg_latency': [],
+                'p50_latency': [],
+                'p90_latency': [],
+                'p95_latency': [],
+                'p99_latency': [],
+                'throughput': []
+            }
+            
+            # Collect values from all result files
+            for result in results:
+                if stat_idx < len(result['statistics']):
+                    s = result['statistics'][stat_idx]
+                    
+                    # Validate that all required fields exist
+                    required_fields = ['count', 'success', 'failed', 'min_latency', 'max_latency', 
+                                     'avg_latency', 'p50_latency', 'p90_latency', 'p95_latency', 
+                                     'p99_latency', 'throughput']
+                    
+                    for field in required_fields:
+                        if field not in s:
+                            raise ValueError(f"Missing required field '{field}' in statistics")
+                        values[field].append(s[field])
+            
+            # Calculate averages for each metric
+            stat['count'] = int(sum(values['count']) / len(values['count']))
+            stat['success'] = int(sum(values['success']) / len(values['success']))
+            stat['failed'] = int(sum(values['failed']) / len(values['failed']))
+            stat['min_latency'] = int(sum(values['min_latency']) / len(values['min_latency']))
+            stat['max_latency'] = int(sum(values['max_latency']) / len(values['max_latency']))
+            stat['avg_latency'] = int(sum(values['avg_latency']) / len(values['avg_latency']))
+            stat['p50_latency'] = int(sum(values['p50_latency']) / len(values['p50_latency']))
+            stat['p90_latency'] = int(sum(values['p90_latency']) / len(values['p90_latency']))
+            stat['p95_latency'] = int(sum(values['p95_latency']) / len(values['p95_latency']))
+            stat['p99_latency'] = int(sum(values['p99_latency']) / len(values['p99_latency']))
+            stat['throughput'] = sum(values['throughput']) / len(values['throughput'])
+        
+        # Average the total duration
+        total_durations = [r['total_duration'] for r in results]
+        avg_result['total_duration'] = int(sum(total_durations) / len(total_durations))
+        
+        return avg_result
     
     def format_duration(self, nanoseconds: int) -> str:
         """Format duration from nanoseconds to human readable"""
@@ -92,529 +216,77 @@ class BenchmarkReportGenerator:
         else:
             return "metric-low"
     
+    def _load_template(self, template_name: str) -> str:
+        """Load template content from templates directory"""
+        template_path = self.templates_dir / template_name
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template not found: {template_path}")
+        
+        with open(template_path, 'r') as f:
+            return f.read()
+    
     def generate_css(self) -> str:
-        """Generate CSS styles for the HTML report"""
-        return """
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 40px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 2.8em;
-            margin-bottom: 15px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-        
-        .header .subtitle {
-            font-size: 1.3em;
-            opacity: 0.9;
-            margin-bottom: 10px;
-        }
-        
-        .header .timestamp {
-            font-size: 1em;
-            opacity: 0.7;
-        }
-        
-        .content {
-            padding: 40px;
-        }
-        
-        .section {
-            margin-bottom: 50px;
-        }
-        
-        .section h2 {
-            color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 15px;
-            margin-bottom: 25px;
-            font-size: 2em;
-        }
-        
-        .section h3 {
-            color: #34495e;
-            margin: 30px 0 20px 0;
-            font-size: 1.5em;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 25px 0;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        
-        th {
-            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-            color: white;
-            font-weight: 600;
-            padding: 18px 15px;
-            text-align: left;
-            font-size: 0.95em;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-        }
-        
-        th.sortable {
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-            transition: background-color 0.3s ease;
-        }
-        
-        th.sortable:hover {
-            background: linear-gradient(135deg, #2980b9 0%, #1f639a 100%);
-        }
-        
-        th.sortable:after {
-            content: ' ↕️';
-            font-size: 0.8em;
-            opacity: 0.6;
-        }
-        
-        th.sortable.sort-asc:after {
-            content: ' ↑';
-            opacity: 1;
-            color: #fff;
-        }
-        
-        th.sortable.sort-desc:after {
-            content: ' ↓';
-            opacity: 1;
-            color: #fff;
-        }
-        
-        td {
-            padding: 15px;
-            border-bottom: 1px solid #ecf0f1;
-            font-size: 0.95em;
-            vertical-align: middle;
-        }
-        
-        tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        
-        tr:hover {
-            background-color: #e3f2fd;
-            transition: background-color 0.3s ease;
-            transform: scale(1.002);
-        }
-        
-        .metric-high {
-            color: #27ae60;
-            font-weight: 700;
-        }
-        
-        .metric-medium {
-            color: #f39c12;
-            font-weight: 700;
-        }
-        
-        .metric-low {
-            color: #e74c3c;
-            font-weight: 700;
-        }
-        
-        .protocol-raw {
-            background: linear-gradient(90deg, #2ecc71, #27ae60);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 0.8em;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .protocol-thrift {
-            background: linear-gradient(90deg, #3498db, #2980b9);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 0.8em;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .protocol-grpc {
-            background: linear-gradient(90deg, #9b59b6, #8e44ad);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 0.8em;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 25px;
-            margin: 30px 0;
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            border-left: 5px solid #3498db;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }
-        
-        .stat-card h4 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            font-size: 1.2em;
-            font-weight: 600;
-        }
-        
-        .stat-value {
-            font-size: 2.2em;
-            font-weight: 700;
-            color: #3498db;
-            margin-bottom: 8px;
-        }
-        
-        .stat-description {
-            color: #7f8c8d;
-            font-size: 0.9em;
-        }
-        
-        .config-section {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 30px;
-            border-radius: 10px;
-            margin: 30px 0;
-            border: 1px solid #dee2e6;
-        }
-        
-        .comparison-section {
-            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-            padding: 30px;
-            border-radius: 10px;
-            margin: 30px 0;
-            border-left: 5px solid #f39c12;
-        }
-        
-        .footer {
-            background: #2c3e50;
-            color: white;
-            text-align: center;
-            padding: 30px;
-            font-size: 0.95em;
-        }
-        
-        .footer a {
-            color: #3498db;
-            text-decoration: none;
-        }
-        
-        .alert {
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 8px;
-            border-left: 4px solid;
-        }
-        
-        .alert-info {
-            background-color: #d1ecf1;
-            border-color: #17a2b8;
-            color: #0c5460;
-        }
-        
-        .alert-warning {
-            background-color: #fff3cd;
-            border-color: #ffc107;
-            color: #856404;
-        }
-        
-        .chart-container {
-            position: relative;
-            height: 400px;
-            margin: 30px 0;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            padding: 20px;
-        }
-        
-        .chart-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
-            gap: 30px;
-            margin: 30px 0;
-        }
-        
-        .chart-title {
-            text-align: center;
-            font-size: 1.4em;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .container {
-                margin: 10px;
-                border-radius: 10px;
-            }
-            
-            .header {
-                padding: 25px;
-            }
-            
-            .header h1 {
-                font-size: 2.2em;
-            }
-            
-            .content {
-                padding: 25px;
-            }
-            
-            table {
-                font-size: 0.85em;
-            }
-            
-            th, td {
-                padding: 10px 8px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* Print styles */
-        @media print {
-            body {
-                background: white;
-                padding: 0;
-            }
-            
-            .container {
-                box-shadow: none;
-                border-radius: 0;
-            }
-            
-            .header {
-                background: #2c3e50 !important;
-                -webkit-print-color-adjust: exact;
-            }
-        }
-        """
+        """Load CSS from template file"""
+        return self._load_template('report.css')
     
     def generate_single_run_html(self, results: Dict[str, Any], output_dir: str) -> str:
         """Generate HTML report for a single benchmark run"""
         run_id = os.path.basename(output_dir)
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        # Start building HTML
-        html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KV Store Benchmark Report - {run_id}</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <style>{self.generate_css()}</style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚀 KV Store Benchmark Report</h1>
-            <div class="subtitle">Run ID: {run_id}</div>
-            <div class="timestamp">Generated: {timestamp}</div>
-        </div>
+        # Check if results are averaged
+        sample_result = list(results.values())[0] if results else None
+        is_averaged = False
+        iterations = 1
+        if sample_result:
+            config = sample_result['config']
+            is_averaged = config.get('averaged', False)
+            iterations = config.get('iterations', 1)
         
-        <div class="content">
-"""
+        # Build subtitle with averaging info
+        subtitle = f"Run ID: {run_id}"
+        if is_averaged:
+            subtitle += f" • Averaged across {iterations} iterations"
+        
+        # Load templates
+        html_template = self._load_template('report.html')
+        css_content = self.generate_css()
+        chart_init_js = self._load_template('chart-init.js')
+        table_sort_js = self._load_template('table-sort.js')
+        
+        # Build content sections
+        content_sections = ""
         
         # Thread Configuration Analysis Charts (new section)
-        html_content += self._generate_thread_analysis_charts(results)
+        content_sections += self._generate_thread_analysis_charts(results)
         
         # Performance Summary Table
-        html_content += self._generate_performance_summary(results)
+        content_sections += self._generate_performance_summary(results)
         
         # Comparison Analysis
-        html_content += self._generate_comparison_analysis(results)
+        content_sections += self._generate_comparison_analysis(results)
         
         # Detailed Latency Analysis
-        html_content += self._generate_latency_analysis(results)
+        content_sections += self._generate_latency_analysis(results)
         
         # Configuration Details
-        html_content += self._generate_configuration_section(results)
+        content_sections += self._generate_configuration_section(results)
         
-        # Close HTML
-        html_content += """
-        </div>
-        
-        <div class="footer">
-            <p>Generated by KV Store Benchmark Suite • Built with ❤️ for Performance Analysis</p>
-            <p><small>For more information, visit the <a href="https://github.com/plusplusoneplusplus/kv">KV Store Repository</a></small></p>
-        </div>
-    </div>
-    
-    <script>
-    // Wait for Chart.js to load and DOM to be ready
-    function initCharts() {
-        if (typeof Chart === 'undefined') {
-            console.log('Chart.js not loaded yet, retrying...');
-            setTimeout(initCharts, 100);
-            return;
-        }
-        
-        console.log('Chart.js loaded, initializing charts...');
-"""
-        
-        # Generate JavaScript for charts if we have thread data
+        # Generate chart JavaScript
         thread_data = self._extract_thread_data(results)
-        if thread_data:
-            html_content += self._generate_chart_javascript(thread_data)
+        chart_data_js = self._generate_chart_javascript(thread_data) if thread_data else ""
         
-        html_content += """
-    }
-    
-    // Initialize charts when page loads
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initCharts);
-    } else {
-        initCharts();
-    }
-    </script>
-    
-    <script>
-    // Table sorting functionality
-    document.addEventListener('DOMContentLoaded', function() {
-        const table = document.getElementById('performance-summary-table');
-        if (!table) return;  // Skip if table doesn't exist
-        
-        const headers = table.querySelectorAll('th.sortable');
-        
-        // Helper functions
-        function parseNumber(str) {
-            if (str === 'N/A' || str === '') return -1;
-            return parseFloat(str.replace(/[^0-9.-]/g, ''));
-        }
-        
-        function parseDuration(str) {
-            if (str === 'N/A' || str === '') return -1;
-            const match = str.match(/([0-9.]+)([a-zA-Z]+)/);
-            if (!match) return -1;
-            
-            const value = parseFloat(match[1]);
-            const unit = match[2];
-            
-            // Convert to nanoseconds for consistent comparison
-            switch(unit) {
-                case 'ns': return value;
-                case 'μs': return value * 1000;
-                case 'ms': return value * 1000000;
-                case 's': return value * 1000000000;
-                default: return value;
-            }
-        }
-        
-        function sortTable(columnIndex, sortType, ascending = true) {
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            rows.sort((a, b) => {
-                const aText = a.cells[columnIndex].textContent.trim();
-                const bText = b.cells[columnIndex].textContent.trim();
-                
-                let aValue, bValue;
-                
-                switch(sortType) {
-                    case 'number':
-                        aValue = parseNumber(aText);
-                        bValue = parseNumber(bText);
-                        break;
-                    case 'duration':
-                        aValue = parseDuration(aText);
-                        bValue = parseDuration(bText);
-                        break;
-                    case 'string':
-                    default:
-                        aValue = aText.toLowerCase();
-                        bValue = bText.toLowerCase();
-                        break;
-                }
-                
-                if (aValue < bValue) return ascending ? -1 : 1;
-                if (aValue > bValue) return ascending ? 1 : -1;
-                return 0;
-            });
-            
-            // Re-append rows in sorted order
-            rows.forEach(row => tbody.appendChild(row));
-        }
-        
-        // Add click listeners to sortable headers
-        headers.forEach((header, index) => {
-            header.addEventListener('click', function() {
-                const sortType = this.getAttribute('data-sort');
-                const isCurrentlyAsc = this.classList.contains('sort-asc');
-                const isCurrentlyDesc = this.classList.contains('sort-desc');
-                
-                // Clear all sort indicators
-                headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
-                
-                // Determine sort direction
-                let ascending = true;
-                if (isCurrentlyAsc) {
-                    ascending = false;
-                    this.classList.add('sort-desc');
-                } else {
-                    this.classList.add('sort-asc');
-                }
-                
-                // Sort the table
-                sortTable(index, sortType, ascending);
-            });
-        });
-    });
-    </script>
-</body>
-</html>"""
+        # Assemble final HTML using template
+        html_content = html_template.format(
+            run_id=run_id,
+            subtitle=subtitle,
+            timestamp=timestamp,
+            css_content=css_content,
+            content_sections=content_sections,
+            chart_init_js=chart_init_js,
+            chart_data_js=chart_data_js,
+            table_sort_js=table_sort_js
+        )
         
         return html_content
     
@@ -1537,16 +1209,40 @@ class BenchmarkReportGenerator:
         start_time = sample_result['start_time']
         total_duration = sample_result['total_duration']
         
+        # Check if results are averaged
+        is_averaged = config.get('averaged', False)
+        iterations = config.get('iterations', 1)
+        
         html = f"""
             <div class="section">
-                <h2>⚙️ Test Configuration</h2>
+                <h2>⚙️ Test Configuration</h2>"""
+        
+        # Add averaging info if applicable
+        if is_averaged:
+            html += f"""
+                <div class="alert alert-info">
+                    <strong>📊 Averaged Results:</strong> These results are averaged across {iterations} iterations for improved reliability.
+                </div>"""
+        
+        html += f"""
                 <div class="config-section">
                     <div class="stats-grid">
                         <div class="stat-card">
                             <h4>Total Requests</h4>
                             <div class="stat-value">{self.format_number(config['total_requests'])}</div>
                             <div class="stat-description">per test case</div>
-                        </div>
+                        </div>"""
+        
+        # Add iterations card if averaged
+        if is_averaged:
+            html += f"""
+                        <div class="stat-card">
+                            <h4>Iterations</h4>
+                            <div class="stat-value">{iterations}</div>
+                            <div class="stat-description">averaged runs</div>
+                        </div>"""
+        
+        html += f"""
                         <div class="stat-card">
                             <h4>Concurrent Threads</h4>
                             <div class="stat-value">{config['num_threads']}</div>
@@ -1565,7 +1261,7 @@ class BenchmarkReportGenerator:
                         <div class="stat-card">
                             <h4>Test Duration</h4>
                             <div class="stat-value">{self.format_duration(total_duration)}</div>
-                            <div class="stat-description">total runtime</div>
+                            <div class="stat-description">{'avg per iteration' if is_averaged else 'total runtime'}</div>
                         </div>
                         <div class="stat-card">
                             <h4>Started At</h4>
@@ -1604,6 +1300,18 @@ class BenchmarkReportGenerator:
         print("=" * 80)
         print("COMPREHENSIVE BENCHMARK ANALYSIS")
         print("=" * 80)
+        
+        # Check if results are averaged
+        sample_result = list(results.values())[0] if results else None
+        if sample_result:
+            config = sample_result['config']
+            is_averaged = config.get('averaged', False)
+            iterations = config.get('iterations', 1)
+            
+            if is_averaged:
+                print(f"📊 Results are averaged across {iterations} iterations for improved reliability")
+                print()
+        
         print()
         
         # Performance Summary

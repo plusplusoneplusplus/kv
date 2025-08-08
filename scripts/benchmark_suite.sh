@@ -8,6 +8,7 @@ set -e
 
 # Configuration
 BENCHMARK_REQUESTS=500000
+BENCHMARK_ITERATIONS=3  # Number of times to run each configuration
 # Thread configurations (will iterate over these)
 RAW_THREAD_CONFIGS=(1 2 4 8)
 GRPC_THREAD_CONFIGS=(32 64 128 256)
@@ -167,7 +168,7 @@ stop_grpc_server() {
     fi
 }
 
-# Run a single benchmark
+# Run a single benchmark with multiple iterations and average the results
 run_benchmark() {
     local protocol=$1
     local mode=$2
@@ -188,22 +189,41 @@ run_benchmark() {
             ;;
     esac
     
-    log_info "Running benchmark: Protocol=$protocol, Mode=$mode, Write%=$write_pct, Threads=$threads"
+    log_info "Running benchmark: Protocol=$protocol, Mode=$mode, Write%=$write_pct, Threads=$threads (${BENCHMARK_ITERATIONS} iterations)"
     
-    ../bin/benchmark \
-        -protocol=$protocol \
-        $cmd_args \
-        -requests=$BENCHMARK_REQUESTS \
-        -threads=$threads \
-        -json="$output_file" \
-        > /dev/null 2>&1
+    # Create temporary files for each iteration
+    local temp_files=()
+    for i in $(seq 1 $BENCHMARK_ITERATIONS); do
+        local temp_file="${output_file%.json}_iter${i}.json"
+        temp_files+=("$temp_file")
+        
+        log_info "Running iteration $i/$BENCHMARK_ITERATIONS..."
+        ../bin/benchmark \
+            -protocol=$protocol \
+            $cmd_args \
+            -requests=$BENCHMARK_REQUESTS \
+            -threads=$threads \
+            -json="$temp_file" \
+            > /dev/null 2>&1
+        
+        if [ $? -ne 0 ]; then
+            log_error "Benchmark iteration $i failed for $protocol $mode"
+            # Clean up temp files
+            for temp_file in "${temp_files[@]}"; do
+                rm -f "$temp_file"
+            done
+            exit 1
+        fi
+    done
     
-    if [ $? -eq 0 ]; then
-        log_success "Benchmark completed: $output_file"
-    else
-        log_error "Benchmark failed for $protocol $mode"
-        exit 1
-    fi
+    # Keep iteration files for generate report script to average automatically
+    # The main output file will be the first iteration (generate report will handle averaging)
+    cp "${temp_files[0]}" "$output_file"
+    
+    # Keep temp files with iteration naming for generate report script
+    # No cleanup - the generate report script will detect and average them
+    
+    log_success "Benchmark completed ($BENCHMARK_ITERATIONS iterations): $output_file"
 }
 
 # Create results directory
@@ -278,6 +298,7 @@ main() {
     log_info "KV Store Comprehensive Benchmark Suite"
     log_info "========================================"
     log_info "Run ID: $TIMESTAMP"
+    log_info "Iterations per configuration: $BENCHMARK_ITERATIONS"
     echo
     
     check_prerequisites
@@ -306,6 +327,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo
     echo "Configuration:"
     echo "  Requests per test: $BENCHMARK_REQUESTS"
+    echo "  Iterations per configuration: $BENCHMARK_ITERATIONS"
     echo "  Raw protocol threads: ${RAW_THREAD_CONFIGS[*]}"
     echo "  gRPC protocol threads: ${GRPC_THREAD_CONFIGS[*]}"
     echo "  Thrift protocol threads: ${THRIFT_THREAD_CONFIGS[*]}"
@@ -313,10 +335,11 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "  Each run creates timestamped subdirectory: run_YYYYMMDD_HHMMSS"
     echo
     echo "The script will:"
-    echo "  1. Run all benchmark combinations"
-    echo "  2. Generate JSON result files"
-    echo "  3. Provide aggregated analysis"
-    echo "  4. Automatically manage server lifecycle"
+    echo "  1. Run all benchmark combinations $BENCHMARK_ITERATIONS times each"
+    echo "  2. Save iteration files for generate report script to average"
+    echo "  3. Generate JSON result files ready for report generation"
+    echo "  4. Provide aggregated analysis via generate report script"
+    echo "  5. Automatically manage server lifecycle"
     exit 0
 fi
 
