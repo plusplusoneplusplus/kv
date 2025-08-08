@@ -52,14 +52,55 @@ func (f *RawClientFactory) CreateClient(dbPath string, config *BenchmarkConfig) 
 
 // NewRawClient creates a new raw RocksDB client
 func NewRawClient(dbPath string, config *BenchmarkConfig) (*RawClient, func(), error) {
+	// Load RocksDB configuration
+	rocksConfig, configPath, err := LoadConfigWithPath()
+	if err != nil {
+		// Log the error but continue with defaults
+		fmt.Printf("Warning: Failed to load db_config.toml (%v), using default configuration\n", err)
+		rocksConfig = GetDefaultConfig()
+	} else if configPath == "" {
+		fmt.Printf("No db_config.toml found, using default configuration\n")
+		rocksConfig = GetDefaultConfig()
+	} else {
+		fmt.Printf("Loaded RocksDB configuration from %s\n", configPath)
+	}
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(dbPath, 0755); err != nil {
 		return nil, nil, fmt.Errorf("failed to create database directory %s: %v", dbPath, err)
 	}
 
-	// Set up RocksDB options
+	// Set up RocksDB options with configuration
 	opts := grocksdb.NewDefaultOptions()
 	opts.SetCreateIfMissing(true)
+	
+	// Apply configuration settings
+	opts.SetWriteBufferSize(rocksConfig.RocksDB.WriteBufferSizeMB * 1024 * 1024)
+	opts.SetMaxWriteBufferNumber(int(rocksConfig.RocksDB.MaxWriteBufferNumber))
+	opts.SetMaxBackgroundJobs(int(rocksConfig.RocksDB.MaxBackgroundJobs))
+	opts.SetBytesPerSync(rocksConfig.RocksDB.BytesPerSync)
+	
+	// Configure block-based table options
+	blockOpts := grocksdb.NewDefaultBlockBasedTableOptions()
+	
+	// Set block cache size
+	cache := grocksdb.NewLRUCache(rocksConfig.RocksDB.BlockCacheSizeMB * 1024 * 1024)
+	blockOpts.SetBlockCache(cache)
+	
+	// Set block size
+	blockOpts.SetBlockSize(int(rocksConfig.RocksDB.BlockSizeKB * 1024))
+	
+	// Configure bloom filter
+	if rocksConfig.BloomFilter.Enabled {
+		blockOpts.SetFilterPolicy(grocksdb.NewBloomFilter(int(rocksConfig.BloomFilter.BitsPerKey)))
+	}
+	
+	// Configure cache settings
+	blockOpts.SetCacheIndexAndFilterBlocks(rocksConfig.Cache.CacheIndexAndFilterBlocks)
+	blockOpts.SetPinL0FilterAndIndexBlocksInCache(rocksConfig.Cache.PinL0FilterAndIndexBlocksInCache)
+	
+	// Apply block-based table options
+	opts.SetBlockBasedTableFactory(blockOpts)
 	
 	// Set up transaction database options
 	txnDBOptions := grocksdb.NewDefaultTransactionDBOptions()
@@ -77,9 +118,9 @@ func NewRawClient(dbPath string, config *BenchmarkConfig) (*RawClient, func(), e
 	// Create transaction options for pessimistic locking
 	txnOptions := grocksdb.NewDefaultTransactionOptions()
 
-	// Configure concurrency limits (same as server)
-	maxReadConcurrency := 32   // Limit concurrent read transactions
-	maxWriteConcurrency := 16  // Limit concurrent write transactions
+	// Configure concurrency limits from config
+	maxReadConcurrency := int(rocksConfig.Concurrency.MaxReadConcurrency)
+	maxWriteConcurrency := 16  // Keep fixed for writes (same as Rust server)
 
 	rawClient := &RawClient{
 		txnDB:          txnDB,

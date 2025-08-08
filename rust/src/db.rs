@@ -1,7 +1,8 @@
-use rocksdb::{TransactionDB, TransactionDBOptions, Options, TransactionOptions, IteratorMode};
+use rocksdb::{TransactionDB, TransactionDBOptions, Options, TransactionOptions, IteratorMode, BlockBasedOptions, Cache};
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc, oneshot};
 use tracing::error;
+use crate::config::Config;
 
 pub struct KvDatabase {
     db: Arc<TransactionDB>,
@@ -33,10 +34,63 @@ struct WriteRequest {
 }
 
 impl KvDatabase {
-    pub fn new(db_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        // Set up RocksDB options
+    pub fn new(db_path: &str, config: &Config) -> Result<Self, Box<dyn std::error::Error>> {
+        // Set up RocksDB options from configuration
         let mut opts = Options::default();
         opts.create_if_missing(true);
+        
+        // Configure write buffer settings
+        opts.set_write_buffer_size((config.rocksdb.write_buffer_size_mb * 1024 * 1024) as usize);
+        opts.set_max_write_buffer_number(config.rocksdb.max_write_buffer_number as i32);
+        
+        // Configure background jobs
+        opts.set_max_background_jobs(config.rocksdb.max_background_jobs as i32);
+        
+        // Configure level compaction dynamic sizing
+        if config.rocksdb.dynamic_level_bytes {
+            opts.set_level_compaction_dynamic_level_bytes(true);
+        }
+        
+        // Configure bytes per sync
+        opts.set_bytes_per_sync(config.rocksdb.bytes_per_sync);
+        
+        // Configure compression per level
+        opts.set_compression_per_level(&config.compression.get_compression_per_level());
+        
+        // Configure compaction settings
+        // Note: set_compaction_priority not available in rust-rocksdb 0.21
+        opts.set_target_file_size_base((config.compaction.target_file_size_base_mb * 1024 * 1024) as u64);
+        opts.set_target_file_size_multiplier(config.compaction.target_file_size_multiplier as i32);
+        opts.set_max_bytes_for_level_base((config.compaction.max_bytes_for_level_base_mb * 1024 * 1024) as u64);
+        opts.set_max_bytes_for_level_multiplier(config.compaction.max_bytes_for_level_multiplier as f64);
+        
+        // Set up block-based table options
+        let mut table_opts = BlockBasedOptions::default();
+        
+        // Configure block cache
+        let cache = Cache::new_lru_cache((config.rocksdb.block_cache_size_mb * 1024 * 1024) as usize);
+        table_opts.set_block_cache(&cache);
+        
+        // Configure block size
+        table_opts.set_block_size((config.rocksdb.block_size_kb * 1024) as usize);
+        
+        // Configure bloom filter
+        if config.bloom_filter.enabled {
+            table_opts.set_bloom_filter(config.bloom_filter.bits_per_key as f64, false);
+        }
+        
+        // Configure cache settings
+        table_opts.set_cache_index_and_filter_blocks(config.cache.cache_index_and_filter_blocks);
+        table_opts.set_pin_l0_filter_and_index_blocks_in_cache(config.cache.pin_l0_filter_and_index_blocks_in_cache);
+        
+        // Apply table options to column family options
+        opts.set_block_based_table_factory(&table_opts);
+        
+        // Configure memory settings
+        if config.memory.enable_write_buffer_manager && config.memory.write_buffer_manager_limit_mb > 0 {
+            // Note: Write buffer manager requires more complex setup in Rust bindings
+            // This is a simplified version - full implementation would need custom write buffer manager
+        }
         
         // Set up transaction database options
         let txn_db_opts = TransactionDBOptions::default();
@@ -45,8 +99,8 @@ impl KvDatabase {
         let db = TransactionDB::open(&opts, &txn_db_opts, db_path)?;
         let db = Arc::new(db);
         
-        // Configure concurrency limits for reads
-        let max_read_concurrency = 32;
+        // Configure concurrency limits for reads from config
+        let max_read_concurrency = config.concurrency.max_read_concurrency;
         
         // Create write queue channel
         let (write_queue_tx, write_queue_rx) = mpsc::unbounded_channel::<WriteRequest>();

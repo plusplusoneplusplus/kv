@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::thread;
+use std::path::PathBuf;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
@@ -9,9 +10,11 @@ use tracing::info;
 
 mod db;
 mod kvstore;
+mod config;
 
 use crate::db::KvDatabase;
 use crate::kvstore::*;
+use crate::config::Config;
 
 struct KvStoreThriftHandler {
     database: Arc<KvDatabase>,
@@ -84,17 +87,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
+    // Load configuration from binary's directory
+    let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+    let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let config_path = exe_dir.join("db_config.toml");
+    
+    let config = match Config::load_from_file(&config_path) {
+        Ok(config) => {
+            info!("Loaded configuration from {}", config_path.display());
+            config
+        },
+        Err(e) => {
+            info!("Could not load {} ({}), using default configuration", config_path.display(), e);
+            Config::default()
+        }
+    };
+
     // Create data directory if it doesn't exist
-    let db_path = "./data/rocksdb-thrift";
-    std::fs::create_dir_all(db_path)?;
+    let db_path = config.get_db_path("thrift");
+    std::fs::create_dir_all(&db_path)?;
+    info!("Using database path: {}", db_path);
 
     // Create a Tokio runtime that will be shared across all requests
     let rt = tokio::runtime::Runtime::new().unwrap();
     let runtime_handle = rt.handle().clone();
 
-    // Create database in the shared runtime
+    // Create database in the shared runtime with configuration
     let database = rt.block_on(async {
-        KvDatabase::new(db_path)
+        KvDatabase::new(&db_path, &config)
     })?;
     
     let database = Arc::new(database);

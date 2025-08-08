@@ -13,9 +13,17 @@ BENCHMARK_ITERATIONS=3  # Number of times to run each configuration
 RAW_THREAD_CONFIGS=(1 2 4 8)
 GRPC_THREAD_CONFIGS=(32 64 128 256)
 THRIFT_THREAD_CONFIGS=(32 64 128 256)
+
+# Minimum benchmark mode configuration
+MIN_BENCHMARK_REQUESTS=10000
+MIN_BENCHMARK_THREADS=8
+MIN_BENCHMARK_ITERATIONS=1
+
+# Client type filtering (empty means all clients)
+CLIENT_TYPES=""
+
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RESULTS_BASE_DIR="../benchmark_results"
-RESULTS_DIR="$RESULTS_BASE_DIR/run_$TIMESTAMP"
 GRPC_SERVER_PORT=50051
 THRIFT_SERVER_PORT=9090
 SERVER_STARTUP_TIMEOUT=10
@@ -234,52 +242,134 @@ setup_results_dir() {
     log_info "Results will be saved in: $RESULTS_DIR"
 }
 
+# Check if a client type should be run
+should_run_client() {
+    local client_type=$1
+    if [ -z "$CLIENT_TYPES" ]; then
+        return 0  # Run all if no filter specified
+    fi
+    
+    echo "$CLIENT_TYPES" | grep -q "$client_type"
+    return $?
+}
+
+# Run minimum benchmarks (fast mode)
+run_min_benchmarks() {
+    log_info "Starting minimum benchmark suite (fast mode)..."
+    echo
+    
+    local requests=$MIN_BENCHMARK_REQUESTS
+    local threads=$MIN_BENCHMARK_THREADS
+    local iterations=$MIN_BENCHMARK_ITERATIONS
+    
+    # Override global settings temporarily
+    local original_requests=$BENCHMARK_REQUESTS
+    local original_iterations=$BENCHMARK_ITERATIONS
+    BENCHMARK_REQUESTS=$requests
+    BENCHMARK_ITERATIONS=$iterations
+    
+    log_info "Configuration: $requests requests, $threads threads, $iterations iteration(s)"
+    if [ ! -z "$CLIENT_TYPES" ]; then
+        log_info "Client types: $CLIENT_TYPES"
+    fi
+    echo
+    
+    # Run raw benchmarks (no server needed)
+    if should_run_client "raw"; then
+        log_info "=== Running RAW Protocol Benchmarks (Minimal) ==="
+        log_info "Running RAW benchmark with $threads threads"
+        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
+        echo
+    fi
+    
+    # Run gRPC benchmarks (requires server)
+    if should_run_client "grpc"; then
+        log_info "=== Running gRPC Protocol Benchmarks (Minimal) ==="
+        
+        start_grpc_server
+        log_info "Running gRPC benchmark with $threads threads"
+        run_benchmark "grpc" "mixed" "10" "$RESULTS_DIR/grpc_mixed_90_10_${threads}t.json" "$threads"
+        stop_grpc_server
+        echo
+    fi
+    
+    # Run Thrift benchmarks (requires server)
+    if should_run_client "thrift"; then
+        log_info "=== Running Thrift Protocol Benchmarks (Minimal) ==="
+        
+        start_thrift_server
+        log_info "Running Thrift benchmark with $threads threads"
+        run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
+        stop_thrift_server
+        echo
+    fi
+    
+    # Restore global settings
+    BENCHMARK_REQUESTS=$original_requests
+    BENCHMARK_ITERATIONS=$original_iterations
+    
+    log_success "Minimum benchmarks completed successfully"
+}
+
 # Run all benchmarks
 run_all_benchmarks() {
     log_info "Starting comprehensive benchmark suite..."
     echo
     
+    if [ ! -z "$CLIENT_TYPES" ]; then
+        log_info "Client types: $CLIENT_TYPES"
+        echo
+    fi
+    
     # Run raw benchmarks (no server needed)
-    log_info "=== Running RAW Protocol Benchmarks ==="
-    
-    for threads in "${RAW_THREAD_CONFIGS[@]}"; do
-        log_info "Running RAW benchmarks with $threads threads"
-        run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${threads}t.json" "$threads"
-        run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${threads}t.json" "$threads"
-        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
-    done
-    
-    echo
+    if should_run_client "raw"; then
+        log_info "=== Running RAW Protocol Benchmarks ==="
+        
+        for threads in "${RAW_THREAD_CONFIGS[@]}"; do
+            log_info "Running RAW benchmarks with $threads threads"
+            run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${threads}t.json" "$threads"
+            run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${threads}t.json" "$threads"
+            run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
+        done
+        
+        echo
+    fi
     
     # Run gRPC benchmarks (requires server)
-    log_info "=== Running gRPC Protocol Benchmarks ==="
-    
-    start_grpc_server
-    
-    for threads in "${GRPC_THREAD_CONFIGS[@]}"; do
-        log_info "Running gRPC benchmarks with $threads threads"
-        run_benchmark "grpc" "read" "0" "$RESULTS_DIR/grpc_read_100_${threads}t.json" "$threads"
-        run_benchmark "grpc" "write" "100" "$RESULTS_DIR/grpc_write_100_${threads}t.json" "$threads"
-        run_benchmark "grpc" "mixed" "10" "$RESULTS_DIR/grpc_mixed_90_10_${threads}t.json" "$threads"
-    done
-    
-    stop_grpc_server
-    
-    echo
+    if should_run_client "grpc"; then
+        log_info "=== Running gRPC Protocol Benchmarks ==="
+        
+        start_grpc_server
+        
+        for threads in "${GRPC_THREAD_CONFIGS[@]}"; do
+            log_info "Running gRPC benchmarks with $threads threads"
+            run_benchmark "grpc" "read" "0" "$RESULTS_DIR/grpc_read_100_${threads}t.json" "$threads"
+            run_benchmark "grpc" "write" "100" "$RESULTS_DIR/grpc_write_100_${threads}t.json" "$threads"
+            run_benchmark "grpc" "mixed" "10" "$RESULTS_DIR/grpc_mixed_90_10_${threads}t.json" "$threads"
+        done
+        
+        stop_grpc_server
+        
+        echo
+    fi
     
     # Run Thrift benchmarks (requires server)
-    log_info "=== Running Thrift Protocol Benchmarks ==="
-    
-    start_thrift_server
-    
-    for threads in "${THRIFT_THREAD_CONFIGS[@]}"; do
-        log_info "Running Thrift benchmarks with $threads threads"
-        run_benchmark "thrift" "read" "0" "$RESULTS_DIR/thrift_read_100_${threads}t.json" "$threads"
-        run_benchmark "thrift" "write" "100" "$RESULTS_DIR/thrift_write_100_${threads}t.json" "$threads"
-        run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
-    done
-    
-    stop_thrift_server
+    if should_run_client "thrift"; then
+        log_info "=== Running Thrift Protocol Benchmarks ==="
+        
+        start_thrift_server
+        
+        for threads in "${THRIFT_THREAD_CONFIGS[@]}"; do
+            log_info "Running Thrift benchmarks with $threads threads"
+            run_benchmark "thrift" "read" "0" "$RESULTS_DIR/thrift_read_100_${threads}t.json" "$threads"
+            run_benchmark "thrift" "write" "100" "$RESULTS_DIR/thrift_write_100_${threads}t.json" "$threads"
+            run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
+        done
+        
+        stop_thrift_server
+        
+        echo
+    fi
     
     log_success "All benchmarks completed successfully"
 }
@@ -292,18 +382,78 @@ generate_analysis() {
     python3 generate_benchmark_report.py "$RESULTS_DIR" --console
 }
 
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --min|-m)
+                MIN_MODE=true
+                shift
+                ;;
+            --client|-c)
+                if [[ $# -lt 2 ]]; then
+                    log_error "Option --client requires a value"
+                    exit 1
+                fi
+                CLIENT_TYPES="$2"
+                shift 2
+                ;;
+            --help|-h)
+                # Help is handled before main() is called
+                shift
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+}
+
 # Main execution
 main() {
     echo
-    log_info "KV Store Comprehensive Benchmark Suite"
+    
+    # Parse arguments
+    parse_args "$@"
+    
+    local suite_type="Comprehensive"
+    local run_function="run_all_benchmarks"
+    local results_suffix=""
+    
+    # Check for minimum benchmark mode
+    if [[ "$MIN_MODE" == "true" ]]; then
+        suite_type="Minimum (Fast)"
+        run_function="run_min_benchmarks"
+        results_suffix="_minimum"
+    fi
+    
+    # Add client suffix if filtering
+    if [ ! -z "$CLIENT_TYPES" ]; then
+        local client_suffix=$(echo "$CLIENT_TYPES" | tr ',' '_')
+        results_suffix="${results_suffix}_${client_suffix}"
+    fi
+    
+    # Set results directory with appropriate suffix
+    RESULTS_DIR="$RESULTS_BASE_DIR/run_$TIMESTAMP$results_suffix"
+    
+    log_info "KV Store $suite_type Benchmark Suite"
     log_info "========================================"
     log_info "Run ID: $TIMESTAMP"
-    log_info "Iterations per configuration: $BENCHMARK_ITERATIONS"
+    if [[ "$suite_type" == "Comprehensive" ]]; then
+        log_info "Iterations per configuration: $BENCHMARK_ITERATIONS"
+        log_info "Requests per test: $BENCHMARK_REQUESTS"
+    else
+        log_info "Requests per test: $MIN_BENCHMARK_REQUESTS"
+        log_info "Threads: $MIN_BENCHMARK_THREADS"
+        log_info "Iterations: $MIN_BENCHMARK_ITERATIONS"
+    fi
     echo
     
     check_prerequisites
     setup_results_dir
-    run_all_benchmarks
+    $run_function
     
     echo
     generate_analysis
@@ -317,29 +467,49 @@ main() {
 
 # Show usage if help requested
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    echo "KV Store Comprehensive Benchmark Suite"
+    echo "KV Store Benchmark Suite"
     echo
-    echo "This script runs comprehensive benchmarks across:"
-    echo "  - Protocols: Raw RocksDB, gRPC, Thrift"
-    echo "  - Workloads: 100% Read, 100% Write, 90% Read + 10% Write"
+    echo "This script runs benchmarks across protocols: Raw RocksDB, gRPC, Thrift"
     echo
-    echo "Usage: $0"
+    echo "Usage: $0 [OPTIONS]"
     echo
-    echo "Configuration:"
+    echo "Options:"
+    echo "  --min, -m                Run minimum benchmark suite (fast mode)"
+    echo "                           • 10K requests, 8 threads, 1 iteration"
+    echo "                           • Only mixed workload (90% read, 10% write)"
+    echo "                           • All three protocols (unless --client specified)"
+    echo
+    echo "  --client, -c TYPE[,TYPE] Run only specified client types"
+    echo "                           • TYPE can be: raw, grpc, thrift"
+    echo "                           • Examples: --client raw, --client grpc,thrift"
+    echo
+    echo "  -h, --help               Show this help message"
+    echo
+    echo "Default (comprehensive) mode:"
     echo "  Requests per test: $BENCHMARK_REQUESTS"
     echo "  Iterations per configuration: $BENCHMARK_ITERATIONS"
     echo "  Raw protocol threads: ${RAW_THREAD_CONFIGS[*]}"
     echo "  gRPC protocol threads: ${GRPC_THREAD_CONFIGS[*]}"
     echo "  Thrift protocol threads: ${THRIFT_THREAD_CONFIGS[*]}"
-    echo "  Results base directory: $RESULTS_BASE_DIR"
-    echo "  Each run creates timestamped subdirectory: run_YYYYMMDD_HHMMSS"
+    echo "  Workloads: 100% Read, 100% Write, 90% Read + 10% Write"
     echo
-    echo "The script will:"
-    echo "  1. Run all benchmark combinations $BENCHMARK_ITERATIONS times each"
-    echo "  2. Save iteration files for generate report script to average"
-    echo "  3. Generate JSON result files ready for report generation"
-    echo "  4. Provide aggregated analysis via generate report script"
-    echo "  5. Automatically manage server lifecycle"
+    echo "Minimum mode configuration:"
+    echo "  Requests per test: $MIN_BENCHMARK_REQUESTS"
+    echo "  Threads: $MIN_BENCHMARK_THREADS"
+    echo "  Iterations: $MIN_BENCHMARK_ITERATIONS"
+    echo "  Workload: 90% Read + 10% Write only"
+    echo
+    echo "Results:"
+    echo "  Base directory: $RESULTS_BASE_DIR"
+    echo "  Each run creates timestamped subdirectory: run_YYYYMMDD_HHMMSS"
+    echo "  HTML report generated automatically"
+    echo
+    echo "Examples:"
+    echo "  $0                      # Run full comprehensive benchmark suite"
+    echo "  $0 --min                # Run quick benchmark for testing (recommended for development)"
+    echo "  $0 --client raw         # Run only raw protocol benchmarks"
+    echo "  $0 --client grpc,thrift # Run only gRPC and Thrift benchmarks"
+    echo "  $0 --min --client grpc  # Run minimum benchmark only for gRPC"
     exit 0
 fi
 

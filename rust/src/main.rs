@@ -1,8 +1,10 @@
 use tonic::transport::Server;
 use tracing::info;
+use std::path::PathBuf;
 
 mod db;
 mod service;
+mod config;
 
 // Include the generated protobuf code
 pub mod kvstore {
@@ -11,6 +13,7 @@ pub mod kvstore {
 
 use crate::db::KvDatabase;
 use crate::service::KvStoreGrpcService;
+use crate::config::Config;
 use kvstore::kv_store_server::KvStoreServer;
 
 #[tokio::main]
@@ -18,12 +21,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
-    // Create data directory if it doesn't exist
-    let db_path = "./data/rocksdb-rust";
-    std::fs::create_dir_all(db_path)?;
+    // Load configuration from binary's directory
+    let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+    let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let config_path = exe_dir.join("db_config.toml");
+    
+    let config = match Config::load_from_file(&config_path) {
+        Ok(config) => {
+            info!("Loaded configuration from {}", config_path.display());
+            config
+        },
+        Err(e) => {
+            info!("Could not load {} ({}), using default configuration", config_path.display(), e);
+            Config::default()
+        }
+    };
 
-    // Create database and server
-    let db = KvDatabase::new(db_path)?;
+    // Create data directory if it doesn't exist
+    let db_path = config.get_db_path("rust");
+    std::fs::create_dir_all(&db_path)?;
+    info!("Using database path: {}", db_path);
+
+    // Create database and server with configuration
+    let db = KvDatabase::new(&db_path, &config)?;
     let service = KvStoreGrpcService::new(db);
     
     let addr = "0.0.0.0:50051".parse()?;

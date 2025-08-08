@@ -3,6 +3,7 @@ module rocksdb_svc/benchmark
 go 1.18
 
 require (
+	github.com/BurntSushi/toml v1.3.2
 	github.com/apache/thrift v0.16.0
 	github.com/linxGnu/grocksdb v1.6.32
 	google.golang.org/grpc v1.50.0
