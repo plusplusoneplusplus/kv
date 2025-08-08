@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tecbot/gorocksdb"
+	"github.com/linxGnu/grocksdb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -16,11 +16,11 @@ import (
 // Server implements the KVStore service
 type Server struct {
 	pb.UnimplementedKVStoreServer
-	db         *gorocksdb.DB
-	txnDB      *gorocksdb.TransactionDB
-	ro         *gorocksdb.ReadOptions
-	wo         *gorocksdb.WriteOptions
-	txnOptions *gorocksdb.TransactionOptions
+	db         *grocksdb.DB
+	txnDB      *grocksdb.TransactionDB
+	ro         *grocksdb.ReadOptions
+	wo         *grocksdb.WriteOptions
+	txnOptions *grocksdb.TransactionOptions
 	
 	// Concurrency control for read transactions
 	readSemaphore  chan struct{}
@@ -31,24 +31,24 @@ type Server struct {
 // NewServer creates a new KVStore server with RocksDB Transaction Database
 func NewServer(dbPath string) (*Server, error) {
 	// Set up RocksDB options
-	opts := gorocksdb.NewDefaultOptions()
+	opts := grocksdb.NewDefaultOptions()
 	opts.SetCreateIfMissing(true)
 	
 	// Set up transaction database options
-	txnDBOptions := gorocksdb.NewDefaultTransactionDBOptions()
+	txnDBOptions := grocksdb.NewDefaultTransactionDBOptions()
 	
 	// Open transaction database (this enables pessimistic locking)
-	txnDB, err := gorocksdb.OpenTransactionDb(opts, txnDBOptions, dbPath)
+	txnDB, err := grocksdb.OpenTransactionDb(opts, txnDBOptions, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open transaction database: %v", err)
 	}
 
 	// Create read and write options
-	ro := gorocksdb.NewDefaultReadOptions()
-	wo := gorocksdb.NewDefaultWriteOptions()
+	ro := grocksdb.NewDefaultReadOptions()
+	wo := grocksdb.NewDefaultWriteOptions()
 	
 	// Create transaction options for pessimistic locking
-	txnOptions := gorocksdb.NewDefaultTransactionOptions()
+	txnOptions := grocksdb.NewDefaultTransactionOptions()
 
 	// Configure concurrency limits
 	maxReadConcurrency := 32   // Limit concurrent read transactions

@@ -6,15 +6,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tecbot/gorocksdb"
+	"github.com/linxGnu/grocksdb"
 )
 
 // RawClient implements KVOperations interface using direct RocksDB operations
 type RawClient struct {
-	txnDB          *gorocksdb.TransactionDB
-	ro             *gorocksdb.ReadOptions
-	wo             *gorocksdb.WriteOptions
-	txnOptions     *gorocksdb.TransactionOptions
+	txnDB          *grocksdb.TransactionDB
+	ro             *grocksdb.ReadOptions
+	wo             *grocksdb.WriteOptions
+	txnOptions     *grocksdb.TransactionOptions
 	config         *BenchmarkConfig
 	cleanup        func() // cleanup function for shared connections
 	
@@ -58,24 +58,24 @@ func NewRawClient(dbPath string, config *BenchmarkConfig) (*RawClient, func(), e
 	}
 
 	// Set up RocksDB options
-	opts := gorocksdb.NewDefaultOptions()
+	opts := grocksdb.NewDefaultOptions()
 	opts.SetCreateIfMissing(true)
 	
 	// Set up transaction database options
-	txnDBOptions := gorocksdb.NewDefaultTransactionDBOptions()
+	txnDBOptions := grocksdb.NewDefaultTransactionDBOptions()
 	
 	// Open transaction database (this enables pessimistic locking)
-	txnDB, err := gorocksdb.OpenTransactionDb(opts, txnDBOptions, dbPath)
+	txnDB, err := grocksdb.OpenTransactionDb(opts, txnDBOptions, dbPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open transaction database: %v", err)
 	}
 
 	// Create read and write options
-	ro := gorocksdb.NewDefaultReadOptions()
-	wo := gorocksdb.NewDefaultWriteOptions()
+	ro := grocksdb.NewDefaultReadOptions()
+	wo := grocksdb.NewDefaultWriteOptions()
 	
 	// Create transaction options for pessimistic locking
-	txnOptions := gorocksdb.NewDefaultTransactionOptions()
+	txnOptions := grocksdb.NewDefaultTransactionOptions()
 
 	// Configure concurrency limits (same as server)
 	maxReadConcurrency := 32   // Limit concurrent read transactions
