@@ -55,57 +55,45 @@ jobs:
     - name: Build all components
       run: make build-release
 
-    - name: Test Go gRPC server
+    - name: Install netcat for server readiness checks
+      run: sudo apt install -y netcat-openbsd
+
+    - name: Run comprehensive functional tests
       run: |
-        # Start Go gRPC server in background
+        # Make the test script executable
+        chmod +x scripts/run_test.sh
+        
+        # Run the comprehensive functional test suite
+        scripts/run_test.sh
+
+    - name: Run performance benchmarks
+      run: |
+        # Run quick performance tests on Go gRPC server
         ./bin/rocksdbserver &
-        SERVER_PID=$!
+        GO_SERVER_PID=$!
         sleep 3
         
-        # Test basic operations
-        ./bin/client -op ping
-        ./bin/client -op put -key "test" -value "data"
-        ./bin/client -op get -key "test"
-        ./bin/client -op delete -key "test"
-        ./bin/client -op list -limit 5
-        
-        # Run benchmark
         ./bin/benchmark -requests 1000 -threads 4
         
-        # Stop server
-        kill $SERVER_PID
-
-    - name: Test Rust gRPC server
-      run: |
-        # Start Rust gRPC server in background
+        kill $GO_SERVER_PID
+        
+        # Run quick performance tests on Rust gRPC server
         ./bin/rocksdbserver-rust &
-        SERVER_PID=$!
+        RUST_GRPC_PID=$!
         sleep 3
         
-        # Test basic operations
-        ./bin/client -op ping
-        ./bin/client -op put -key "test-rust" -value "data"
-        ./bin/client -op get -key "test-rust"
-        ./bin/client -op delete -key "test-rust"
-        
-        # Run benchmark
         ./bin/benchmark -requests 1000 -threads 4
         
-        # Stop server
-        kill $SERVER_PID
-
-    - name: Test Rust Thrift server
-      run: |
-        # Start Rust Thrift server in background
+        kill $RUST_GRPC_PID
+        
+        # Run quick performance tests on Rust Thrift server
         ./bin/rocksdbserver-thrift &
-        SERVER_PID=$!
+        RUST_THRIFT_PID=$!
         sleep 3
         
-        # Test basic operations with Thrift protocol
         ./bin/benchmark -protocol thrift -requests 1000 -threads 4
         
-        # Stop server
-        kill $SERVER_PID
+        kill $RUST_THRIFT_PID
 
     - name: Cleanup
       if: always()
