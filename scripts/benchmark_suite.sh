@@ -8,9 +8,10 @@ set -e
 
 # Configuration
 BENCHMARK_REQUESTS=500000
-RAW_THREADS=8
-GRPC_THREADS=128
-THRIFT_THREADS=128
+# Thread configurations (will iterate over these)
+RAW_THREAD_CONFIGS=(1 2 4 8)
+GRPC_THREAD_CONFIGS=(32 64 128 256)
+THRIFT_THREAD_CONFIGS=(32 64 128 256)
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RESULTS_BASE_DIR="../benchmark_results"
 RESULTS_DIR="$RESULTS_BASE_DIR/run_$TIMESTAMP"
@@ -218,25 +219,15 @@ run_all_benchmarks() {
     log_info "Starting comprehensive benchmark suite..."
     echo
     
-    # Test configurations
-    declare -A test_configs=(
-        ["raw_read_100"]="raw read 0"
-        ["raw_write_100"]="raw write 100"
-        ["raw_mixed_90_10"]="raw mixed 10"
-        ["grpc_read_100"]="grpc read 0"
-        ["grpc_write_100"]="grpc write 100"
-        ["grpc_mixed_90_10"]="grpc mixed 10"
-        ["thrift_read_100"]="thrift read 0"
-        ["thrift_write_100"]="thrift write 100"
-        ["thrift_mixed_90_10"]="thrift mixed 10"
-    )
-    
     # Run raw benchmarks (no server needed)
     log_info "=== Running RAW Protocol Benchmarks ==="
     
-    run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100.json" "$RAW_THREADS"
-    run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100.json" "$RAW_THREADS"
-    run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10.json" "$RAW_THREADS"
+    for threads in "${RAW_THREAD_CONFIGS[@]}"; do
+        log_info "Running RAW benchmarks with $threads threads"
+        run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${threads}t.json" "$threads"
+        run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${threads}t.json" "$threads"
+        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
+    done
     
     echo
     
@@ -245,9 +236,12 @@ run_all_benchmarks() {
     
     start_grpc_server
     
-    run_benchmark "grpc" "read" "0" "$RESULTS_DIR/grpc_read_100.json" "$GRPC_THREADS"
-    run_benchmark "grpc" "write" "100" "$RESULTS_DIR/grpc_write_100.json" "$GRPC_THREADS"
-    run_benchmark "grpc" "mixed" "10" "$RESULTS_DIR/grpc_mixed_90_10.json" "$GRPC_THREADS"
+    for threads in "${GRPC_THREAD_CONFIGS[@]}"; do
+        log_info "Running gRPC benchmarks with $threads threads"
+        run_benchmark "grpc" "read" "0" "$RESULTS_DIR/grpc_read_100_${threads}t.json" "$threads"
+        run_benchmark "grpc" "write" "100" "$RESULTS_DIR/grpc_write_100_${threads}t.json" "$threads"
+        run_benchmark "grpc" "mixed" "10" "$RESULTS_DIR/grpc_mixed_90_10_${threads}t.json" "$threads"
+    done
     
     stop_grpc_server
     
@@ -258,9 +252,12 @@ run_all_benchmarks() {
     
     start_thrift_server
     
-    run_benchmark "thrift" "read" "0" "$RESULTS_DIR/thrift_read_100.json" "$THRIFT_THREADS"
-    run_benchmark "thrift" "write" "100" "$RESULTS_DIR/thrift_write_100.json" "$THRIFT_THREADS" 
-    run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10.json" "$THRIFT_THREADS"
+    for threads in "${THRIFT_THREAD_CONFIGS[@]}"; do
+        log_info "Running Thrift benchmarks with $threads threads"
+        run_benchmark "thrift" "read" "0" "$RESULTS_DIR/thrift_read_100_${threads}t.json" "$threads"
+        run_benchmark "thrift" "write" "100" "$RESULTS_DIR/thrift_write_100_${threads}t.json" "$threads"
+        run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
+    done
     
     stop_thrift_server
     
@@ -309,9 +306,9 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo
     echo "Configuration:"
     echo "  Requests per test: $BENCHMARK_REQUESTS"
-    echo "  Raw protocol threads: $RAW_THREADS"
-    echo "  gRPC protocol threads: $GRPC_THREADS"
-    echo "  Thrift protocol threads: $THRIFT_THREADS"
+    echo "  Raw protocol threads: ${RAW_THREAD_CONFIGS[*]}"
+    echo "  gRPC protocol threads: ${GRPC_THREAD_CONFIGS[*]}"
+    echo "  Thrift protocol threads: ${THRIFT_THREAD_CONFIGS[*]}"
     echo "  Results base directory: $RESULTS_BASE_DIR"
     echo "  Each run creates timestamped subdirectory: run_YYYYMMDD_HHMMSS"
     echo

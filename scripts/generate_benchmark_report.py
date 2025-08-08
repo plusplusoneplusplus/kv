@@ -367,6 +367,31 @@ class BenchmarkReportGenerator:
             color: #856404;
         }
         
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 30px 0;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+        
+        .chart-title {
+            text-align: center;
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 margin: 10px;
@@ -429,6 +454,7 @@ class BenchmarkReportGenerator:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KV Store Benchmark Report - {run_id}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>{self.generate_css()}</style>
 </head>
 <body>
@@ -441,6 +467,9 @@ class BenchmarkReportGenerator:
         
         <div class="content">
 """
+        
+        # Thread Configuration Analysis Charts (new section)
+        html_content += self._generate_thread_analysis_charts(results)
         
         # Performance Summary Table
         html_content += self._generate_performance_summary(results)
@@ -465,9 +494,39 @@ class BenchmarkReportGenerator:
     </div>
     
     <script>
+    // Wait for Chart.js to load and DOM to be ready
+    function initCharts() {
+        if (typeof Chart === 'undefined') {
+            console.log('Chart.js not loaded yet, retrying...');
+            setTimeout(initCharts, 100);
+            return;
+        }
+        
+        console.log('Chart.js loaded, initializing charts...');
+"""
+        
+        # Generate JavaScript for charts if we have thread data
+        thread_data = self._extract_thread_data(results)
+        if thread_data:
+            html_content += self._generate_chart_javascript(thread_data)
+        
+        html_content += """
+    }
+    
+    // Initialize charts when page loads
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCharts);
+    } else {
+        initCharts();
+    }
+    </script>
+    
+    <script>
     // Table sorting functionality
     document.addEventListener('DOMContentLoaded', function() {
         const table = document.getElementById('performance-summary-table');
+        if (!table) return;  // Skip if table doesn't exist
+        
         const headers = table.querySelectorAll('th.sortable');
         
         // Helper functions
@@ -558,6 +617,612 @@ class BenchmarkReportGenerator:
 </html>"""
         
         return html_content
+    
+    def _generate_thread_analysis_charts(self, results: Dict[str, Any]) -> str:
+        """Generate interactive charts showing throughput and P50 latency by thread configuration"""
+        # Extract thread configuration data
+        thread_data = self._extract_thread_data(results)
+        
+        if not thread_data:
+            return ""
+        
+        html = """
+            <div class="section">
+                <h2>📈 Thread Configuration Analysis</h2>
+                <div class="chart-grid">
+"""
+        
+        # Generate charts by mode, with separate charts for RAW and combined gRPC/Thrift
+        protocols = set(item['protocol'] for item in thread_data)
+        modes = set(item['mode'] for item in thread_data)
+        
+        chart_id = 0
+        
+        # RAW throughput chart (separate due to different scale/thread range)
+        if any(item['protocol'] == 'raw' for item in thread_data):
+            chart_id += 1
+            html += f"""
+                    <div class="chart-container">
+                        <div class="chart-title">RAW Protocol - Throughput vs Thread Count</div>
+                        <canvas id="throughput-chart-{chart_id}"></canvas>
+                    </div>
+"""
+        
+        # Combined gRPC+Thrift throughput chart
+        if any(item['protocol'] in ['grpc', 'thrift'] for item in thread_data):
+            chart_id += 1
+            html += f"""
+                    <div class="chart-container">
+                        <div class="chart-title">gRPC vs Thrift - Throughput vs Thread Count</div>
+                        <canvas id="throughput-chart-{chart_id}"></canvas>
+                    </div>
+"""
+        
+        # RAW P50 latency chart (separate due to different scale/thread range)
+        if any(item['protocol'] == 'raw' for item in thread_data):
+            chart_id += 1
+            html += f"""
+                    <div class="chart-container">
+                        <div class="chart-title">RAW Protocol - P50 Latency vs Thread Count</div>
+                        <canvas id="latency-chart-{chart_id}"></canvas>
+                    </div>
+"""
+        
+        # Combined gRPC+Thrift P50 latency chart
+        if any(item['protocol'] in ['grpc', 'thrift'] for item in thread_data):
+            chart_id += 1
+            html += f"""
+                    <div class="chart-container">
+                        <div class="chart-title">gRPC vs Thrift - P50 Latency vs Thread Count</div>
+                        <canvas id="latency-chart-{chart_id}"></canvas>
+                    </div>
+"""
+        
+        html += """
+                </div>
+            </div>
+"""
+        
+        return html
+    
+    def _extract_thread_data(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract thread configuration data from results"""
+        thread_data = []
+        
+        for test_name, result in results.items():
+            # Parse thread count from test name (e.g., "raw_read_100_8t" -> 8)
+            thread_count = None
+            if '_' in test_name:
+                parts = test_name.split('_')
+                for part in parts:
+                    if part.endswith('t'):
+                        try:
+                            thread_count = int(part[:-1])  # Remove 't' suffix
+                            break
+                        except ValueError:
+                            continue
+            
+            if thread_count is None:
+                continue
+            
+            config = result['config']
+            overall_stats = self._get_overall_stats(result)
+            
+            if not overall_stats:
+                continue
+                
+            thread_data.append({
+                'test_name': test_name,
+                'protocol': config['protocol'],
+                'mode': config['mode'],
+                'threads': thread_count,
+                'throughput': overall_stats['throughput'],
+                'p50_latency': overall_stats['p50_latency'] / 1000000,  # Convert ns to ms
+            })
+        
+        return sorted(thread_data, key=lambda x: (x['protocol'], x['mode'], x['threads']))
+    
+    def _generate_chart_javascript(self, thread_data: List[Dict[str, Any]]) -> str:
+        """Generate JavaScript code for Chart.js charts"""
+        if not thread_data:
+            return ""
+        
+        js_code = ""
+        chart_id = 0
+        
+        protocols = set(item['protocol'] for item in thread_data)
+        modes = set(item['mode'] for item in thread_data)
+        
+        # Color scheme for different protocols
+        protocol_colors = {
+            'raw': 'rgba(46, 204, 113, 0.8)',
+            'grpc': 'rgba(155, 89, 182, 0.8)', 
+            'thrift': 'rgba(52, 152, 219, 0.8)'
+        }
+        
+        # Enhanced colors for better differentiation
+        protocol_mode_colors = {
+            ('raw', 'read'): 'rgba(46, 204, 113, 0.9)',      # Green
+            ('raw', 'write'): 'rgba(39, 174, 96, 0.9)',      # Darker Green
+            ('raw', 'mixed'): 'rgba(22, 160, 133, 0.9)',     # Teal Green
+            ('grpc', 'read'): 'rgba(155, 89, 182, 0.9)',     # Purple
+            ('grpc', 'write'): 'rgba(142, 68, 173, 0.9)',    # Darker Purple
+            ('grpc', 'mixed'): 'rgba(125, 60, 152, 0.9)',    # Deep Purple
+            ('thrift', 'read'): 'rgba(52, 152, 219, 0.9)',   # Blue
+            ('thrift', 'write'): 'rgba(41, 128, 185, 0.9)',  # Darker Blue
+            ('thrift', 'mixed'): 'rgba(30, 100, 140, 0.9)',  # Deep Blue
+        }
+        
+        # Line dash patterns for different modes
+        dash_patterns = {
+            'read': [],         # Solid line
+            'write': [10, 5],   # Dashed line
+            'mixed': [5, 5]     # Dotted line
+        }
+        
+        # Generate RAW throughput chart
+        raw_data = [item for item in thread_data if item['protocol'] == 'raw']
+        if raw_data:
+            chart_id += 1
+            raw_datasets = []
+            raw_threads = sorted(set(item['threads'] for item in raw_data))
+            
+            for mode in sorted(modes):
+                mode_data = [item for item in raw_data if item['mode'] == mode]
+                if not mode_data:
+                    continue
+                
+                # Create data array aligned with raw_threads
+                throughput_data = []
+                for thread_count in raw_threads:
+                    matching_point = next((item for item in mode_data if item['threads'] == thread_count), None)
+                    throughput_data.append(matching_point['throughput'] if matching_point else None)
+                
+                color = protocol_mode_colors.get(('raw', mode), 'rgba(128, 128, 128, 0.8)')
+                dash_pattern = dash_patterns.get(mode, [])
+                
+                raw_datasets.append(f"""{{
+                    label: '{mode.upper()}',
+                    data: {json.dumps(throughput_data)},
+                    borderColor: '{color}',
+                    backgroundColor: '{color.replace("0.9", "0.2")}',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: {json.dumps(dash_pattern)},
+                    spanGaps: true
+                }}""")
+            
+            js_code += f"""
+            // RAW throughput chart
+            const throughputCtx{chart_id} = document.getElementById('throughput-chart-{chart_id}').getContext('2d');
+            new Chart(throughputCtx{chart_id}, {{
+                type: 'line',
+                data: {{
+                    labels: {json.dumps(raw_threads)},
+                    datasets: [
+                        {','.join(raw_datasets)}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        intersect: false,
+                        mode: 'index'
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'top',
+                            labels: {{
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {{
+                                    size: 12
+                                }}
+                            }}
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    if (context.parsed.y === null) return null;
+                                    return 'RAW ' + context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ops/s';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Thread Count',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }}
+                        }},
+                        y: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Throughput (ops/s)',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value.toLocaleString();
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+"""
+        
+        # Generate combined gRPC+Thrift throughput chart
+        network_data = [item for item in thread_data if item['protocol'] in ['grpc', 'thrift']]
+        if network_data:
+            chart_id += 1
+            network_datasets = []
+            network_threads = sorted(set(item['threads'] for item in network_data))
+            
+            for protocol in ['grpc', 'thrift']:
+                for mode in sorted(modes):
+                    mode_data = [item for item in network_data if item['protocol'] == protocol and item['mode'] == mode]
+                    if not mode_data:
+                        continue
+                    
+                    # Create data array aligned with network_threads
+                    throughput_data = []
+                    for thread_count in network_threads:
+                        matching_point = next((item for item in mode_data if item['threads'] == thread_count), None)
+                        throughput_data.append(matching_point['throughput'] if matching_point else None)
+                    
+                    color = protocol_mode_colors.get((protocol, mode), 'rgba(128, 128, 128, 0.8)')
+                    dash_pattern = dash_patterns.get(mode, [])
+                    
+                    network_datasets.append(f"""{{
+                        label: '{protocol.upper()} - {mode.upper()}',
+                        data: {json.dumps(throughput_data)},
+                        borderColor: '{color}',
+                        backgroundColor: '{color.replace("0.9", "0.2")}',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: {json.dumps(dash_pattern)},
+                        spanGaps: true
+                    }}""")
+            
+            js_code += f"""
+            // Combined gRPC+Thrift throughput chart
+            const throughputCtx{chart_id} = document.getElementById('throughput-chart-{chart_id}').getContext('2d');
+            new Chart(throughputCtx{chart_id}, {{
+                type: 'line',
+                data: {{
+                    labels: {json.dumps(network_threads)},
+                    datasets: [
+                        {','.join(network_datasets)}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        intersect: false,
+                        mode: 'index'
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'top',
+                            labels: {{
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {{
+                                    size: 12
+                                }}
+                            }}
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    if (context.parsed.y === null) return null;
+                                    return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ops/s';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Thread Count',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }}
+                        }},
+                        y: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Throughput (ops/s)',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value.toLocaleString();
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+"""
+        
+        # Generate RAW P50 latency chart
+        raw_data = [item for item in thread_data if item['protocol'] == 'raw']
+        if raw_data:
+            chart_id += 1
+            raw_latency_datasets = []
+            raw_threads = sorted(set(item['threads'] for item in raw_data))
+            
+            for mode in sorted(modes):
+                mode_data = [item for item in raw_data if item['mode'] == mode]
+                if not mode_data:
+                    continue
+                
+                # Create data array aligned with raw_threads
+                latency_data = []
+                for thread_count in raw_threads:
+                    matching_point = next((item for item in mode_data if item['threads'] == thread_count), None)
+                    latency_data.append(matching_point['p50_latency'] if matching_point else None)
+                
+                color = protocol_mode_colors.get(('raw', mode), 'rgba(128, 128, 128, 0.8)')
+                dash_pattern = dash_patterns.get(mode, [])
+                
+                raw_latency_datasets.append(f"""{{
+                    label: '{mode.upper()}',
+                    data: {json.dumps(latency_data)},
+                    borderColor: '{color}',
+                    backgroundColor: '{color.replace("0.9", "0.2")}',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: {json.dumps(dash_pattern)},
+                    spanGaps: true
+                }}""")
+            
+            js_code += f"""
+            // RAW P50 latency chart
+            const latencyCtx{chart_id} = document.getElementById('latency-chart-{chart_id}').getContext('2d');
+            new Chart(latencyCtx{chart_id}, {{
+                type: 'line',
+                data: {{
+                    labels: {json.dumps(raw_threads)},
+                    datasets: [
+                        {','.join(raw_latency_datasets)}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        intersect: false,
+                        mode: 'index'
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'top',
+                            labels: {{
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {{
+                                    size: 12
+                                }}
+                            }}
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    if (context.parsed.y === null) return null;
+                                    return 'RAW ' + context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' ms';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Thread Count',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }}
+                        }},
+                        y: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'P50 Latency (ms)',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value.toFixed(2);
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+"""
+        
+        # Generate combined gRPC+Thrift P50 latency chart
+        network_data = [item for item in thread_data if item['protocol'] in ['grpc', 'thrift']]
+        if network_data:
+            chart_id += 1
+            network_latency_datasets = []
+            network_threads = sorted(set(item['threads'] for item in network_data))
+            
+            for protocol in ['grpc', 'thrift']:
+                for mode in sorted(modes):
+                    mode_data = [item for item in network_data if item['protocol'] == protocol and item['mode'] == mode]
+                    if not mode_data:
+                        continue
+                    
+                    # Create data array aligned with network_threads
+                    latency_data = []
+                    for thread_count in network_threads:
+                        matching_point = next((item for item in mode_data if item['threads'] == thread_count), None)
+                        latency_data.append(matching_point['p50_latency'] if matching_point else None)
+                    
+                    color = protocol_mode_colors.get((protocol, mode), 'rgba(128, 128, 128, 0.8)')
+                    dash_pattern = dash_patterns.get(mode, [])
+                    
+                    network_latency_datasets.append(f"""{{
+                        label: '{protocol.upper()} - {mode.upper()}',
+                        data: {json.dumps(latency_data)},
+                        borderColor: '{color}',
+                        backgroundColor: '{color.replace("0.9", "0.2")}',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: {json.dumps(dash_pattern)},
+                        spanGaps: true
+                    }}""")
+            
+            js_code += f"""
+            // Combined gRPC+Thrift P50 latency chart
+            const latencyCtx{chart_id} = document.getElementById('latency-chart-{chart_id}').getContext('2d');
+            new Chart(latencyCtx{chart_id}, {{
+                type: 'line',
+                data: {{
+                    labels: {json.dumps(network_threads)},
+                    datasets: [
+                        {','.join(network_latency_datasets)}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        intersect: false,
+                        mode: 'index'
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'top',
+                            labels: {{
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {{
+                                    size: 12
+                                }}
+                            }}
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    if (context.parsed.y === null) return null;
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' ms';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'Thread Count',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }}
+                        }},
+                        y: {{
+                            display: true,
+                            title: {{
+                                display: true,
+                                text: 'P50 Latency (ms)',
+                                font: {{
+                                    size: 14,
+                                    weight: 'bold'
+                                }}
+                            }},
+                            grid: {{
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }},
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value.toFixed(2);
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+"""
+        
+        return js_code
     
     def _generate_performance_summary(self, results: Dict[str, Any]) -> str:
         """Generate performance summary table"""
