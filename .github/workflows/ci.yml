@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Set up Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          build-essential \
+          pkg-config \
+          librocksdb-dev \
+          protobuf-compiler \
+          libprotobuf-dev \
+          thrift-compiler
+
+    - name: Install Go protobuf plugins
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+    - name: Generate protocol buffers and thrift files
+      run: |
+        make proto
+        make thrift
+
+    - name: Install Go dependencies
+      run: make go-deps
+
+    - name: Install Rust dependencies
+      run: make rust-deps
+
+    - name: Build all components
+      run: make build-release
+
+    - name: Test Go gRPC server
+      run: |
+        # Start Go gRPC server in background
+        ./bin/rocksdbserver &
+        SERVER_PID=$!
+        sleep 3
+        
+        # Test basic operations
+        ./bin/client -op ping
+        ./bin/client -op put -key "test" -value "data"
+        ./bin/client -op get -key "test"
+        ./bin/client -op delete -key "test"
+        ./bin/client -op list -limit 5
+        
+        # Run benchmark
+        ./bin/benchmark -requests 1000 -threads 4
+        
+        # Stop server
+        kill $SERVER_PID
+
+    - name: Test Rust gRPC server
+      run: |
+        # Start Rust gRPC server in background
+        ./bin/rocksdbserver-rust &
+        SERVER_PID=$!
+        sleep 3
+        
+        # Test basic operations
+        ./bin/client -op ping
+        ./bin/client -op put -key "test-rust" -value "data"
+        ./bin/client -op get -key "test-rust"
+        ./bin/client -op delete -key "test-rust"
+        
+        # Run benchmark
+        ./bin/benchmark -requests 1000 -threads 4
+        
+        # Stop server
+        kill $SERVER_PID
+
+    - name: Test Rust Thrift server
+      run: |
+        # Start Rust Thrift server in background
+        ./bin/rocksdbserver-thrift &
+        SERVER_PID=$!
+        sleep 3
+        
+        # Test basic operations with Thrift protocol
+        ./bin/benchmark -protocol thrift -requests 1000 -threads 4
+        
+        # Stop server
+        kill $SERVER_PID
+
+    - name: Cleanup
+      if: always()
+      run: |
+        # Kill any remaining processes
+        pkill -f rocksdbserver || true
+        # Clean up test databases
+        rm -rf data/

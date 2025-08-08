@@ -37,6 +37,8 @@ proto:
 
 # Generate thrift files
 thrift:
+	mkdir -p go/thrift
+	thrift --gen go -out go/thrift thrift/kvstore.thrift
 	thrift --gen rs -out rust/src thrift/kvstore.thrift
 
 
@@ -44,6 +46,7 @@ thrift:
 clean:
 	rm -rf $(BIN_DIR)
 	rm -f rocksdbserver client benchmark rocksdbserver-rust rocksdbserver-cpp rocksdbserver-thrift
+	rm -rf go/thrift/
 	rm -f rust/src/kvstore.rs
 	cd rust && cargo clean 2>/dev/null || true
 	cd cpp && make clean 2>/dev/null || true
