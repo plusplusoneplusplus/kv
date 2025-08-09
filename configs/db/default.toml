@@ -1,0 +1,50 @@
+# Default RocksDB profile
+[database]
+base_path = "./data/rocksdb"
+
+[rocksdb]
+write_buffer_size_mb = 64
+max_write_buffer_number = 3
+block_cache_size_mb = 512
+block_size_kb = 16
+max_background_jobs = 6
+bytes_per_sync = 0
+dynamic_level_bytes = true
+
+[bloom_filter]
+enabled = true
+bits_per_key = 10
+
+[compression]
+l0_compression = "lz4"
+l1_compression = "lz4"
+bottom_compression = "zstd"
+
+[concurrency]
+max_read_concurrency = 32
+
+[compaction]
+compaction_priority = "min_overlapping_ratio"
+target_file_size_base_mb = 64
+target_file_size_multiplier = 2
+max_bytes_for_level_base_mb = 256
+max_bytes_for_level_multiplier = 10
+
+[cache]
+cache_index_and_filter_blocks = true
+pin_l0_filter_and_index_blocks_in_cache = true
+high_priority_pool_ratio = 0.2
+
+[memory]
+write_buffer_manager_limit_mb = 256
+enable_write_buffer_manager = true
+
+[logging]
+log_level = "info"
+max_log_file_size_mb = 10
+keep_log_file_num = 5
+
+[performance]
+statistics_level = "except_detailed_timers"
+enable_statistics = false
+stats_dump_period_sec = 600

@@ -76,6 +76,7 @@ go run benchmark.go [options]
 - `-key-size`: Size of keys in bytes (default: 16)
 - `-value-size`: Size of values in bytes (default: 100)
 - `-timeout`: Timeout for individual operations (default: 30s)
+- `-no-cache-read`: Do not fill RocksDB block cache on reads (raw mode); useful for colder read testing
 
 ## Output
 
@@ -99,3 +100,23 @@ The benchmark tool requires:
 - Progress is reported every 10,000 completed requests
 - Results are collected and analyzed after all workers complete
 - The tool uses persistent gRPC connections per worker for realistic testing
+
+## DB Profiles
+
+Predefined RocksDB configs live in `configs/db/`:
+
+- `default.toml` – balanced defaults
+- `cold_block_cache.toml` – tiny cache, small blocks, index/filter not cached (simulate cold)
+- `warm_large_cache.toml` – large cache, larger blocks (simulate warm)
+
+Use a specific profile with the benchmark (raw mode):
+
+```bash
+./bin/benchmark -protocol=raw -config=./configs/db/default.toml ...
+./bin/benchmark -protocol=raw -config=./configs/db/cold_block_cache.toml ...
+./bin/benchmark -protocol=raw -config=./configs/db/warm_large_cache.toml ...
+```
+
+Tip: For colder reads, combine with the flag:
+
+- `-no-cache-read` – do not fill RocksDB block cache on reads (raw mode)

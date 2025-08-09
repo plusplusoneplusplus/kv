@@ -31,7 +31,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo -e "${GREEN}Features:${NC}"
     echo "  • Tests direct RocksDB performance (no network overhead)"
     echo "  • Uses same infrastructure as main benchmark suite"
-    echo "  • Applies same configuration from db_config.toml"
+    echo "  • Uses default RocksDB configuration (configs/db/default.toml)"
     echo "  • Generates JSON results and HTML reports"
     echo "  • Clean result organization with 'raw_' prefix"
     echo

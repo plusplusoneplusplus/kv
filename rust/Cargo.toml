@@ -25,6 +25,7 @@ ordered-float = "4.2"
 tokio-util = { version = "0.7", features = ["compat"] }
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+clap = { version = "4.0", features = ["derive"] }
 
 [build-dependencies]
 tonic-build = "0.10"

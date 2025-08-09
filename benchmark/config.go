@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -82,6 +83,29 @@ type PerformanceConfig struct {
 }
 
 // LoadConfigWithPath loads the configuration and returns the path used
+func LoadConfigFromFile(configPath string) (*RocksDBConfig, string, error) {
+	if configPath == "" {
+		return LoadConfigWithPath()
+	}
+	
+	// Check if file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, "", fmt.Errorf("config file not found: %s", configPath)
+	}
+	
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read config file %s: %v", configPath, err)
+	}
+	
+	var config RocksDBConfig
+	if err := toml.Unmarshal(data, &config); err != nil {
+		return nil, "", fmt.Errorf("failed to parse config file %s: %v", configPath, err)
+	}
+	
+	return &config, configPath, nil
+}
+
 func LoadConfigWithPath() (*RocksDBConfig, string, error) {
 	// Try to find config file relative to the executable
 	execPath, err := os.Executable()

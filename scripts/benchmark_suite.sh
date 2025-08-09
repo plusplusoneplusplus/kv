@@ -206,9 +206,17 @@ run_benchmark() {
         temp_files+=("$temp_file")
         
         log_info "Running iteration $i/$BENCHMARK_ITERATIONS..."
+        
+        # Add config parameter for raw protocol
+        local config_param=""
+        if [ "$protocol" = "raw" ]; then
+            config_param="-config=$(cd .. && pwd)/configs/db/default.toml"
+        fi
+        
         ../bin/benchmark \
             -protocol=$protocol \
             $cmd_args \
+            $config_param \
             -requests=$BENCHMARK_REQUESTS \
             -threads=$threads \
             -json="$temp_file" \

@@ -53,13 +53,13 @@ func (f *RawClientFactory) CreateClient(dbPath string, config *BenchmarkConfig) 
 // NewRawClient creates a new raw RocksDB client
 func NewRawClient(dbPath string, config *BenchmarkConfig) (*RawClient, func(), error) {
 	// Load RocksDB configuration
-	rocksConfig, configPath, err := LoadConfigWithPath()
+	rocksConfig, configPath, err := LoadConfigFromFile(config.ConfigFile)
 	if err != nil {
 		// Log the error but continue with defaults
-		fmt.Printf("Warning: Failed to load db_config.toml (%v), using default configuration\n", err)
+		fmt.Printf("Warning: Failed to load config file (%v), using default configuration\n", err)
 		rocksConfig = GetDefaultConfig()
 	} else if configPath == "" {
-		fmt.Printf("No db_config.toml found, using default configuration\n")
+		fmt.Printf("No config file specified, using default configuration\n")
 		rocksConfig = GetDefaultConfig()
 	} else {
 		fmt.Printf("Loaded RocksDB configuration from %s\n", configPath)
@@ -113,6 +113,11 @@ func NewRawClient(dbPath string, config *BenchmarkConfig) (*RawClient, func(), e
 
 	// Create read and write options
 	ro := grocksdb.NewDefaultReadOptions()
+	if config.NoCacheRead {
+		// Avoid filling the block cache on reads; still allow existing cache hits
+		// This mimics a colder read pattern by preventing cache warming
+		ro.SetFillCache(false)
+	}
 	wo := grocksdb.NewDefaultWriteOptions()
 	
 	// Create transaction options for pessimistic locking

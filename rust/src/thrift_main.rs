@@ -7,6 +7,7 @@ use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use tokio::runtime::Handle;
 use tracing::info;
+use clap::Parser;
 
 mod db;
 mod kvstore;
@@ -83,23 +84,56 @@ impl KVStoreSyncHandler for KvStoreThriftHandler {
     }
 }
 
+#[derive(Parser)]
+#[command(name = "rocksdbserver-thrift")]
+#[command(about = "A RocksDB-based Thrift key-value store server")]
+struct Args {
+    /// Path to configuration file
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+    
+    /// Server bind address
+    #[arg(short, long, default_value = "0.0.0.0:9090")]
+    addr: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
-    // Load configuration from binary's directory
-    let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let config_path = exe_dir.join("db_config.toml");
-    
-    let config = match Config::load_from_file(&config_path) {
-        Ok(config) => {
-            info!("Loaded configuration from {}", config_path.display());
-            config
+    // Parse command line arguments
+    let args = Args::parse();
+
+    // Load configuration
+    let config = match args.config {
+        Some(config_path) => {
+            match Config::load_from_file(&config_path) {
+                Ok(config) => {
+                    info!("Loaded configuration from {}", config_path.display());
+                    config
+                },
+                Err(e) => {
+                    eprintln!("Error: Could not load config file {} ({})", config_path.display(), e);
+                    std::process::exit(1);
+                }
+            }
         },
-        Err(e) => {
-            info!("Could not load {} ({}), using default configuration", config_path.display(), e);
-            Config::default()
+        None => {
+            // Fallback to default location for backward compatibility
+            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+            let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let config_path = exe_dir.join("db_config.toml");
+            
+            match Config::load_from_file(&config_path) {
+                Ok(config) => {
+                    info!("Loaded configuration from {}", config_path.display());
+                    config
+                },
+                Err(e) => {
+                    info!("Could not load {} ({}), using default configuration", config_path.display(), e);
+                    Config::default()
+                }
+            }
         }
     };
 
@@ -118,11 +152,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     
     let database = Arc::new(database);
-    let listen_address = "0.0.0.0:9090";
-    info!("Starting Thrift server on {}", listen_address);
+    info!("Starting Thrift server on {}", args.addr);
 
     // Create TCP listener
-    let listener = TcpListener::bind(listen_address)?;
+    let listener = TcpListener::bind(&args.addr)?;
 
     for stream in listener.incoming() {
         match stream {

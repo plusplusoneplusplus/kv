@@ -29,6 +29,8 @@ type BenchmarkConfig struct {
 	PrePopulateKeys   int           `json:"prepopulate_keys"` // Number of keys to pre-populate for reads
 	PrePopulatedKeys  []string      `json:"-"` // Slice to store pre-populated keys for reads (exclude from JSON)
 	JSONOutputFile    string        `json:"-"` // JSON output file path (exclude from JSON)
+	NoCacheRead       bool          `json:"no_cache_read"` // If true, do not fill block cache on reads (raw mode)
+	ConfigFile        string        `json:"-"` // Path to config file (exclude from JSON)
 }
 
 // KVOperations defines the interface for key-value operations
@@ -108,6 +110,8 @@ func main() {
 		protocol         = flag.String("protocol", "grpc", "protocol to use: grpc, thrift, raw")
 		prePopulateKeys  = flag.Int("prepopulate", 10000, "number of keys to pre-populate for read operations")
 		jsonOutput       = flag.String("json", "", "output results to JSON file (e.g., results.json)")
+		noCacheRead      = flag.Bool("no-cache-read", false, "do not fill block cache on reads (raw mode)")
+		configFile       = flag.String("config", "", "path to config file (for raw protocol)")
 	)
 	flag.Parse()
 
@@ -181,6 +185,8 @@ func main() {
 		PrePopulateKeys:  *prePopulateKeys,
 		PrePopulatedKeys: make([]string, 0, *prePopulateKeys),
 		JSONOutputFile:   *jsonOutput,
+		NoCacheRead:      *noCacheRead,
+		ConfigFile:       *configFile,
 	}
 
 	fmt.Printf("=== RocksDB Service Benchmark ===\n")

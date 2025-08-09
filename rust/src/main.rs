@@ -1,6 +1,7 @@
 use tonic::transport::Server;
 use tracing::info;
 use std::path::PathBuf;
+use clap::Parser;
 
 mod db;
 mod service;
@@ -16,24 +17,57 @@ use crate::service::KvStoreGrpcService;
 use crate::config::Config;
 use kvstore::kv_store_server::KvStoreServer;
 
+#[derive(Parser)]
+#[command(name = "rocksdbserver-rust")]
+#[command(about = "A RocksDB-based gRPC key-value store server")]
+struct Args {
+    /// Path to configuration file
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+    
+    /// Server bind address
+    #[arg(short, long, default_value = "0.0.0.0:50051")]
+    addr: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
-    // Load configuration from binary's directory
-    let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let config_path = exe_dir.join("db_config.toml");
-    
-    let config = match Config::load_from_file(&config_path) {
-        Ok(config) => {
-            info!("Loaded configuration from {}", config_path.display());
-            config
+    // Parse command line arguments
+    let args = Args::parse();
+
+    // Load configuration
+    let config = match args.config {
+        Some(config_path) => {
+            match Config::load_from_file(&config_path) {
+                Ok(config) => {
+                    info!("Loaded configuration from {}", config_path.display());
+                    config
+                },
+                Err(e) => {
+                    eprintln!("Error: Could not load config file {} ({})", config_path.display(), e);
+                    std::process::exit(1);
+                }
+            }
         },
-        Err(e) => {
-            info!("Could not load {} ({}), using default configuration", config_path.display(), e);
-            Config::default()
+        None => {
+            // Fallback to default location for backward compatibility
+            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+            let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let config_path = exe_dir.join("db_config.toml");
+            
+            match Config::load_from_file(&config_path) {
+                Ok(config) => {
+                    info!("Loaded configuration from {}", config_path.display());
+                    config
+                },
+                Err(e) => {
+                    info!("Could not load {} ({}), using default configuration", config_path.display(), e);
+                    Config::default()
+                }
+            }
         }
     };
 
@@ -46,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = KvDatabase::new(&db_path, &config)?;
     let service = KvStoreGrpcService::new(db);
     
-    let addr = "0.0.0.0:50051".parse()?;
+    let addr = args.addr.parse()?;
     info!("Starting Rust gRPC server on {}", addr);
 
     Server::builder()
