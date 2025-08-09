@@ -15,7 +15,7 @@ $(BIN_DIR):
 build: proto thrift $(BIN_DIR)
 	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
 	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/client go/client.go
-	cd benchmark-rust && cargo build --bin benchmark && cp target/debug/benchmark ../$(BIN_DIR)/benchmark
+	cd benchmark-rust && cargo build --bin benchmark && cp target/debug/benchmark ../$(BIN_DIR)/benchmark-rust
 	cd rust && cargo build --bin server && cp target/debug/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --bin thrift-server && cp target/debug/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
 # Disabled Go benchmark - replaced with Rust version
@@ -27,7 +27,7 @@ build: proto thrift $(BIN_DIR)
 build-release: proto thrift $(BIN_DIR)
 	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
 	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/client go/client.go
-	cd benchmark-rust && cargo build --release --bin benchmark && cp target/release/benchmark ../$(BIN_DIR)/benchmark
+	cd benchmark-rust && cargo build --release --bin benchmark && cp target/release/benchmark ../$(BIN_DIR)/benchmark-rust
 	cd rust && cargo build --release --bin server && cp target/release/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --release --bin thrift-server && cp target/release/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
 # Disabled Go benchmark - replaced with Rust version

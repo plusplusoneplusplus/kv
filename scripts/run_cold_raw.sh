@@ -22,8 +22,8 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 
-if [[ ! -x "$BIN_DIR/benchmark" ]]; then
-  error "Missing bin/benchmark. Run 'make build' first from repo root."
+if [[ ! -x "$BIN_DIR/benchmark-rust" ]]; then
+  error "Missing bin/benchmark-rust. Run 'make build' first from repo root."
   exit 1
 fi
 
@@ -82,7 +82,7 @@ ok "Using DB profile: $CONFIG_PATH"
 OUTPUT_JSON="$RESULTS_DIR/raw_${MODE}_cold_${THREADS}t.json"
 
 info "Running raw ${MODE} benchmark with cold block-cache (threads=$THREADS, requests=$REQUESTS, prepopulate=$PREPOP, value_size=$VALUE_SIZE)"
-"$BIN_DIR/benchmark" \
+"$BIN_DIR/benchmark-rust" \
   -protocol=raw \
   -addr="$DB_DIR" \
   -mode="$MODE" \

@@ -78,7 +78,7 @@ trap cleanup EXIT
 check_prerequisites() {
     log_info "Checking prerequisites..."
     
-    if [ ! -f "../bin/benchmark" ]; then
+    if [ ! -f "../bin/benchmark-rust" ]; then
         log_error "Benchmark binary not found. Please run 'make build' first from the project root."
         exit 1
     fi
@@ -187,13 +187,13 @@ run_benchmark() {
     local cmd_args=""
     case $mode in
         "read")
-            cmd_args="-mode=read -prepopulate=10000"
+            cmd_args="--mode=read --prepopulate=10000"
             ;;
         "write")
-            cmd_args="-mode=write"
+            cmd_args="--mode=write"
             ;;
         "mixed")
-            cmd_args="-mode=mixed -write-pct=$write_pct"
+            cmd_args="--mode=mixed --write-pct=$write_pct"
             ;;
     esac
     
@@ -207,19 +207,23 @@ run_benchmark() {
         
         log_info "Running iteration $i/$BENCHMARK_ITERATIONS..."
         
-        # Add config parameter for raw protocol
+        # Add config parameter and unique DB path for raw protocol
         local config_param=""
+        local addr_param=""
         if [ "$protocol" = "raw" ]; then
-            config_param="-config=$(cd .. && pwd)/configs/db/default.toml"
+            config_param="--config=$(cd .. && pwd)/configs/db/default.toml"
+            local unique_db_path="/tmp/rocksdb-benchmark-${TIMESTAMP}-${protocol}-${mode}-${threads}t-iter${i}"
+            addr_param="--addr=$unique_db_path"
         fi
         
-        ../bin/benchmark \
-            -protocol=$protocol \
+        ../bin/benchmark-rust \
+            --protocol=$protocol \
             $cmd_args \
             $config_param \
-            -requests=$BENCHMARK_REQUESTS \
-            -threads=$threads \
-            -json="$temp_file" \
+            $addr_param \
+            --requests=$BENCHMARK_REQUESTS \
+            --threads=$threads \
+            --json="$temp_file" \
             > /dev/null 2>&1
         
         if [ $? -ne 0 ]; then
@@ -285,8 +289,10 @@ run_min_benchmarks() {
     # Run raw benchmarks (no server needed)
     if should_run_client "raw"; then
         log_info "=== Running RAW Protocol Benchmarks (Minimal) ==="
-        log_info "Running RAW benchmark with $threads threads"
-        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
+        # Use single thread for raw protocol to avoid locking issues
+        local raw_threads=1
+        log_info "Running RAW benchmark with $raw_threads thread (using single thread to avoid RocksDB locking issues)"
+        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${raw_threads}t.json" "$raw_threads"
         echo
     fi
     
@@ -332,13 +338,14 @@ run_all_benchmarks() {
     # Run raw benchmarks (no server needed)
     if should_run_client "raw"; then
         log_info "=== Running RAW Protocol Benchmarks ==="
+        log_warn "Using single thread for raw protocol to avoid RocksDB locking issues"
         
-        for threads in "${RAW_THREAD_CONFIGS[@]}"; do
-            log_info "Running RAW benchmarks with $threads threads"
-            run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${threads}t.json" "$threads"
-            run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${threads}t.json" "$threads"
-            run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
-        done
+        # Use single thread for raw protocol to avoid locking issues
+        local raw_threads=1
+        log_info "Running RAW benchmarks with $raw_threads thread"
+        run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${raw_threads}t.json" "$raw_threads"
+        run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${raw_threads}t.json" "$raw_threads"
+        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${raw_threads}t.json" "$raw_threads"
         
         echo
     fi

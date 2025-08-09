@@ -177,13 +177,13 @@ class BenchmarkReportGenerator:
             stat['count'] = int(sum(values['count']) / len(values['count']))
             stat['success'] = int(sum(values['success']) / len(values['success']))
             stat['failed'] = int(sum(values['failed']) / len(values['failed']))
-            stat['min_latency'] = int(sum(values['min_latency']) / len(values['min_latency']))
-            stat['max_latency'] = int(sum(values['max_latency']) / len(values['max_latency']))
-            stat['avg_latency'] = int(sum(values['avg_latency']) / len(values['avg_latency']))
-            stat['p50_latency'] = int(sum(values['p50_latency']) / len(values['p50_latency']))
-            stat['p90_latency'] = int(sum(values['p90_latency']) / len(values['p90_latency']))
-            stat['p95_latency'] = int(sum(values['p95_latency']) / len(values['p95_latency']))
-            stat['p99_latency'] = int(sum(values['p99_latency']) / len(values['p99_latency']))
+            stat['min_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['min_latency']) / len(values['min_latency']))
+            stat['max_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['max_latency']) / len(values['max_latency']))
+            stat['avg_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['avg_latency']) / len(values['avg_latency']))
+            stat['p50_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['p50_latency']) / len(values['p50_latency']))
+            stat['p90_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['p90_latency']) / len(values['p90_latency']))
+            stat['p95_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['p95_latency']) / len(values['p95_latency']))
+            stat['p99_latency'] = int(sum(self._extract_nanoseconds(lat) for lat in values['p99_latency']) / len(values['p99_latency']))
             stat['throughput'] = sum(values['throughput']) / len(values['throughput'])
         
         # Average the total duration
@@ -192,8 +192,20 @@ class BenchmarkReportGenerator:
         
         return avg_result
     
-    def format_duration(self, nanoseconds: int) -> str:
+    def _extract_nanoseconds(self, duration) -> int:
+        """Extract nanoseconds from duration (handles both int and dict formats)"""
+        if isinstance(duration, dict):
+            if 'secs' in duration and 'nanos' in duration:
+                return duration['secs'] * 1_000_000_000 + duration['nanos']
+            else:
+                return 0
+        else:
+            return int(duration) if duration is not None else 0
+    
+    def format_duration(self, duration) -> str:
         """Format duration from nanoseconds to human readable"""
+        nanoseconds = self._extract_nanoseconds(duration)
+            
         if nanoseconds < 1000:
             return f"{nanoseconds}ns"
         elif nanoseconds < 1000000:
@@ -389,7 +401,7 @@ class BenchmarkReportGenerator:
                 'mode': config['mode'],
                 'threads': thread_count,
                 'throughput': overall_stats['throughput'],
-                'p50_latency': overall_stats['p50_latency'] / 1000000,  # Convert ns to ms
+                'p50_latency': self._extract_nanoseconds(overall_stats['p50_latency']) / 1000000,  # Convert ns to ms
             })
         
         return sorted(thread_data, key=lambda x: (x['protocol'], x['mode'], x['threads']))
@@ -1012,7 +1024,7 @@ class BenchmarkReportGenerator:
         for protocol, stats_list in protocol_stats.items():
             if stats_list:
                 avg_throughput = sum(s['throughput'] for s in stats_list) / len(stats_list)
-                avg_latency = sum(s['avg_latency'] for s in stats_list) / len(stats_list)
+                avg_latency = sum(self._extract_nanoseconds(s['avg_latency']) for s in stats_list) / len(stats_list)
                 total_ops = sum(s['count'] for s in stats_list)
                 
                 html += f"""
@@ -1035,7 +1047,7 @@ class BenchmarkReportGenerator:
         for mode, stats_list in mode_stats.items():
             if stats_list:
                 avg_throughput = sum(s['throughput'] for s in stats_list) / len(stats_list)
-                avg_latency = sum(s['avg_latency'] for s in stats_list) / len(stats_list)
+                avg_latency = sum(self._extract_nanoseconds(s['avg_latency']) for s in stats_list) / len(stats_list)
                 total_ops = sum(s['count'] for s in stats_list)
                 
                 # Calculate average read/write throughput for mixed workloads
@@ -1206,8 +1218,15 @@ class BenchmarkReportGenerator:
         # Get configuration from first result
         sample_result = list(results.values())[0]
         config = sample_result['config']
-        start_time = sample_result['start_time']
-        total_duration = sample_result['total_duration']
+        # Convert start_time from dict to readable format
+        if isinstance(sample_result['start_time'], dict):
+            import datetime
+            start_time_epoch = sample_result['start_time']['secs_since_epoch']
+            start_time = datetime.datetime.fromtimestamp(start_time_epoch, tz=datetime.timezone.utc).isoformat()
+        else:
+            start_time = str(sample_result['start_time'])
+        
+        total_duration = self._extract_nanoseconds(sample_result['total_duration'])
         
         # Check if results are averaged
         is_averaged = config.get('averaged', False)
@@ -1368,8 +1387,8 @@ class BenchmarkReportGenerator:
         for protocol, stats_list in protocol_stats.items():
             if stats_list:
                 avg_throughput = sum(s['throughput'] for s in stats_list) / len(stats_list)
-                avg_latency = sum(s['avg_latency'] for s in stats_list) / len(stats_list)
-                print(f"{protocol.upper():<10} Avg Throughput: {avg_throughput:.0f} ops/s, Avg Latency: {self.format_duration(int(avg_latency))}")
+                avg_latency_ns = sum(self._extract_nanoseconds(s['avg_latency']) for s in stats_list) / len(stats_list)
+                print(f"{protocol.upper():<10} Avg Throughput: {avg_throughput:.0f} ops/s, Avg Latency: {self.format_duration(int(avg_latency_ns))}")
         
         print()
         
@@ -1379,8 +1398,8 @@ class BenchmarkReportGenerator:
         for mode, stats_list in mode_stats.items():
             if stats_list:
                 avg_throughput = sum(s['throughput'] for s in stats_list) / len(stats_list)
-                avg_latency = sum(s['avg_latency'] for s in stats_list) / len(stats_list)
-                print(f"{mode.upper():<10} Avg Throughput: {avg_throughput:.0f} ops/s, Avg Latency: {self.format_duration(int(avg_latency))}")
+                avg_latency_ns = sum(self._extract_nanoseconds(s['avg_latency']) for s in stats_list) / len(stats_list)
+                print(f"{mode.upper():<10} Avg Throughput: {avg_throughput:.0f} ops/s, Avg Latency: {self.format_duration(int(avg_latency_ns))}")
         
         print()
         
@@ -1463,7 +1482,8 @@ class BenchmarkReportGenerator:
             print(f"Concurrent Threads: {sample_config['num_threads']}")
             print(f"Key Size: {sample_config['key_size']} bytes")
             print(f"Value Size: {sample_config['value_size']} bytes")
-            print(f"Timeout: {sample_config['timeout']/1000000000:.0f}s")
+            timeout_ns = self._extract_nanoseconds(sample_config['timeout'])
+            print(f"Timeout: {timeout_ns/1000000000:.0f}s")
 
     def generate_report(self, input_path: str, output_file: Optional[str] = None, console_output: bool = False) -> str:
         """Generate HTML report from benchmark results"""
@@ -1476,10 +1496,15 @@ class BenchmarkReportGenerator:
         if not output_file:
             output_file = os.path.join(input_path, 'benchmark_report.html')
         
-        html_content = self.generate_single_run_html(results, input_path)
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        try:
+            html_content = self.generate_single_run_html(results, input_path)
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+        except Exception as e:
+            print(f"Warning: HTML report generation failed: {e}")
+            print("Console output was generated successfully.")
+            return ""
         
         return output_file
     
@@ -1598,19 +1623,20 @@ Examples:
         # Generate the report
         output_file = generator.generate_report(args.input_path, args.output, console_output=args.console)
         
-        print("✅ HTML report generated successfully!")
-        print(f"📊 Report saved to: {output_file}")
-        print(f"🌐 Open in browser: file://{os.path.abspath(output_file)}")
-        
-        # Show file size
-        file_size = os.path.getsize(output_file)
-        if file_size > 1024 * 1024:
-            size_str = f"{file_size / (1024 * 1024):.1f} MB"
-        elif file_size > 1024:
-            size_str = f"{file_size / 1024:.1f} KB"
-        else:
-            size_str = f"{file_size} bytes"
-        print(f"📁 File size: {size_str}")
+        if output_file:
+            print("✅ HTML report generated successfully!")
+            print(f"📊 Report saved to: {output_file}")
+            print(f"🌐 Open in browser: file://{os.path.abspath(output_file)}")
+            
+            # Show file size
+            file_size = os.path.getsize(output_file)
+            if file_size > 1024 * 1024:
+                size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            elif file_size > 1024:
+                size_str = f"{file_size / 1024:.1f} KB"
+            else:
+                size_str = f"{file_size} bytes"
+            print(f"📁 File size: {size_str}")
         
     except (FileNotFoundError, ValueError) as e:
         print(f"❌ Error: {e}")
