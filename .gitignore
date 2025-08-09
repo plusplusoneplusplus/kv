@@ -13,3 +13,6 @@ go/proto/*.pb.go
 
 # Generated Thrift files
 rust/src/kvstore.rs
+
+# Rust build artifacts
+target/
