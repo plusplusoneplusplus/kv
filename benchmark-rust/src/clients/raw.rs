@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rocksdb::{Options, TransactionDB, TransactionDBOptions};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 
@@ -12,17 +12,16 @@ pub struct RawClient {
     db: Arc<TransactionDB>,
     read_semaphore: Arc<Semaphore>,
     write_semaphore: Arc<Semaphore>,
-    config: BenchmarkConfig,
 }
 
 pub struct RawClientFactory {
-    shared_client: Option<Arc<RawClient>>,
+    shared_db: Mutex<Option<Arc<TransactionDB>>>,
 }
 
 impl RawClientFactory {
     pub fn new() -> Self {
         Self {
-            shared_client: None,
+            shared_db: Mutex::new(None),
         }
     }
 }
@@ -31,62 +30,60 @@ impl RawClientFactory {
 impl ClientFactory for RawClientFactory {
     async fn create_client(&self, db_path: &str, config: &BenchmarkConfig) 
         -> anyhow::Result<Arc<dyn KvOperations>> {
-        // Use shared client for raw mode to avoid multiple DB instances
-        if let Some(client) = &self.shared_client {
-            return Ok(client.clone());
-        }
-
-        let rocks_config = if let Some(config_file) = &config.config_file {
-            match load_config_from_file(Some(config_file.clone())) {
-                Ok((config, path)) => {
-                    if !path.is_empty() {
-                        println!("Loaded RocksDB configuration from {}", path);
-                    } else {
-                        println!("No config file specified, using default configuration");
+        // Load configuration
+        let rocks_config = match &config.config_file {
+            Some(config_file) => {
+                match load_config_from_file(Some(config_file.clone())) {
+                    Ok((config, path)) => {
+                        if !path.is_empty() {
+                            println!("Loaded RocksDB configuration from {}", path);
+                        } else {
+                            println!("No config file specified, using default configuration");
+                        }
+                        config
                     }
-                    config
-                }
-                Err(e) => {
-                    println!("Warning: Failed to load config file ({:?}), using default configuration", e);
-                    get_default_config()
+                    Err(e) => {
+                        println!("Warning: Failed to load config file ({:?}), using default configuration", e);
+                        get_default_config()
+                    }
                 }
             }
-        } else {
-            println!("No config file specified, using default configuration");
-            get_default_config()
+            None => {
+                println!("No config file specified, using default configuration");
+                get_default_config()
+            }
         };
 
-        // Create directory if it doesn't exist
-        std::fs::create_dir_all(db_path)?;
+        // Get or create shared database instance
+        let shared_db = {
+            let mut guard = self.shared_db.lock().unwrap();
+            if let Some(db) = &*guard {
+                db.clone()
+            } else {
+                // Create directory if it doesn't exist
+                std::fs::create_dir_all(db_path)?;
 
-        // Set up RocksDB options with configuration
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.set_write_buffer_size((rocks_config.rocksdb.write_buffer_size_mb * 1024 * 1024) as usize);
-        opts.set_max_write_buffer_number(rocks_config.rocksdb.max_write_buffer_number as i32);
-        opts.set_max_background_jobs(rocks_config.rocksdb.max_background_jobs as i32);
+                // Set up RocksDB options
+                let mut opts = Options::default();
+                opts.create_if_missing(true);
+                opts.set_write_buffer_size((rocks_config.rocksdb.write_buffer_size_mb * 1024 * 1024) as usize);
+                opts.set_max_write_buffer_number(rocks_config.rocksdb.max_write_buffer_number as i32);
+                opts.set_max_background_jobs(rocks_config.rocksdb.max_background_jobs as i32);
 
-        // Set up transaction database options
-        let txn_db_opts = TransactionDBOptions::default();
+                // Open transaction database
+                let db = Arc::new(TransactionDB::open(&opts, &TransactionDBOptions::default(), db_path)?);
+                
+                *guard = Some(db.clone());
+                db
+            }
+        };
 
-        // Open transaction database
-        let db = TransactionDB::open(&opts, &txn_db_opts, db_path)?;
-
-        // Configure concurrency limits from config
-        let max_read_concurrency = rocks_config.concurrency.max_read_concurrency as usize;
-        let max_write_concurrency = 16; // Keep fixed for writes (same as other implementations)
-
-        let client = Arc::new(RawClient {
-            db: Arc::new(db),
-            read_semaphore: Arc::new(Semaphore::new(max_read_concurrency)),
-            write_semaphore: Arc::new(Semaphore::new(max_write_concurrency)),
-            config: config.clone(),
-        });
-
-        // Store shared client
-        // Note: This is a simplified implementation - in a real scenario, 
-        // you might want to use a mutex or other synchronization mechanism
-        Ok(client)
+        // Create individual client with shared database for parallel transactions
+        Ok(Arc::new(RawClient {
+            db: shared_db,
+            read_semaphore: Arc::new(Semaphore::new(rocks_config.concurrency.max_read_concurrency as usize)),
+            write_semaphore: Arc::new(Semaphore::new(16)),
+        }))
     }
 }
 

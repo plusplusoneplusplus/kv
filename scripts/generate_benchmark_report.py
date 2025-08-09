@@ -439,9 +439,9 @@ class BenchmarkReportGenerator:
         
         # Line dash patterns for different modes
         dash_patterns = {
-            'read': [],         # Solid line
-            'write': [10, 5],   # Dashed line
-            'mixed': [5, 5]     # Dotted line
+            'read': [],           # Solid line
+            'write': [15, 5],     # Long dashed line
+            'mixed': [5, 5, 2, 5] # Dash-dot line
         }
         
         # Generate RAW throughput chart
@@ -502,10 +502,22 @@ class BenchmarkReportGenerator:
                             display: true,
                             position: 'top',
                             labels: {{
-                                usePointStyle: true,
+                                usePointStyle: false,
                                 padding: 20,
                                 font: {{
                                     size: 12
+                                }},
+                                generateLabels: function(chart) {{
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({{
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }}));
                                 }}
                             }}
                         }},
@@ -618,10 +630,22 @@ class BenchmarkReportGenerator:
                             display: true,
                             position: 'top',
                             labels: {{
-                                usePointStyle: true,
+                                usePointStyle: false,
                                 padding: 20,
                                 font: {{
                                     size: 12
+                                }},
+                                generateLabels: function(chart) {{
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({{
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }}));
                                 }}
                             }}
                         }},
@@ -733,10 +757,22 @@ class BenchmarkReportGenerator:
                             display: true,
                             position: 'top',
                             labels: {{
-                                usePointStyle: true,
+                                usePointStyle: false,
                                 padding: 20,
                                 font: {{
                                     size: 12
+                                }},
+                                generateLabels: function(chart) {{
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({{
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }}));
                                 }}
                             }}
                         }},
@@ -849,10 +885,22 @@ class BenchmarkReportGenerator:
                             display: true,
                             position: 'top',
                             labels: {{
-                                usePointStyle: true,
+                                usePointStyle: false,
                                 padding: 20,
                                 font: {{
                                     size: 12
+                                }},
+                                generateLabels: function(chart) {{
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({{
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }}));
                                 }}
                             }}
                         }},

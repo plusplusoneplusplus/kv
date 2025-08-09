@@ -10,7 +10,7 @@ set -e
 BENCHMARK_REQUESTS=500000
 BENCHMARK_ITERATIONS=3  # Number of times to run each configuration
 # Thread configurations (will iterate over these)
-RAW_THREAD_CONFIGS=(1 2 4 8)
+RAW_THREAD_CONFIGS=(1 2 4 8 16)
 GRPC_THREAD_CONFIGS=(32 64 128 256)
 THRIFT_THREAD_CONFIGS=(32 64 128 256)
 
@@ -289,9 +289,8 @@ run_min_benchmarks() {
     # Run raw benchmarks (no server needed)
     if should_run_client "raw"; then
         log_info "=== Running RAW Protocol Benchmarks (Minimal) ==="
-        # Use single thread for raw protocol to avoid locking issues
-        local raw_threads=1
-        log_info "Running RAW benchmark with $raw_threads thread (using single thread to avoid RocksDB locking issues)"
+        local raw_threads=$MIN_BENCHMARK_THREADS
+        log_info "Running RAW benchmark with $raw_threads threads"
         run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${raw_threads}t.json" "$raw_threads"
         echo
     fi
@@ -338,14 +337,13 @@ run_all_benchmarks() {
     # Run raw benchmarks (no server needed)
     if should_run_client "raw"; then
         log_info "=== Running RAW Protocol Benchmarks ==="
-        log_warn "Using single thread for raw protocol to avoid RocksDB locking issues"
         
-        # Use single thread for raw protocol to avoid locking issues
-        local raw_threads=1
-        log_info "Running RAW benchmarks with $raw_threads thread"
-        run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${raw_threads}t.json" "$raw_threads"
-        run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${raw_threads}t.json" "$raw_threads"
-        run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${raw_threads}t.json" "$raw_threads"
+        for threads in "${RAW_THREAD_CONFIGS[@]}"; do
+            log_info "Running RAW benchmarks with $threads threads"
+            run_benchmark "raw" "read" "0" "$RESULTS_DIR/raw_read_100_${threads}t.json" "$threads"
+            run_benchmark "raw" "write" "100" "$RESULTS_DIR/raw_write_100_${threads}t.json" "$threads"
+            run_benchmark "raw" "mixed" "10" "$RESULTS_DIR/raw_mixed_90_10_${threads}t.json" "$threads"
+        done
         
         echo
     fi
