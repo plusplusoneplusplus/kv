@@ -30,12 +30,8 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   │   └── kvstore_service.h   # Service header
 │   ├── CMakeLists.txt    # CMake build configuration
 │   └── README.md         # C++ specific instructions
-├── benchmark/             # Benchmarking tools
-│   ├── benchmark.go      # Benchmark implementation with protocol support
-│   ├── grpc_client.go    # gRPC client for benchmarks
-│   ├── thrift_client.go  # Thrift client for benchmarks
-│   ├── go.mod           # Benchmark module dependencies
-│   └── README.md        # Benchmark documentation
+├── benchmark-rust/        # Rust benchmarking tools
+│   └── src/              # Rust benchmark implementation
 ├── proto/                 # Protocol buffer definitions
 │   └── kvstore.proto     # gRPC service and message definitions
 ├── thrift/               # Thrift definitions
@@ -57,7 +53,7 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
   - **Delete**: Remove a key-value pair
   - **ListKeys**: List all keys with optional prefix filtering
   - **Ping**: Health check and latency testing
-- **Benchmarking**: Multi-threaded performance testing with detailed metrics for both protocols
+- **Benchmarking**: Multi-threaded performance testing with detailed metrics (Rust implementation)
 - **High Performance**: Built on RocksDB for efficient storage and retrieval
 
 ## Prerequisites
@@ -140,7 +136,7 @@ make build          # Debug builds
 make build-release  # Optimized release builds
 
 # Verify build
-ls bin/             # Should show: benchmark, client, rocksdbserver, rocksdbserver-rust, rocksdbserver-thrift
+ls bin/             # Should show: benchmark-rust, client, rocksdbserver, rocksdbserver-rust, rocksdbserver-thrift
 ```
 
 ### Step-by-Step Build Process
@@ -166,8 +162,7 @@ make go-deps
 make rust-deps  
 # Equivalent to: cd rust && cargo fetch
 
-# Benchmark dependencies
-cd benchmark && go mod tidy && cd ..
+# Rust benchmark dependencies handled by cargo
 ```
 
 #### 3. Build Individual Components
@@ -191,10 +186,15 @@ cp target/debug/thrift-server ../bin/rocksdbserver-thrift
 # For release: cargo build --release --bin thrift-server
 ```
 
-**Client and Benchmark Tools:**
+**Client Tool:**
 ```bash
 go build -o bin/client go/client.go
-cd benchmark && go build -o ../bin/benchmark .
+```
+
+**Rust Benchmark Tool:**
+```bash
+cd benchmark-rust && cargo build --release
+cp target/release/benchmark ../bin/benchmark-rust
 ```
 
 ### Makefile Targets
@@ -328,7 +328,7 @@ grpcurl -plaintext -d '{"prefix":"", "limit":10}' localhost:50051 kvstore.KVStor
 
 ## Benchmarking
 
-The benchmark tool supports both gRPC and Thrift protocols and can test various workload patterns.
+The Rust benchmark tool supports gRPC protocol and can test various workload patterns.
 
 ### Quick Start
 
@@ -344,21 +344,18 @@ make build-release
 ./bin/rocksdbserver-thrift &   # Rust Thrift server
 
 # Run benchmark
-./bin/benchmark                # Default: gRPC protocol
-./bin/benchmark -protocol thrift  # Test Thrift protocol
+./bin/benchmark-rust           # gRPC protocol
 ```
 
 ### Configuration Options
 
-**Protocol and Connection:**
-- `-protocol`: "grpc" or "thrift" (default: grpc)
-- `-addr`: Server address (default: localhost:50051)
+**Connection:**
+- `-a`: Server address (default: localhost:50051)
 
 **Workload Configuration:**
-- `-mode`: "mixed" (read/write/ping) or "ping" (latency only)
-- `-threads`: Concurrent threads (default: 32)
-- `-requests`: Total requests (default: 100,000)
-- `-write-pct`: Write percentage 0-100 (default: 30)
+- `-t`: Concurrent threads (default: based on CPU cores)
+- `-n`: Total requests (default: 100,000)
+- `-w`: Write percentage 0-100 (default: 30)
 
 **Data Configuration:**
 - `-key-size`: Key size in bytes (default: 16)
@@ -367,24 +364,17 @@ make build-release
 ### Example Benchmark Commands
 
 ```bash
-# Protocol comparison
-./bin/benchmark -protocol grpc > grpc_results.txt
-./bin/benchmark -protocol thrift > thrift_results.txt
+# Default benchmark
+./bin/benchmark-rust
 
 # Read-heavy workload
-./bin/benchmark -write-pct 10 -requests 1000000
-
-# Write-heavy with large values  
-./bin/benchmark -write-pct 70 -value-size 1024
+./bin/benchmark-rust -w 10 -n 1000000
 
 # High-concurrency test
-./bin/benchmark -threads 128 -requests 500000
-
-# Latency-only test
-./bin/benchmark -mode ping -threads 1 -requests 10000
+./bin/benchmark-rust -t 64 -n 500000
 
 # Large-scale test
-./bin/benchmark -threads 64 -requests 2000000 -write-pct 20
+./bin/benchmark-rust -t 32 -n 2000000 -w 20
 ```
 
 ### Benchmark Output
@@ -428,18 +418,14 @@ Per-Operation Stats:
 
 **Server Comparison:**
 ```bash
-# Test all server implementations
+# Test server implementations
 ./bin/rocksdbserver & PID1=$!
-./bin/benchmark -protocol grpc > go_grpc.txt
+./bin/benchmark-rust > go_grpc.txt
 kill $PID1
 
 ./bin/rocksdbserver-rust & PID2=$!  
-./bin/benchmark -protocol grpc > rust_grpc.txt
+./bin/benchmark-rust > rust_grpc.txt
 kill $PID2
-
-./bin/rocksdbserver-thrift & PID3=$!
-./bin/benchmark -protocol thrift > rust_thrift.txt  
-kill $PID3
 ```
 
 ## API Reference
@@ -528,10 +514,10 @@ make build-release
 ./bin/client -op delete -key "test"
 killall rocksdbserver
 
-# Protocol compatibility test
-./bin/rocksdbserver-thrift &
-./bin/benchmark -protocol thrift -requests 1000
-killall rocksdbserver-thrift
+# Performance test
+./bin/rocksdbserver-rust &
+./bin/benchmark-rust -n 1000
+killall rocksdbserver-rust
 ```
 
 ### Performance Notes

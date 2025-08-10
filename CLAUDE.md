@@ -18,7 +18,7 @@ The codebase implements the same gRPC KVStore service in three languages:
 - **Proto Definition** (`proto/kvstore.proto`): Single source of truth for gRPC service contract
 - **Database Storage**: Each implementation uses RocksDB TransactionDB for ACID compliance
 - **Concurrency Control**: All implementations use semaphore-based limits (32 read, 16 write operations)
-- **Client/Benchmark Tools** (`go/client.go`, `go/benchmark.go`): Language-agnostic tools that work with all server implementations
+- **Client Tools** (`go/client.go`): Language-agnostic client that works with all server implementations
 
 ### Data Storage
 - Go server: `./data/rocksdb/`
@@ -65,11 +65,10 @@ The Go client works with all server implementations:
 ```
 
 ### Benchmarking
-The benchmark tool provides comprehensive performance testing:
+Use the Rust benchmark tool for performance testing:
 ```bash
-./bin/benchmark                                    # Default mixed workload
-./bin/benchmark -write-pct 10 -requests 1000000  # Read-heavy workload
-./bin/benchmark -mode ping -threads 1            # Latency testing
+./bin/benchmark-rust                               # Default mixed workload
+./bin/benchmark-rust -w 10 -n 1000000            # Read-heavy workload
 ```
 
 ## Development Workflow
@@ -84,7 +83,7 @@ The benchmark tool provides comprehensive performance testing:
 4. Update client if needed in `go/client.go`
 
 ### Testing Changes
-- Use the benchmark tool to verify performance across implementations
+- Use the Rust benchmark tool to verify performance across implementations
 - Test with the client to verify functionality
 - Each server creates separate database directories for isolation
 
@@ -109,7 +108,7 @@ All implementations use identical concurrency limits:
 
 ## Cross-Language Compatibility
 
-The client and benchmark tools are implemented in Go but work seamlessly with all server implementations due to the shared gRPC contract. This design allows for:
+The client is implemented in Go and the benchmark tool in Rust, both work seamlessly with all server implementations due to the shared gRPC contract. This design allows for:
 - Performance comparison between language implementations
 - Mixed-language deployments
 - Consistent API behavior across all implementations
