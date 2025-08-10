@@ -1,3 +1,16 @@
+Rust benchmark - Thrift mode notes
+
+- This client keeps a dedicated worker thread per benchmark client to own a single Thrift connection, avoiding per-call spawn_blocking overhead.
+- Transports: Buffered read/write + Binary protocol to match server.
+- TCP_NODELAY is enabled on the client to reduce latency.
+
+Tuning suggestions:
+- Increase threads to raise total connections when the server has spare CPU.
+- Pin the server and client on separate cores/NUMA nodes for fairness.
+- Ensure server build uses release and RocksDB options match raw tests if comparing across protocols.
+
+Run example:
+  ./benchmark --protocol=thrift --mode=mixed --write-pct=10 --threads=8 --requests=100000
 # RocksDB Service Benchmark Tool (Rust)
 
 This is a Rust port of the Go benchmark tool for testing the performance of RocksDB service implementations across different protocols (gRPC, Thrift, and raw RocksDB).

@@ -13,10 +13,11 @@ prost = "0.12"
 thrift = "0.17"
 rand = "0.8"
 anyhow = "1.0"
-rocksdb = "0.22"
+rocksdb = "0.21"
 toml = "0.8"
 futures = "0.3"
 async-trait = "0.1"
+rocksdb_server = { path = "../rust" }
 
 [build-dependencies]
 tonic-build = "0.10"

@@ -1,0 +1,2721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KV Store Benchmark Report - run_20250809_185818</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 2.8em;
+    margin-bottom: 15px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.header .subtitle {
+    font-size: 1.3em;
+    opacity: 0.9;
+    margin-bottom: 10px;
+}
+
+.header .timestamp {
+    font-size: 1em;
+    opacity: 0.7;
+}
+
+.content {
+    padding: 40px;
+}
+
+.section {
+    margin-bottom: 50px;
+}
+
+.section h2 {
+    color: #2c3e50;
+    border-bottom: 3px solid #3498db;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+    font-size: 2em;
+}
+
+.section h3 {
+    color: #34495e;
+    margin: 30px 0 20px 0;
+    font-size: 1.5em;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 25px 0;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+th {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+    font-weight: 600;
+    padding: 18px 15px;
+    text-align: left;
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    transition: background-color 0.3s ease;
+}
+
+th.sortable:hover {
+    background: linear-gradient(135deg, #2980b9 0%, #1f639a 100%);
+}
+
+th.sortable:after {
+    content: ' ↕️';
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+th.sortable.sort-asc:after {
+    content: ' ↑';
+    opacity: 1;
+    color: #fff;
+}
+
+th.sortable.sort-desc:after {
+    content: ' ↓';
+    opacity: 1;
+    color: #fff;
+}
+
+td {
+    padding: 15px;
+    border-bottom: 1px solid #ecf0f1;
+    font-size: 0.95em;
+    vertical-align: middle;
+}
+
+tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+tr:hover {
+    background-color: #e3f2fd;
+    transition: background-color 0.3s ease;
+    transform: scale(1.002);
+}
+
+.metric-high {
+    color: #27ae60;
+    font-weight: 700;
+}
+
+.metric-medium {
+    color: #f39c12;
+    font-weight: 700;
+}
+
+.metric-low {
+    color: #e74c3c;
+    font-weight: 700;
+}
+
+.protocol-raw {
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.protocol-thrift {
+    background: linear-gradient(90deg, #3498db, #2980b9);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.protocol-grpc {
+    background: linear-gradient(90deg, #9b59b6, #8e44ad);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 25px;
+    margin: 30px 0;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    border-left: 5px solid #3498db;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.stat-card h4 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+.stat-value {
+    font-size: 2.2em;
+    font-weight: 700;
+    color: #3498db;
+    margin-bottom: 8px;
+}
+
+.stat-description {
+    color: #7f8c8d;
+    font-size: 0.9em;
+}
+
+.config-section {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 30px;
+    border-radius: 10px;
+    margin: 30px 0;
+    border: 1px solid #dee2e6;
+}
+
+.comparison-section {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    padding: 30px;
+    border-radius: 10px;
+    margin: 30px 0;
+    border-left: 5px solid #f39c12;
+}
+
+.footer {
+    background: #2c3e50;
+    color: white;
+    text-align: center;
+    padding: 30px;
+    font-size: 0.95em;
+}
+
+.footer a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.alert {
+    padding: 15px;
+    margin: 20px 0;
+    border-radius: 8px;
+    border-left: 4px solid;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.chart-container {
+    position: relative;
+    height: 400px;
+    margin: 30px 0;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    padding: 20px;
+}
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+    gap: 30px;
+    margin: 30px 0;
+}
+
+.chart-title {
+    text-align: center;
+    font-size: 1.4em;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        margin: 10px;
+        border-radius: 10px;
+    }
+    
+    .header {
+        padding: 25px;
+    }
+    
+    .header h1 {
+        font-size: 2.2em;
+    }
+    
+    .content {
+        padding: 25px;
+    }
+    
+    table {
+        font-size: 0.85em;
+    }
+    
+    th, td {
+        padding: 10px 8px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Print styles */
+@media print {
+    body {
+        background: white;
+        padding: 0;
+    }
+    
+    .container {
+        box-shadow: none;
+        border-radius: 0;
+    }
+    
+    .header {
+        background: #2c3e50 !important;
+        -webkit-print-color-adjust: exact;
+    }
+}</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 KV Store Benchmark Report</h1>
+            <div class="subtitle">Run ID: run_20250809_185818</div>
+            <div class="timestamp">Generated: 2025-08-09 19:21:43</div>
+        </div>
+        
+        <div class="content">
+            
+            <div class="section">
+                <h2>📈 Thread Configuration Analysis</h2>
+                <div class="chart-grid">
+
+                    <div class="chart-container">
+                        <div class="chart-title">RAW Protocol - Throughput vs Thread Count</div>
+                        <canvas id="throughput-chart-1"></canvas>
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="chart-title">gRPC vs Thrift - Throughput vs Thread Count</div>
+                        <canvas id="throughput-chart-2"></canvas>
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="chart-title">RAW Protocol - P50 Latency vs Thread Count</div>
+                        <canvas id="latency-chart-3"></canvas>
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="chart-title">gRPC vs Thrift - P50 Latency vs Thread Count</div>
+                        <canvas id="latency-chart-4"></canvas>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📊 Performance Summary</h2>
+                <table id="performance-summary-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="string">Test Case</th>
+                            <th class="sortable" data-sort="string">Protocol</th>
+                            <th class="sortable" data-sort="string">Mode</th>
+                            <th class="sortable" data-sort="number">Total Throughput</th>
+                            <th class="sortable" data-sort="number">Read Throughput</th>
+                            <th class="sortable" data-sort="number">Write Throughput</th>
+                            <th class="sortable" data-sort="duration">Read Avg Latency</th>
+                            <th class="sortable" data-sort="duration">Write Avg Latency</th>
+                            <th class="sortable" data-sort="duration">Overall Avg Latency</th>
+                            <th class="sortable" data-sort="number">Success Rate</th>
+                            <th class="sortable" data-sort="number">Total Requests</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><strong>raw_read_100_16t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">1,406,625 ops/s</td>
+                            <td>1,406,625 ops/s</td>
+                            <td>N/A</td>
+                            <td>4.0μs</td>
+                            <td>N/A</td>
+                            <td>4.0μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_8t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">954,987 ops/s</td>
+                            <td>954,987 ops/s</td>
+                            <td>N/A</td>
+                            <td>3.4μs</td>
+                            <td>N/A</td>
+                            <td>3.4μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_16t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">802,901 ops/s</td>
+                            <td>722,611 ops/s</td>
+                            <td>80,290 ops/s</td>
+                            <td>4.7μs</td>
+                            <td>54.2μs</td>
+                            <td>9.7μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_4t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">599,293 ops/s</td>
+                            <td>599,293 ops/s</td>
+                            <td>N/A</td>
+                            <td>3.1μs</td>
+                            <td>N/A</td>
+                            <td>3.1μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_8t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">584,954 ops/s</td>
+                            <td>526,459 ops/s</td>
+                            <td>58,495 ops/s</td>
+                            <td>3.9μs</td>
+                            <td>33.4μs</td>
+                            <td>6.8μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_256t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">354,827 ops/s</td>
+                            <td>354,827 ops/s</td>
+                            <td>N/A</td>
+                            <td>468.9μs</td>
+                            <td>N/A</td>
+                            <td>468.9μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_4t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">346,385 ops/s</td>
+                            <td>311,746 ops/s</td>
+                            <td>34,638 ops/s</td>
+                            <td>4.0μs</td>
+                            <td>23.5μs</td>
+                            <td>6.0μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_2t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">335,651 ops/s</td>
+                            <td>335,651 ops/s</td>
+                            <td>N/A</td>
+                            <td>3.1μs</td>
+                            <td>N/A</td>
+                            <td>3.1μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_128t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">225,250 ops/s</td>
+                            <td>225,250 ops/s</td>
+                            <td>N/A</td>
+                            <td>504.1μs</td>
+                            <td>N/A</td>
+                            <td>504.1μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_64t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">209,225 ops/s</td>
+                            <td>209,225 ops/s</td>
+                            <td>N/A</td>
+                            <td>295.8μs</td>
+                            <td>N/A</td>
+                            <td>295.8μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_2t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">194,387 ops/s</td>
+                            <td>174,948 ops/s</td>
+                            <td>19,439 ops/s</td>
+                            <td>3.8μs</td>
+                            <td>19.6μs</td>
+                            <td>5.4μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_256t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">187,216 ops/s</td>
+                            <td>168,495 ops/s</td>
+                            <td>18,722 ops/s</td>
+                            <td>813.2μs</td>
+                            <td>4.6ms</td>
+                            <td>1.2ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_64t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">185,965 ops/s</td>
+                            <td>167,369 ops/s</td>
+                            <td>18,597 ops/s</td>
+                            <td>247.2μs</td>
+                            <td>982.5μs</td>
+                            <td>320.7μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_128t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">180,350 ops/s</td>
+                            <td>162,315 ops/s</td>
+                            <td>18,035 ops/s</td>
+                            <td>397.4μs</td>
+                            <td>3.0ms</td>
+                            <td>659.2μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_1t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">173,533 ops/s</td>
+                            <td>173,533 ops/s</td>
+                            <td>N/A</td>
+                            <td>3.2μs</td>
+                            <td>N/A</td>
+                            <td>3.2μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_8t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-high">147,972 ops/s</td>
+                            <td>N/A</td>
+                            <td>147,972 ops/s</td>
+                            <td>N/A</td>
+                            <td>29.6μs</td>
+                            <td>29.6μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_32t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>READ</td>
+                            <td class="metric-high">113,709 ops/s</td>
+                            <td>113,709 ops/s</td>
+                            <td>N/A</td>
+                            <td>277.2μs</td>
+                            <td>N/A</td>
+                            <td>277.2μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_1t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-high">104,224 ops/s</td>
+                            <td>93,802 ops/s</td>
+                            <td>10,422 ops/s</td>
+                            <td>3.8μs</td>
+                            <td>17.3μs</td>
+                            <td>5.1μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_4t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">93,091 ops/s</td>
+                            <td>N/A</td>
+                            <td>93,091 ops/s</td>
+                            <td>N/A</td>
+                            <td>20.4μs</td>
+                            <td>20.4μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_32t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-medium">92,554 ops/s</td>
+                            <td>83,299 ops/s</td>
+                            <td>9,255 ops/s</td>
+                            <td>315.0μs</td>
+                            <td>563.7μs</td>
+                            <td>339.9μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_256t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>READ</td>
+                            <td class="metric-medium">49,626 ops/s</td>
+                            <td>49,626 ops/s</td>
+                            <td>N/A</td>
+                            <td>5.0ms</td>
+                            <td>N/A</td>
+                            <td>5.0ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_16t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">48,770 ops/s</td>
+                            <td>N/A</td>
+                            <td>48,770 ops/s</td>
+                            <td>N/A</td>
+                            <td>294.1μs</td>
+                            <td>294.1μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_2t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">47,684 ops/s</td>
+                            <td>N/A</td>
+                            <td>47,684 ops/s</td>
+                            <td>N/A</td>
+                            <td>19.4μs</td>
+                            <td>19.4μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_128t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>READ</td>
+                            <td class="metric-medium">46,155 ops/s</td>
+                            <td>46,155 ops/s</td>
+                            <td>N/A</td>
+                            <td>2.7ms</td>
+                            <td>N/A</td>
+                            <td>2.7ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_256t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-medium">44,231 ops/s</td>
+                            <td>39,808 ops/s</td>
+                            <td>4,423 ops/s</td>
+                            <td>5.5ms</td>
+                            <td>7.3ms</td>
+                            <td>5.7ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_128t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-medium">43,996 ops/s</td>
+                            <td>39,596 ops/s</td>
+                            <td>4,400 ops/s</td>
+                            <td>2.8ms</td>
+                            <td>3.6ms</td>
+                            <td>2.9ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_64t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>READ</td>
+                            <td class="metric-medium">38,394 ops/s</td>
+                            <td>38,394 ops/s</td>
+                            <td>N/A</td>
+                            <td>1.7ms</td>
+                            <td>N/A</td>
+                            <td>1.7ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_64t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-medium">36,946 ops/s</td>
+                            <td>33,251 ops/s</td>
+                            <td>3,695 ops/s</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>1.7ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_32t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>READ</td>
+                            <td class="metric-medium">30,669 ops/s</td>
+                            <td>30,669 ops/s</td>
+                            <td>N/A</td>
+                            <td>1.0ms</td>
+                            <td>N/A</td>
+                            <td>1.0ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_128t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">30,396 ops/s</td>
+                            <td>N/A</td>
+                            <td>30,396 ops/s</td>
+                            <td>N/A</td>
+                            <td>4.2ms</td>
+                            <td>4.2ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_32t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>MIXED</td>
+                            <td class="metric-medium">29,795 ops/s</td>
+                            <td>26,815 ops/s</td>
+                            <td>2,979 ops/s</td>
+                            <td>1.0ms</td>
+                            <td>1.4ms</td>
+                            <td>1.1ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_256t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">28,569 ops/s</td>
+                            <td>N/A</td>
+                            <td>28,569 ops/s</td>
+                            <td>N/A</td>
+                            <td>8.9ms</td>
+                            <td>8.9ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_64t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">28,093 ops/s</td>
+                            <td>N/A</td>
+                            <td>28,093 ops/s</td>
+                            <td>N/A</td>
+                            <td>2.3ms</td>
+                            <td>2.3ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_1t</strong></td>
+                            <td><span class="protocol-raw">RAW</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">24,805 ops/s</td>
+                            <td>N/A</td>
+                            <td>24,805 ops/s</td>
+                            <td>N/A</td>
+                            <td>18.0μs</td>
+                            <td>18.0μs</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_32t</strong></td>
+                            <td><span class="protocol-grpc">GRPC</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">23,467 ops/s</td>
+                            <td>N/A</td>
+                            <td>23,467 ops/s</td>
+                            <td>N/A</td>
+                            <td>1.3ms</td>
+                            <td>1.3ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_64t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">22,362 ops/s</td>
+                            <td>N/A</td>
+                            <td>22,362 ops/s</td>
+                            <td>N/A</td>
+                            <td>2.8ms</td>
+                            <td>2.8ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_256t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">21,740 ops/s</td>
+                            <td>N/A</td>
+                            <td>21,740 ops/s</td>
+                            <td>N/A</td>
+                            <td>11.7ms</td>
+                            <td>11.7ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_32t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">21,592 ops/s</td>
+                            <td>N/A</td>
+                            <td>21,592 ops/s</td>
+                            <td>N/A</td>
+                            <td>1.5ms</td>
+                            <td>1.5ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_128t</strong></td>
+                            <td><span class="protocol-thrift">THRIFT</span></td>
+                            <td>WRITE</td>
+                            <td class="metric-medium">21,348 ops/s</td>
+                            <td>N/A</td>
+                            <td>21,348 ops/s</td>
+                            <td>N/A</td>
+                            <td>6.0ms</td>
+                            <td>6.0ms</td>
+                            <td>100.0%</td>
+                            <td>500,000</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📈 Comparison Analysis</h2>
+                
+                <h3>Protocol Comparison</h3>
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+                        <h4>RAW Protocol</h4>
+                        <div class="stat-value">391,018</div>
+                        <div class="stat-description">ops/s avg • 28.7μs avg latency</div>
+                        <div class="stat-description">15 tests • 7,500,000 total ops</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h4>THRIFT Protocol</h4>
+                        <div class="stat-value">136,345</div>
+                        <div class="stat-description">ops/s avg • 2.2ms avg latency</div>
+                        <div class="stat-description">12 tests • 6,000,000 total ops</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h4>GRPC Protocol</h4>
+                        <div class="stat-value">35,861</div>
+                        <div class="stat-description">ops/s avg • 3.2ms avg latency</div>
+                        <div class="stat-description">12 tests • 6,000,000 total ops</div>
+                    </div>
+
+                </div>
+                
+                <h3>Workload Comparison</h3>
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+                        <h4>READ Workload</h4>
+                        <div class="stat-value">349,073</div>
+                        <div class="stat-description">ops/s avg • 924.5μs avg latency</div>
+                        <div class="stat-description">13 tests • 6,500,000 total ops</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h4>MIXED Workload</h4>
+                        <div class="stat-value">217,993</div>
+                        <div class="stat-description">Read: 196,193 ops/s • Write: 21,799 ops/s</div>
+                        <div class="stat-description">13 tests • 6,500,000 total ops</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h4>WRITE Workload</h4>
+                        <div class="stat-value">43,068</div>
+                        <div class="stat-description">ops/s avg • 3.0ms avg latency</div>
+                        <div class="stat-description">13 tests • 6,500,000 total ops</div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>⚡ Detailed Latency Analysis</h2>
+                
+                <h3>Read Operation Latencies</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Test Case</th>
+                            <th>Min</th>
+                            <th>P50</th>
+                            <th>P90</th>
+                            <th>P95</th>
+                            <th>P99</th>
+                            <th>Max</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><strong>raw_read_100_1t</strong></td>
+                            <td>2.5μs</td>
+                            <td>2.9μs</td>
+                            <td>3.3μs</td>
+                            <td>4.0μs</td>
+                            <td>8.0μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_4t</strong></td>
+                            <td>2.7μs</td>
+                            <td>3.8μs</td>
+                            <td>4.5μs</td>
+                            <td>5.1μs</td>
+                            <td>8.2μs</td>
+                            <td>605.4μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_8t</strong></td>
+                            <td>2.4μs</td>
+                            <td>2.8μs</td>
+                            <td>4.1μs</td>
+                            <td>4.3μs</td>
+                            <td>10.0μs</td>
+                            <td>581.9μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_32t</strong></td>
+                            <td>18.8μs</td>
+                            <td>201.5μs</td>
+                            <td>623.3μs</td>
+                            <td>649.3μs</td>
+                            <td>789.2μs</td>
+                            <td>19.9ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_256t</strong></td>
+                            <td>288.9μs</td>
+                            <td>5.0ms</td>
+                            <td>9.0ms</td>
+                            <td>10.6ms</td>
+                            <td>14.5ms</td>
+                            <td>135.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_128t</strong></td>
+                            <td>17.8μs</td>
+                            <td>263.6μs</td>
+                            <td>850.8μs</td>
+                            <td>1.1ms</td>
+                            <td>1.9ms</td>
+                            <td>99.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_1t</strong></td>
+                            <td>2.7μs</td>
+                            <td>3.4μs</td>
+                            <td>3.9μs</td>
+                            <td>4.6μs</td>
+                            <td>8.6μs</td>
+                            <td>725.7μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_16t</strong></td>
+                            <td>2.6μs</td>
+                            <td>4.4μs</td>
+                            <td>5.6μs</td>
+                            <td>7.0μs</td>
+                            <td>12.5μs</td>
+                            <td>1.5ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_128t</strong></td>
+                            <td>278.3μs</td>
+                            <td>2.5ms</td>
+                            <td>4.3ms</td>
+                            <td>5.0ms</td>
+                            <td>6.9ms</td>
+                            <td>60.3ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_256t</strong></td>
+                            <td>16.8μs</td>
+                            <td>40.5μs</td>
+                            <td>486.4μs</td>
+                            <td>1.3ms</td>
+                            <td>7.0ms</td>
+                            <td>202.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_256t</strong></td>
+                            <td>18.1μs</td>
+                            <td>615.6μs</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>3.4ms</td>
+                            <td>130.3ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_64t</strong></td>
+                            <td>262.7μs</td>
+                            <td>1.5ms</td>
+                            <td>2.6ms</td>
+                            <td>3.2ms</td>
+                            <td>4.9ms</td>
+                            <td>30.9ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_16t</strong></td>
+                            <td>2.3μs</td>
+                            <td>3.0μs</td>
+                            <td>4.3μs</td>
+                            <td>4.5μs</td>
+                            <td>10.8μs</td>
+                            <td>1.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_32t</strong></td>
+                            <td>271.4μs</td>
+                            <td>900.5μs</td>
+                            <td>1.7ms</td>
+                            <td>2.0ms</td>
+                            <td>3.0ms</td>
+                            <td>21.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_256t</strong></td>
+                            <td>302.2μs</td>
+                            <td>4.6ms</td>
+                            <td>8.0ms</td>
+                            <td>9.3ms</td>
+                            <td>12.8ms</td>
+                            <td>134.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_64t</strong></td>
+                            <td>17.2μs</td>
+                            <td>192.5μs</td>
+                            <td>660.4μs</td>
+                            <td>895.4μs</td>
+                            <td>1.4ms</td>
+                            <td>40.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_128t</strong></td>
+                            <td>310.3μs</td>
+                            <td>2.6ms</td>
+                            <td>4.4ms</td>
+                            <td>5.2ms</td>
+                            <td>7.5ms</td>
+                            <td>69.9ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_4t</strong></td>
+                            <td>2.4μs</td>
+                            <td>2.8μs</td>
+                            <td>3.2μs</td>
+                            <td>4.0μs</td>
+                            <td>5.6μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_128t</strong></td>
+                            <td>17.0μs</td>
+                            <td>357.1μs</td>
+                            <td>1.1ms</td>
+                            <td>1.4ms</td>
+                            <td>2.4ms</td>
+                            <td>97.5ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_2t</strong></td>
+                            <td>2.5μs</td>
+                            <td>2.8μs</td>
+                            <td>3.1μs</td>
+                            <td>3.6μs</td>
+                            <td>6.2μs</td>
+                            <td>717.2μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_64t</strong></td>
+                            <td>278.8μs</td>
+                            <td>1.5ms</td>
+                            <td>2.7ms</td>
+                            <td>3.2ms</td>
+                            <td>4.8ms</td>
+                            <td>26.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_8t</strong></td>
+                            <td>2.6μs</td>
+                            <td>3.4μs</td>
+                            <td>4.7μs</td>
+                            <td>5.1μs</td>
+                            <td>8.9μs</td>
+                            <td>580.7μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_32t</strong></td>
+                            <td>19.5μs</td>
+                            <td>201.1μs</td>
+                            <td>664.2μs</td>
+                            <td>833.0μs</td>
+                            <td>929.6μs</td>
+                            <td>19.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_2t</strong></td>
+                            <td>2.6μs</td>
+                            <td>3.5μs</td>
+                            <td>4.0μs</td>
+                            <td>4.7μs</td>
+                            <td>9.4μs</td>
+                            <td>655.5μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_64t</strong></td>
+                            <td>17.2μs</td>
+                            <td>164.7μs</td>
+                            <td>543.3μs</td>
+                            <td>718.0μs</td>
+                            <td>1.2ms</td>
+                            <td>33.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_32t</strong></td>
+                            <td>262.9μs</td>
+                            <td>892.7μs</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>3.2ms</td>
+                            <td>20.8ms</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+                
+                <h3>Write Operation Latencies</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Test Case</th>
+                            <th>Min</th>
+                            <th>P50</th>
+                            <th>P90</th>
+                            <th>P95</th>
+                            <th>P99</th>
+                            <th>Max</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_4t</strong></td>
+                            <td>13.8μs</td>
+                            <td>19.8μs</td>
+                            <td>29.2μs</td>
+                            <td>34.5μs</td>
+                            <td>71.5μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_128t</strong></td>
+                            <td>194.6μs</td>
+                            <td>5.8ms</td>
+                            <td>6.8ms</td>
+                            <td>7.2ms</td>
+                            <td>9.0ms</td>
+                            <td>65.6ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_64t</strong></td>
+                            <td>675.1μs</td>
+                            <td>2.8ms</td>
+                            <td>3.3ms</td>
+                            <td>3.5ms</td>
+                            <td>4.1ms</td>
+                            <td>9.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_1t</strong></td>
+                            <td>12.6μs</td>
+                            <td>15.8μs</td>
+                            <td>19.7μs</td>
+                            <td>23.9μs</td>
+                            <td>53.2μs</td>
+                            <td>6.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_256t</strong></td>
+                            <td>560.2μs</td>
+                            <td>6.5ms</td>
+                            <td>12.1ms</td>
+                            <td>14.6ms</td>
+                            <td>21.0ms</td>
+                            <td>126.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_128t</strong></td>
+                            <td>79.5μs</td>
+                            <td>2.6ms</td>
+                            <td>5.9ms</td>
+                            <td>6.5ms</td>
+                            <td>7.7ms</td>
+                            <td>78.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_1t</strong></td>
+                            <td>12.6μs</td>
+                            <td>15.0μs</td>
+                            <td>19.9μs</td>
+                            <td>23.9μs</td>
+                            <td>45.6μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_16t</strong></td>
+                            <td>13.9μs</td>
+                            <td>39.7μs</td>
+                            <td>59.3μs</td>
+                            <td>77.4μs</td>
+                            <td>514.9μs</td>
+                            <td>2.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_2t</strong></td>
+                            <td>12.9μs</td>
+                            <td>16.3μs</td>
+                            <td>22.0μs</td>
+                            <td>27.0μs</td>
+                            <td>61.6μs</td>
+                            <td>2.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_32t</strong></td>
+                            <td>182.3μs</td>
+                            <td>1.4ms</td>
+                            <td>1.8ms</td>
+                            <td>2.1ms</td>
+                            <td>2.7ms</td>
+                            <td>16.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_4t</strong></td>
+                            <td>12.8μs</td>
+                            <td>17.5μs</td>
+                            <td>25.5μs</td>
+                            <td>29.6μs</td>
+                            <td>50.8μs</td>
+                            <td>1.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_8t</strong></td>
+                            <td>12.7μs</td>
+                            <td>25.0μs</td>
+                            <td>36.2μs</td>
+                            <td>42.8μs</td>
+                            <td>102.3μs</td>
+                            <td>1.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_256t</strong></td>
+                            <td>94.9μs</td>
+                            <td>3.9ms</td>
+                            <td>8.6ms</td>
+                            <td>10.0ms</td>
+                            <td>16.9ms</td>
+                            <td>119.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_32t</strong></td>
+                            <td>380.5μs</td>
+                            <td>1.2ms</td>
+                            <td>2.1ms</td>
+                            <td>2.6ms</td>
+                            <td>4.0ms</td>
+                            <td>15.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_16t</strong></td>
+                            <td>13.1μs</td>
+                            <td>247.9μs</td>
+                            <td>407.7μs</td>
+                            <td>641.1μs</td>
+                            <td>1.1ms</td>
+                            <td>7.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_128t</strong></td>
+                            <td>459.6μs</td>
+                            <td>3.2ms</td>
+                            <td>5.6ms</td>
+                            <td>6.9ms</td>
+                            <td>10.6ms</td>
+                            <td>72.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_32t</strong></td>
+                            <td>341.8μs</td>
+                            <td>1.2ms</td>
+                            <td>2.0ms</td>
+                            <td>2.5ms</td>
+                            <td>4.0ms</td>
+                            <td>17.5ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_64t</strong></td>
+                            <td>386.4μs</td>
+                            <td>2.1ms</td>
+                            <td>3.4ms</td>
+                            <td>4.0ms</td>
+                            <td>5.8ms</td>
+                            <td>21.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_64t</strong></td>
+                            <td>379.2μs</td>
+                            <td>1.8ms</td>
+                            <td>3.4ms</td>
+                            <td>4.2ms</td>
+                            <td>6.9ms</td>
+                            <td>22.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_8t</strong></td>
+                            <td>13.9μs</td>
+                            <td>27.6μs</td>
+                            <td>41.8μs</td>
+                            <td>50.6μs</td>
+                            <td>213.0μs</td>
+                            <td>2.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_128t</strong></td>
+                            <td>419.9μs</td>
+                            <td>4.0ms</td>
+                            <td>5.8ms</td>
+                            <td>6.5ms</td>
+                            <td>8.5ms</td>
+                            <td>27.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_32t</strong></td>
+                            <td>72.7μs</td>
+                            <td>513.4μs</td>
+                            <td>828.5μs</td>
+                            <td>925.1μs</td>
+                            <td>1.3ms</td>
+                            <td>17.3ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_2t</strong></td>
+                            <td>13.1μs</td>
+                            <td>16.0μs</td>
+                            <td>23.6μs</td>
+                            <td>29.1μs</td>
+                            <td>63.9μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_256t</strong></td>
+                            <td>247.3μs</td>
+                            <td>11.6ms</td>
+                            <td>12.7ms</td>
+                            <td>13.2ms</td>
+                            <td>14.7ms</td>
+                            <td>143.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_64t</strong></td>
+                            <td>64.2μs</td>
+                            <td>848.2μs</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>3.3ms</td>
+                            <td>29.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_256t</strong></td>
+                            <td>523.2μs</td>
+                            <td>8.7ms</td>
+                            <td>11.5ms</td>
+                            <td>12.6ms</td>
+                            <td>15.5ms</td>
+                            <td>31.2ms</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+                
+                <h3>Overall Latencies</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Test Case</th>
+                            <th>Min</th>
+                            <th>P50</th>
+                            <th>P90</th>
+                            <th>P95</th>
+                            <th>P99</th>
+                            <th>Max</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><strong>raw_read_100_1t</strong></td>
+                            <td>2.5μs</td>
+                            <td>2.9μs</td>
+                            <td>3.3μs</td>
+                            <td>4.0μs</td>
+                            <td>8.0μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_4t</strong></td>
+                            <td>2.7μs</td>
+                            <td>3.8μs</td>
+                            <td>14.9μs</td>
+                            <td>20.0μs</td>
+                            <td>29.7μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_8t</strong></td>
+                            <td>2.4μs</td>
+                            <td>2.8μs</td>
+                            <td>4.1μs</td>
+                            <td>4.3μs</td>
+                            <td>10.0μs</td>
+                            <td>581.9μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_128t</strong></td>
+                            <td>194.6μs</td>
+                            <td>5.8ms</td>
+                            <td>6.8ms</td>
+                            <td>7.2ms</td>
+                            <td>9.0ms</td>
+                            <td>65.6ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_64t</strong></td>
+                            <td>675.1μs</td>
+                            <td>2.8ms</td>
+                            <td>3.3ms</td>
+                            <td>3.5ms</td>
+                            <td>4.1ms</td>
+                            <td>9.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_1t</strong></td>
+                            <td>12.6μs</td>
+                            <td>15.8μs</td>
+                            <td>19.7μs</td>
+                            <td>23.9μs</td>
+                            <td>53.2μs</td>
+                            <td>6.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_32t</strong></td>
+                            <td>18.8μs</td>
+                            <td>201.5μs</td>
+                            <td>623.3μs</td>
+                            <td>649.3μs</td>
+                            <td>789.2μs</td>
+                            <td>19.9ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_256t</strong></td>
+                            <td>288.9μs</td>
+                            <td>5.1ms</td>
+                            <td>9.4ms</td>
+                            <td>11.1ms</td>
+                            <td>15.5ms</td>
+                            <td>135.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_128t</strong></td>
+                            <td>17.8μs</td>
+                            <td>304.0μs</td>
+                            <td>1.3ms</td>
+                            <td>2.8ms</td>
+                            <td>5.9ms</td>
+                            <td>99.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_1t</strong></td>
+                            <td>2.7μs</td>
+                            <td>3.5μs</td>
+                            <td>13.6μs</td>
+                            <td>15.1μs</td>
+                            <td>20.9μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_16t</strong></td>
+                            <td>2.6μs</td>
+                            <td>4.6μs</td>
+                            <td>19.1μs</td>
+                            <td>39.9μs</td>
+                            <td>60.3μs</td>
+                            <td>2.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_2t</strong></td>
+                            <td>12.9μs</td>
+                            <td>16.3μs</td>
+                            <td>22.0μs</td>
+                            <td>27.0μs</td>
+                            <td>61.6μs</td>
+                            <td>2.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_32t</strong></td>
+                            <td>182.3μs</td>
+                            <td>1.4ms</td>
+                            <td>1.8ms</td>
+                            <td>2.1ms</td>
+                            <td>2.7ms</td>
+                            <td>16.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_128t</strong></td>
+                            <td>278.3μs</td>
+                            <td>2.5ms</td>
+                            <td>4.3ms</td>
+                            <td>5.0ms</td>
+                            <td>6.9ms</td>
+                            <td>60.3ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_256t</strong></td>
+                            <td>16.8μs</td>
+                            <td>40.5μs</td>
+                            <td>486.4μs</td>
+                            <td>1.3ms</td>
+                            <td>7.0ms</td>
+                            <td>202.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_4t</strong></td>
+                            <td>12.8μs</td>
+                            <td>17.5μs</td>
+                            <td>25.5μs</td>
+                            <td>29.6μs</td>
+                            <td>50.8μs</td>
+                            <td>1.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_8t</strong></td>
+                            <td>12.7μs</td>
+                            <td>25.0μs</td>
+                            <td>36.2μs</td>
+                            <td>42.8μs</td>
+                            <td>102.3μs</td>
+                            <td>1.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_256t</strong></td>
+                            <td>18.1μs</td>
+                            <td>698.1μs</td>
+                            <td>2.5ms</td>
+                            <td>4.2ms</td>
+                            <td>8.8ms</td>
+                            <td>130.3ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_64t</strong></td>
+                            <td>262.7μs</td>
+                            <td>1.5ms</td>
+                            <td>2.6ms</td>
+                            <td>3.2ms</td>
+                            <td>4.9ms</td>
+                            <td>30.9ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_16t</strong></td>
+                            <td>2.3μs</td>
+                            <td>3.0μs</td>
+                            <td>4.3μs</td>
+                            <td>4.5μs</td>
+                            <td>10.8μs</td>
+                            <td>1.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_32t</strong></td>
+                            <td>271.4μs</td>
+                            <td>928.2μs</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>3.1ms</td>
+                            <td>21.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_write_100_16t</strong></td>
+                            <td>13.1μs</td>
+                            <td>247.9μs</td>
+                            <td>407.7μs</td>
+                            <td>641.1μs</td>
+                            <td>1.1ms</td>
+                            <td>7.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_256t</strong></td>
+                            <td>302.2μs</td>
+                            <td>4.6ms</td>
+                            <td>8.0ms</td>
+                            <td>9.3ms</td>
+                            <td>12.8ms</td>
+                            <td>134.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_64t</strong></td>
+                            <td>17.2μs</td>
+                            <td>192.5μs</td>
+                            <td>660.4μs</td>
+                            <td>895.4μs</td>
+                            <td>1.4ms</td>
+                            <td>40.4ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_128t</strong></td>
+                            <td>310.3μs</td>
+                            <td>2.6ms</td>
+                            <td>4.5ms</td>
+                            <td>5.3ms</td>
+                            <td>7.9ms</td>
+                            <td>72.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_4t</strong></td>
+                            <td>2.4μs</td>
+                            <td>2.8μs</td>
+                            <td>3.2μs</td>
+                            <td>4.0μs</td>
+                            <td>5.6μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_32t</strong></td>
+                            <td>341.8μs</td>
+                            <td>1.2ms</td>
+                            <td>2.0ms</td>
+                            <td>2.5ms</td>
+                            <td>4.0ms</td>
+                            <td>17.5ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_64t</strong></td>
+                            <td>386.4μs</td>
+                            <td>2.1ms</td>
+                            <td>3.4ms</td>
+                            <td>4.0ms</td>
+                            <td>5.8ms</td>
+                            <td>21.7ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_read_100_128t</strong></td>
+                            <td>17.0μs</td>
+                            <td>357.1μs</td>
+                            <td>1.1ms</td>
+                            <td>1.4ms</td>
+                            <td>2.4ms</td>
+                            <td>97.5ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_read_100_2t</strong></td>
+                            <td>2.5μs</td>
+                            <td>2.8μs</td>
+                            <td>3.1μs</td>
+                            <td>3.6μs</td>
+                            <td>6.2μs</td>
+                            <td>717.2μs</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_mixed_90_10_64t</strong></td>
+                            <td>278.8μs</td>
+                            <td>1.5ms</td>
+                            <td>2.7ms</td>
+                            <td>3.3ms</td>
+                            <td>5.1ms</td>
+                            <td>26.0ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_8t</strong></td>
+                            <td>2.6μs</td>
+                            <td>3.5μs</td>
+                            <td>15.3μs</td>
+                            <td>27.8μs</td>
+                            <td>42.4μs</td>
+                            <td>2.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_128t</strong></td>
+                            <td>419.9μs</td>
+                            <td>4.0ms</td>
+                            <td>5.8ms</td>
+                            <td>6.5ms</td>
+                            <td>8.5ms</td>
+                            <td>27.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_32t</strong></td>
+                            <td>19.5μs</td>
+                            <td>225.1μs</td>
+                            <td>713.4μs</td>
+                            <td>840.1μs</td>
+                            <td>990.9μs</td>
+                            <td>19.1ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>raw_mixed_90_10_2t</strong></td>
+                            <td>2.6μs</td>
+                            <td>3.5μs</td>
+                            <td>14.3μs</td>
+                            <td>16.2μs</td>
+                            <td>24.7μs</td>
+                            <td>1.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_write_100_256t</strong></td>
+                            <td>247.3μs</td>
+                            <td>11.6ms</td>
+                            <td>12.7ms</td>
+                            <td>13.2ms</td>
+                            <td>14.7ms</td>
+                            <td>143.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>thrift_mixed_90_10_64t</strong></td>
+                            <td>17.2μs</td>
+                            <td>190.1μs</td>
+                            <td>743.9μs</td>
+                            <td>1.0ms</td>
+                            <td>1.8ms</td>
+                            <td>33.2ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_read_100_32t</strong></td>
+                            <td>262.9μs</td>
+                            <td>892.7μs</td>
+                            <td>1.7ms</td>
+                            <td>2.1ms</td>
+                            <td>3.2ms</td>
+                            <td>20.8ms</td>
+                        </tr>
+
+                        <tr>
+                            <td><strong>grpc_write_100_256t</strong></td>
+                            <td>523.2μs</td>
+                            <td>8.7ms</td>
+                            <td>11.5ms</td>
+                            <td>12.6ms</td>
+                            <td>15.5ms</td>
+                            <td>31.2ms</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>⚙️ Test Configuration</h2>
+                <div class="config-section">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h4>Total Requests</h4>
+                            <div class="stat-value">500,000</div>
+                            <div class="stat-description">per test case</div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Concurrent Threads</h4>
+                            <div class="stat-value">1</div>
+                            <div class="stat-description">parallel workers</div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Key Size</h4>
+                            <div class="stat-value">16</div>
+                            <div class="stat-description">bytes</div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Value Size</h4>
+                            <div class="stat-value">100</div>
+                            <div class="stat-description">bytes</div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Test Duration</h4>
+                            <div class="stat-value">2.88s</div>
+                            <div class="stat-description">total runtime</div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Started At</h4>
+                            <div class="stat-value" style="font-size: 1.4em;">2025-08-10 01:58:18+00:00</div>
+                            <div class="stat-description">UTC time</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <div class="footer">
+            <p>Generated by KV Store Benchmark Suite • <a href="https://github.com/your-repo/kv-store" target="_blank">View on GitHub</a></p>
+        </div>
+    </div>
+    
+    <script>
+    // Wait for Chart.js to load and DOM to be ready
+function initCharts() {
+    if (typeof Chart === 'undefined') {
+        console.log('Chart.js not loaded yet, retrying...');
+        setTimeout(initCharts, 100);
+        return;
+    }
+    
+    console.log('Chart.js loaded, initializing charts...');
+    // Chart generation code will be inserted here dynamically
+}
+
+// Initialize charts when page loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCharts);
+} else {
+    initCharts();
+}
+    
+            // RAW throughput chart
+            const throughputCtx1 = document.getElementById('throughput-chart-1').getContext('2d');
+            new Chart(throughputCtx1, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 4, 8, 16],
+                    datasets: [
+                        {
+                    label: 'MIXED',
+                    data: [104224.11291322218, 194386.88153195736, 346384.7742482368, 584954.4846739989, 802901.2870122237],
+                    borderColor: 'rgba(22, 160, 133, 0.9)',
+                    backgroundColor: 'rgba(22, 160, 133, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [5, 5, 2, 5],
+                    spanGaps: true
+                },{
+                    label: 'READ',
+                    data: [173533.01830040445, 335651.44627324474, 599293.3456486518, 954987.4350584191, 1406625.4234902547],
+                    borderColor: 'rgba(46, 204, 113, 0.9)',
+                    backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [],
+                    spanGaps: true
+                },{
+                    label: 'WRITE',
+                    data: [24805.01719196178, 47683.553676148425, 93090.80234426152, 147972.37367266187, 48770.40669060406],
+                    borderColor: 'rgba(39, 174, 96, 0.9)',
+                    backgroundColor: 'rgba(39, 174, 96, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [15, 5],
+                    spanGaps: true
+                }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: false,
+                                padding: 20,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.parsed.y === null) return null;
+                                    return 'RAW ' + context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ops/s';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Thread Count',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Throughput (ops/s)',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Combined gRPC+Thrift throughput chart
+            const throughputCtx2 = document.getElementById('throughput-chart-2').getContext('2d');
+            new Chart(throughputCtx2, {
+                type: 'line',
+                data: {
+                    labels: [32, 64, 128, 256],
+                    datasets: [
+                        {
+                        label: 'GRPC - MIXED',
+                        data: [29794.765552485936, 36945.862098757796, 43996.076827593046, 44230.597068103554],
+                        borderColor: 'rgba(125, 60, 152, 0.9)',
+                        backgroundColor: 'rgba(125, 60, 152, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [5, 5, 2, 5],
+                        spanGaps: true
+                    },{
+                        label: 'GRPC - READ',
+                        data: [30669.279137447505, 38394.35791900263, 46154.530135579975, 49625.75801546435],
+                        borderColor: 'rgba(155, 89, 182, 0.9)',
+                        backgroundColor: 'rgba(155, 89, 182, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [],
+                        spanGaps: true
+                    },{
+                        label: 'GRPC - WRITE',
+                        data: [23467.313832152082, 28092.972566066826, 30395.93034656522, 28568.548050438323],
+                        borderColor: 'rgba(142, 68, 173, 0.9)',
+                        backgroundColor: 'rgba(142, 68, 173, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [15, 5],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - MIXED',
+                        data: [92554.32240865797, 185965.26089705242, 180349.87043089993, 187216.1625588294],
+                        borderColor: 'rgba(30, 100, 140, 0.9)',
+                        backgroundColor: 'rgba(30, 100, 140, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [5, 5, 2, 5],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - READ',
+                        data: [113708.92204896825, 209225.44228663156, 225250.37240002106, 354826.9336811443],
+                        borderColor: 'rgba(52, 152, 219, 0.9)',
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - WRITE',
+                        data: [21592.146847232016, 22361.688449494337, 21347.9228193958, 21740.23650428819],
+                        borderColor: 'rgba(41, 128, 185, 0.9)',
+                        backgroundColor: 'rgba(41, 128, 185, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [15, 5],
+                        spanGaps: true
+                    }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: false,
+                                padding: 20,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.parsed.y === null) return null;
+                                    return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ops/s';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Thread Count',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Throughput (ops/s)',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // RAW P50 latency chart
+            const latencyCtx3 = document.getElementById('latency-chart-3').getContext('2d');
+            new Chart(latencyCtx3, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 4, 8, 16],
+                    datasets: [
+                        {
+                    label: 'MIXED',
+                    data: [0.003455, 0.0035, 0.003842, 0.003495, 0.004625],
+                    borderColor: 'rgba(22, 160, 133, 0.9)',
+                    backgroundColor: 'rgba(22, 160, 133, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [5, 5, 2, 5],
+                    spanGaps: true
+                },{
+                    label: 'READ',
+                    data: [0.002913, 0.002827, 0.002826, 0.002834, 0.002976],
+                    borderColor: 'rgba(46, 204, 113, 0.9)',
+                    backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [],
+                    spanGaps: true
+                },{
+                    label: 'WRITE',
+                    data: [0.015764, 0.016267, 0.017516, 0.024993, 0.247936],
+                    borderColor: 'rgba(39, 174, 96, 0.9)',
+                    backgroundColor: 'rgba(39, 174, 96, 0.2)',
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.3,
+                    fill: false,
+                    borderDash: [15, 5],
+                    spanGaps: true
+                }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: false,
+                                padding: 20,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.parsed.y === null) return null;
+                                    return 'RAW ' + context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' ms';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Thread Count',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'P50 Latency (ms)',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Combined gRPC+Thrift P50 latency chart
+            const latencyCtx4 = document.getElementById('latency-chart-4').getContext('2d');
+            new Chart(latencyCtx4, {
+                type: 'line',
+                data: {
+                    labels: [32, 64, 128, 256],
+                    datasets: [
+                        {
+                        label: 'GRPC - MIXED',
+                        data: [0.928205, 1.520174, 2.608092, 5.092139],
+                        borderColor: 'rgba(125, 60, 152, 0.9)',
+                        backgroundColor: 'rgba(125, 60, 152, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [5, 5, 2, 5],
+                        spanGaps: true
+                    },{
+                        label: 'GRPC - READ',
+                        data: [0.892703, 1.461396, 2.524558, 4.627253],
+                        borderColor: 'rgba(155, 89, 182, 0.9)',
+                        backgroundColor: 'rgba(155, 89, 182, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [],
+                        spanGaps: true
+                    },{
+                        label: 'GRPC - WRITE',
+                        data: [1.203038, 2.067822, 3.986803, 8.662206],
+                        borderColor: 'rgba(142, 68, 173, 0.9)',
+                        backgroundColor: 'rgba(142, 68, 173, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [15, 5],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - MIXED',
+                        data: [0.225137, 0.19014, 0.303961, 0.698092],
+                        borderColor: 'rgba(30, 100, 140, 0.9)',
+                        backgroundColor: 'rgba(30, 100, 140, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [5, 5, 2, 5],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - READ',
+                        data: [0.201459, 0.192504, 0.357054, 0.040479],
+                        borderColor: 'rgba(52, 152, 219, 0.9)',
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [],
+                        spanGaps: true
+                    },{
+                        label: 'THRIFT - WRITE',
+                        data: [1.374675, 2.75005, 5.815798, 11.585967],
+                        borderColor: 'rgba(41, 128, 185, 0.9)',
+                        backgroundColor: 'rgba(41, 128, 185, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        tension: 0.3,
+                        fill: false,
+                        borderDash: [15, 5],
+                        spanGaps: true
+                    }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: false,
+                                padding: 20,
+                                font: {
+                                    size: 12
+                                },
+                                generateLabels: function(chart) {
+                                    const datasets = chart.data.datasets;
+                                    return datasets.map((dataset, i) => ({
+                                        text: dataset.label,
+                                        fillStyle: dataset.borderColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: 3,
+                                        lineDash: dataset.borderDash || [],
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.parsed.y === null) return null;
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' ms';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Thread Count',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'P50 Latency (ms)',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(200, 200, 200, 0.3)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+    </script>
+    
+    <script>
+    // Table sorting functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('performance-summary-table');
+    if (!table) return;  // Skip if table doesn't exist
+    
+    const headers = table.querySelectorAll('th.sortable');
+    
+    // Helper functions
+    function parseNumber(str) {
+        if (str === 'N/A' || str === '') return -1;
+        return parseFloat(str.replace(/[^0-9.-]/g, ''));
+    }
+    
+    function parseDuration(str) {
+        if (str === 'N/A' || str === '') return -1;
+        const match = str.match(/([0-9.]+)([a-zA-Z]+)/);
+        if (!match) return -1;
+        
+        const value = parseFloat(match[1]);
+        const unit = match[2];
+        
+        // Convert to nanoseconds for consistent comparison
+        switch(unit) {
+            case 'ns': return value;
+            case 'μs': return value * 1000;
+            case 'ms': return value * 1000000;
+            case 's': return value * 1000000000;
+            default: return value;
+        }
+    }
+    
+    function sortTable(columnIndex, sortType, ascending = true) {
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        rows.sort((a, b) => {
+            const aText = a.cells[columnIndex].textContent.trim();
+            const bText = b.cells[columnIndex].textContent.trim();
+            
+            let aValue, bValue;
+            
+            switch(sortType) {
+                case 'number':
+                    aValue = parseNumber(aText);
+                    bValue = parseNumber(bText);
+                    break;
+                case 'duration':
+                    aValue = parseDuration(aText);
+                    bValue = parseDuration(bText);
+                    break;
+                case 'string':
+                default:
+                    aValue = aText.toLowerCase();
+                    bValue = bText.toLowerCase();
+                    break;
+            }
+            
+            if (aValue < bValue) return ascending ? -1 : 1;
+            if (aValue > bValue) return ascending ? 1 : -1;
+            return 0;
+        });
+        
+        // Re-append rows in sorted order
+        rows.forEach(row => tbody.appendChild(row));
+    }
+    
+    // Add click listeners to sortable headers
+    headers.forEach((header, index) => {
+        header.addEventListener('click', function() {
+            const sortType = this.getAttribute('data-sort');
+            const isCurrentlyAsc = this.classList.contains('sort-asc');
+            const isCurrentlyDesc = this.classList.contains('sort-desc');
+            
+            // Clear all sort indicators
+            headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+            
+            // Determine sort direction
+            let ascending = true;
+            if (isCurrentlyAsc) {
+                ascending = false;
+                this.classList.add('sort-desc');
+            } else {
+                this.classList.add('sort-asc');
+            }
+            
+            // Sort the table
+            sortTable(index, sortType, ascending);
+        });
+    });
+});
+    </script>
+</body>
+</html>
