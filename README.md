@@ -1,6 +1,6 @@
 # RocksDB Key-Value Service
 
-A high-performance key-value service supporting both gRPC and Thrift protocols, with RocksDB as the storage engine. Features implementations in Go and Rust with comprehensive benchmarking capabilities.
+A high-performance key-value service supporting both gRPC and Thrift protocols, with RocksDB as the storage engine. Features implementations in Go, Rust, and C++ with comprehensive benchmarking capabilities and configurable database settings.
 
 ## Project Structure
 
@@ -31,13 +31,24 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   ├── CMakeLists.txt    # CMake build configuration
 │   └── README.md         # C++ specific instructions
 ├── benchmark-rust/        # Rust benchmarking tools
-│   └── src/              # Rust benchmark implementation
+│   ├── src/              # Rust benchmark implementation
+│   │   ├── main.rs       # Main benchmark entry point
+│   │   ├── clients/      # Client implementations (gRPC, raw, thrift)
+│   │   └── config.rs     # Configuration management
+│   └── Cargo.toml        # Rust dependencies
 ├── proto/                 # Protocol buffer definitions
 │   └── kvstore.proto     # gRPC service and message definitions
 ├── thrift/               # Thrift definitions
 │   └── kvstore.thrift    # Thrift service and message definitions
 ├── data/                  # Database storage directory (auto-created)
 ├── bin/                   # Compiled binaries (auto-created)
+├── configs/               # Database configuration files
+│   └── db/                # RocksDB configuration presets
+│       ├── default.toml   # Default database settings
+│       ├── cold_block_cache.toml # Cold cache configuration
+│       └── warm_large_cache.toml # Large cache configuration
+├── benchmark_results/     # Benchmark output and reports
+├── scripts/               # Development and testing scripts
 ├── generate.sh           # Protobuf code generation script
 ├── Makefile             # Build automation for all targets
 └── README.md            # This file
@@ -53,7 +64,8 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
   - **Delete**: Remove a key-value pair
   - **ListKeys**: List all keys with optional prefix filtering
   - **Ping**: Health check and latency testing
-- **Benchmarking**: Multi-threaded performance testing with detailed metrics (Rust implementation)
+- **Benchmarking**: Multi-threaded performance testing with detailed metrics and HTML reports (Rust implementation)
+- **Configuration Management**: Configurable RocksDB settings for different workloads
 - **High Performance**: Built on RocksDB for efficient storage and retrieval
 
 ## Prerequisites
@@ -276,6 +288,12 @@ All servers use port 50051 by default. Start one server at a time:
 # Database: ./data/rocksdb-thrift/
 ```
 
+**C++ gRPC Server:**
+```bash
+./bin/rocksdbserver-cpp
+# Database: ./data/rocksdb-cpp/
+```
+
 ### Using the Client
 
 The client automatically detects and works with both gRPC and Thrift protocols:
@@ -328,7 +346,7 @@ grpcurl -plaintext -d '{"prefix":"", "limit":10}' localhost:50051 kvstore.KVStor
 
 ## Benchmarking
 
-The Rust benchmark tool supports gRPC protocol and can test various workload patterns.
+The Rust benchmark tool supports multiple protocols (gRPC, Thrift, and raw RocksDB) and can test various workload patterns with configurable database settings.
 
 ### Quick Start
 
@@ -361,6 +379,10 @@ make build-release
 - `-key-size`: Key size in bytes (default: 16)
 - `-value-size`: Value size in bytes (default: 100)
 
+**Database Configuration:**
+- `-c`: Path to TOML configuration file for RocksDB settings
+- Available presets: `configs/db/default.toml`, `configs/db/cold_block_cache.toml`, `configs/db/warm_large_cache.toml`
+
 ### Example Benchmark Commands
 
 ```bash
@@ -375,6 +397,12 @@ make build-release
 
 # Large-scale test
 ./bin/benchmark-rust -t 32 -n 2000000 -w 20
+
+# Test with cold cache configuration
+./bin/benchmark-rust -c configs/db/cold_block_cache.toml
+
+# Raw RocksDB performance test
+./bin/benchmark-rust --raw -t 16 -n 500000
 ```
 
 ### Benchmark Output
