@@ -17,60 +17,280 @@ use crate::db::TransactionalKvDatabase;
 use crate::kvstore::*;
 use crate::config::Config;
 
-struct KvStoreThriftHandler {
+struct TransactionalKvStoreThriftHandler {
     database: Arc<TransactionalKvDatabase>,
     runtime_handle: Handle,
 }
 
-impl KvStoreThriftHandler {
+impl TransactionalKvStoreThriftHandler {
     fn new(database: Arc<TransactionalKvDatabase>, runtime_handle: Handle) -> Self {
         Self { database, runtime_handle }
     }
 }
 
-impl KVStoreSyncHandler for KvStoreThriftHandler {
+impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
+    // Transaction lifecycle methods
+    fn handle_begin_transaction(&self, req: BeginTransactionRequest) -> thrift::Result<BeginTransactionResponse> {
+        let column_families = req.column_families.unwrap_or_default();
+        let timeout_seconds = req.timeout_seconds.unwrap_or(60) as u64;
+        
+        let result = self.runtime_handle.block_on(
+            self.database.begin_transaction(column_families, timeout_seconds)
+        );
+        
+        Ok(BeginTransactionResponse::new(
+            result.transaction_id,
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    fn handle_commit_transaction(&self, req: CommitTransactionRequest) -> thrift::Result<CommitTransactionResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.commit_transaction(&req.transaction_id)
+        );
+        
+        Ok(CommitTransactionResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    fn handle_abort_transaction(&self, req: AbortTransactionRequest) -> thrift::Result<AbortTransactionResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.abort_transaction(&req.transaction_id)
+        );
+        
+        Ok(AbortTransactionResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    // Core transactional operations
     fn handle_get(&self, req: GetRequest) -> thrift::Result<GetResponse> {
-        // Use the shared runtime handle instead of creating a new runtime
-        let result = self.runtime_handle.block_on(self.database.get(&req.key));
+        let result = self.runtime_handle.block_on(
+            self.database.transactional_get(&req.transaction_id, &req.key, req.column_family.as_deref())
+        );
         
         match result {
-            Ok(get_result) => Ok(GetResponse::new(get_result.value, get_result.found)),
-            Err(e) => Err(thrift::Error::Application(thrift::ApplicationError::new(
-                thrift::ApplicationErrorKind::InternalError,
-                e,
-            ))),
+            Ok(get_result) => Ok(GetResponse::new(
+                get_result.value,
+                get_result.found,
+                None
+            )),
+            Err(e) => Ok(GetResponse::new(
+                String::new(),
+                false,
+                Some(e)
+            )),
         }
     }
 
-    fn handle_put(&self, req: PutRequest) -> thrift::Result<PutResponse> {
-        let result = self.runtime_handle.block_on(self.database.put(&req.key, &req.value));
+    fn handle_set_key(&self, req: SetRequest) -> thrift::Result<SetResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.transactional_set(&req.transaction_id, &req.key, &req.value, req.column_family.as_deref())
+        );
         
-        let error = if result.error.is_empty() { None } else { Some(result.error) };
-        Ok(PutResponse::new(result.success, error))
+        Ok(SetResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
     }
 
     fn handle_delete_key(&self, req: DeleteRequest) -> thrift::Result<DeleteResponse> {
-        let result = self.runtime_handle.block_on(self.database.delete(&req.key));
+        let result = self.runtime_handle.block_on(
+            self.database.transactional_delete(&req.transaction_id, &req.key, req.column_family.as_deref())
+        );
         
-        let error = if result.error.is_empty() { None } else { Some(result.error) };
-        Ok(DeleteResponse::new(result.success, error))
+        Ok(DeleteResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
     }
 
-    fn handle_list_keys(&self, req: ListKeysRequest) -> thrift::Result<ListKeysResponse> {
-        let prefix = req.prefix.as_deref().unwrap_or("");
+    // Range operations
+    fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
         let limit = req.limit.unwrap_or(1000) as u32;
-        
-        let result = self.runtime_handle.block_on(self.database.list_keys(prefix, limit));
+        let result = self.runtime_handle.block_on(
+            self.database.transactional_get_range(
+                &req.transaction_id,
+                &req.start_key,
+                req.end_key.as_deref(),
+                limit,
+                req.column_family.as_deref()
+            )
+        );
         
         match result {
-            Ok(keys) => Ok(ListKeysResponse::new(keys)),
-            Err(e) => Err(thrift::Error::Application(thrift::ApplicationError::new(
-                thrift::ApplicationErrorKind::InternalError,
-                e,
-            ))),
+            Ok(key_values) => {
+                let thrift_key_values: Vec<KeyValue> = key_values
+                    .into_iter()
+                    .map(|(key, value)| KeyValue::new(key, value))
+                    .collect();
+                
+                Ok(GetRangeResponse::new(
+                    thrift_key_values,
+                    true,
+                    None
+                ))
+            }
+            Err(e) => Ok(GetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some(e)
+            )),
         }
     }
 
+    // Snapshot operations
+    fn handle_snapshot_get(&self, req: SnapshotGetRequest) -> thrift::Result<SnapshotGetResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.snapshot_get(&req.transaction_id, &req.key, req.read_version, req.column_family.as_deref())
+        );
+        
+        match result {
+            Ok(get_result) => Ok(SnapshotGetResponse::new(
+                get_result.value,
+                get_result.found,
+                None
+            )),
+            Err(e) => Ok(SnapshotGetResponse::new(
+                String::new(),
+                false,
+                Some(e)
+            )),
+        }
+    }
+
+    fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
+        let limit = req.limit.unwrap_or(1000) as u32;
+        let result = self.runtime_handle.block_on(
+            self.database.snapshot_get_range(
+                &req.transaction_id,
+                &req.start_key,
+                req.end_key.as_deref(),
+                req.read_version,
+                limit,
+                req.column_family.as_deref()
+            )
+        );
+        
+        match result {
+            Ok(key_values) => {
+                let thrift_key_values: Vec<KeyValue> = key_values
+                    .into_iter()
+                    .map(|(key, value)| KeyValue::new(key, value))
+                    .collect();
+                
+                Ok(SnapshotGetRangeResponse::new(
+                    thrift_key_values,
+                    true,
+                    None
+                ))
+            }
+            Err(e) => Ok(SnapshotGetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some(e)
+            )),
+        }
+    }
+
+    // Conflict detection
+    fn handle_add_read_conflict(&self, req: AddReadConflictRequest) -> thrift::Result<AddReadConflictResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.add_read_conflict(&req.transaction_id, &req.key, req.column_family.as_deref())
+        );
+        
+        Ok(AddReadConflictResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    fn handle_add_read_conflict_range(&self, req: AddReadConflictRangeRequest) -> thrift::Result<AddReadConflictRangeResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.add_read_conflict_range(&req.transaction_id, &req.start_key, &req.end_key, req.column_family.as_deref())
+        );
+        
+        Ok(AddReadConflictRangeResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    // Version management
+    fn handle_set_read_version(&self, req: SetReadVersionRequest) -> thrift::Result<SetReadVersionResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.set_read_version(&req.transaction_id, req.version)
+        );
+        
+        Ok(SetReadVersionResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
+    }
+
+    fn handle_get_committed_version(&self, req: GetCommittedVersionRequest) -> thrift::Result<GetCommittedVersionResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.get_committed_version(&req.transaction_id)
+        );
+        
+        match result {
+            Ok(version) => Ok(GetCommittedVersionResponse::new(
+                version,
+                true,
+                None
+            )),
+            Err(e) => Ok(GetCommittedVersionResponse::new(
+                0,
+                false,
+                Some(e)
+            )),
+        }
+    }
+
+    // Versionstamped operations
+    fn handle_set_versionstamped_key(&self, req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.set_versionstamped_key(&req.transaction_id, &req.key_prefix, &req.value, req.column_family.as_deref())
+        );
+        
+        match result {
+            Ok(generated_key) => Ok(SetVersionstampedKeyResponse::new(
+                generated_key,
+                true,
+                None
+            )),
+            Err(e) => Ok(SetVersionstampedKeyResponse::new(
+                String::new(),
+                false,
+                Some(e)
+            )),
+        }
+    }
+
+    fn handle_set_versionstamped_value(&self, req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
+        let result = self.runtime_handle.block_on(
+            self.database.set_versionstamped_value(&req.transaction_id, &req.key, &req.value_prefix, req.column_family.as_deref())
+        );
+        
+        match result {
+            Ok(generated_value) => Ok(SetVersionstampedValueResponse::new(
+                generated_value,
+                true,
+                None
+            )),
+            Err(e) => Ok(SetVersionstampedValueResponse::new(
+                String::new(),
+                false,
+                Some(e)
+            )),
+        }
+    }
+
+    // Health check
     fn handle_ping(&self, req: PingRequest) -> thrift::Result<PingResponse> {
         let server_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -152,7 +372,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     
     let database = Arc::new(database);
-    info!("Starting Thrift server on {}", args.addr);
+    let listen_address = "0.0.0.0:9090";
+    info!("Starting Transactional Thrift server on {}", listen_address);
 
     // Create TCP listener
     let listener = TcpListener::bind(&args.addr)?;
@@ -168,8 +389,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     info!("Accepted connection from {}", peer_addr);
                     
                     // Create handler and processor for this connection with shared runtime handle
-                    let handler = KvStoreThriftHandler::new(database, runtime_handle);
-                    let processor = KVStoreSyncProcessor::new(handler);
+                    let handler = TransactionalKvStoreThriftHandler::new(database, runtime_handle);
+                    let processor = TransactionalKVSyncProcessor::new(handler);
                     
                     // Create buffered transports
                     let read_transport = TBufferedReadTransport::new(stream.try_clone().unwrap());

@@ -16,12 +16,15 @@ pub struct TransactionalKvDatabase {
     config: Config,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ActiveTransaction {
     pub id: String,
     pub created_at: SystemTime,
     pub timeout_duration: Duration,
     pub column_families: Vec<String>,
+    pub read_version: Option<i64>,
+    pub read_conflicts: Vec<String>,
+    pub read_conflict_ranges: Vec<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -153,6 +156,9 @@ impl TransactionalKvDatabase {
             created_at: SystemTime::now(),
             timeout_duration,
             column_families,
+            read_version: None,
+            read_conflicts: Vec::new(),
+            read_conflict_ranges: Vec::new(),
         };
         
         // Store the transaction state
@@ -252,6 +258,324 @@ impl TransactionalKvDatabase {
                 Err(format!("failed to get value: {}", e))
             }
         }
+    }
+
+    // Additional transactional operations
+    pub async fn transactional_set(&self, transaction_id: &str, key: &str, value: &str, column_family: Option<&str>) -> OpResult {
+        if key.is_empty() {
+            return OpResult {
+                success: false,
+                error: "key cannot be empty".to_string(),
+            };
+        }
+
+        // Verify transaction exists
+        let active_txns = self.active_transactions.read().await;
+        if !active_txns.contains_key(transaction_id) {
+            return OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            };
+        }
+        drop(active_txns);
+
+        // Create a transaction for the set operation
+        let txn_opts = TransactionOptions::default();
+        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Perform set operation (with or without column family)
+        let result = if let Some(cf_name) = column_family {
+            if let Some(_cf_handle) = self.cf_handles.get(cf_name) {
+                // For now, use default CF until we can store actual CF handles
+                txn.put(key, value)
+            } else {
+                return OpResult {
+                    success: false,
+                    error: format!("column family '{}' not found", cf_name),
+                };
+            }
+        } else {
+            txn.put(key, value)
+        };
+        
+        match result {
+            Ok(_) => {
+                match txn.commit() {
+                    Ok(_) => OpResult {
+                        success: true,
+                        error: String::new(),
+                    },
+                    Err(e) => {
+                        error!("Failed to commit transactional set: {}", e);
+                        OpResult {
+                            success: false,
+                            error: format!("failed to commit transactional set: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to set value in transaction: {}", e);
+                let _ = txn.rollback();
+                OpResult {
+                    success: false,
+                    error: format!("failed to set value in transaction: {}", e),
+                }
+            }
+        }
+    }
+
+    pub async fn transactional_delete(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> OpResult {
+        if key.is_empty() {
+            return OpResult {
+                success: false,
+                error: "key cannot be empty".to_string(),
+            };
+        }
+
+        // Verify transaction exists
+        let active_txns = self.active_transactions.read().await;
+        if !active_txns.contains_key(transaction_id) {
+            return OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            };
+        }
+        drop(active_txns);
+
+        // Create a transaction for the delete operation
+        let txn_opts = TransactionOptions::default();
+        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Perform delete operation (with or without column family)
+        let result = if let Some(cf_name) = column_family {
+            if let Some(_cf_handle) = self.cf_handles.get(cf_name) {
+                // For now, use default CF until we can store actual CF handles
+                txn.delete(key)
+            } else {
+                return OpResult {
+                    success: false,
+                    error: format!("column family '{}' not found", cf_name),
+                };
+            }
+        } else {
+            txn.delete(key)
+        };
+        
+        match result {
+            Ok(_) => {
+                match txn.commit() {
+                    Ok(_) => OpResult {
+                        success: true,
+                        error: String::new(),
+                    },
+                    Err(e) => {
+                        error!("Failed to commit transactional delete: {}", e);
+                        OpResult {
+                            success: false,
+                            error: format!("failed to commit transactional delete: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to delete key in transaction: {}", e);
+                let _ = txn.rollback();
+                OpResult {
+                    success: false,
+                    error: format!("failed to delete key in transaction: {}", e),
+                }
+            }
+        }
+    }
+
+    pub async fn transactional_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, limit: u32, column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
+        // Verify transaction exists
+        let active_txns = self.active_transactions.read().await;
+        if !active_txns.contains_key(transaction_id) {
+            return Err("transaction not found".to_string());
+        }
+        drop(active_txns);
+
+        // Acquire read semaphore to limit concurrent read transactions
+        let _permit = self.read_semaphore
+            .acquire()
+            .await
+            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+
+        // Create a read-only transaction
+        let txn_opts = TransactionOptions::default();
+        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Use prefix-based iterator for efficiency
+        let iter = txn.iterator(IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward));
+        
+        let mut key_values = Vec::new();
+        let mut count = 0;
+        let limit = if limit > 0 { limit as usize } else { 1000 };
+        
+        for item in iter {
+            if count >= limit {
+                break;
+            }
+            
+            match item {
+                Ok((key, value)) => {
+                    let key_str = String::from_utf8_lossy(&key).to_string();
+                    let value_str = String::from_utf8_lossy(&value).to_string();
+                    
+                    // Check if we're past the end key (if specified)
+                    if let Some(end) = end_key {
+                        if key_str.as_str() >= end {
+                            break;
+                        }
+                    }
+                    
+                    // Check if key starts with start_key prefix
+                    if !key_str.starts_with(start_key) {
+                        break;
+                    }
+                    
+                    key_values.push((key_str, value_str));
+                    count += 1;
+                }
+                Err(e) => {
+                    error!("Iterator error in transactional_get_range: {}", e);
+                    return Err(format!("iterator error: {}", e));
+                }
+            }
+        }
+
+        Ok(key_values)
+    }
+
+    // Conflict detection methods
+    pub async fn add_read_conflict(&self, transaction_id: &str, key: &str, _column_family: Option<&str>) -> OpResult {
+        let mut active_txns = self.active_transactions.write().await;
+        if let Some(txn) = active_txns.get_mut(transaction_id) {
+            txn.read_conflicts.push(key.to_string());
+            OpResult {
+                success: true,
+                error: String::new(),
+            }
+        } else {
+            OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            }
+        }
+    }
+
+    pub async fn add_read_conflict_range(&self, transaction_id: &str, start_key: &str, end_key: &str, _column_family: Option<&str>) -> OpResult {
+        let mut active_txns = self.active_transactions.write().await;
+        if let Some(txn) = active_txns.get_mut(transaction_id) {
+            txn.read_conflict_ranges.push((start_key.to_string(), end_key.to_string()));
+            OpResult {
+                success: true,
+                error: String::new(),
+            }
+        } else {
+            OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            }
+        }
+    }
+
+    // Version management methods
+    pub async fn set_read_version(&self, transaction_id: &str, version: i64) -> OpResult {
+        let mut active_txns = self.active_transactions.write().await;
+        if let Some(txn) = active_txns.get_mut(transaction_id) {
+            txn.read_version = Some(version);
+            OpResult {
+                success: true,
+                error: String::new(),
+            }
+        } else {
+            OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            }
+        }
+    }
+
+    pub async fn get_committed_version(&self, transaction_id: &str) -> Result<i64, String> {
+        let active_txns = self.active_transactions.read().await;
+        if let Some(txn) = active_txns.get(transaction_id) {
+            // For now, return a basic timestamp-based version
+            // In a real implementation, this would be the actual committed version from RocksDB
+            let version = txn.created_at
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|_| "failed to calculate version".to_string())?
+                .as_millis() as i64;
+            Ok(version)
+        } else {
+            Err("transaction not found".to_string())
+        }
+    }
+
+    // Snapshot operations
+    pub async fn snapshot_get(&self, transaction_id: &str, key: &str, _read_version: i64, column_family: Option<&str>) -> Result<GetResult, String> {
+        // For simplicity, delegate to regular transactional_get
+        // In a full implementation, this would use the read_version for snapshot isolation
+        self.transactional_get(transaction_id, key, column_family).await
+    }
+
+    pub async fn snapshot_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, _read_version: i64, limit: u32, column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
+        // For simplicity, delegate to regular transactional_get_range
+        // In a full implementation, this would use the read_version for snapshot isolation
+        self.transactional_get_range(transaction_id, start_key, end_key, limit, column_family).await
+    }
+
+    // Versionstamped operations (basic implementation)
+    pub async fn set_versionstamped_key(&self, transaction_id: &str, key_prefix: &str, value: &str, column_family: Option<&str>) -> Result<String, String> {
+        // Generate a version stamp based on current time
+        let version_stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| "failed to generate version stamp".to_string())?
+            .as_millis();
+        
+        let generated_key = format!("{}{:016x}", key_prefix, version_stamp);
+        
+        let result = self.transactional_set(transaction_id, &generated_key, value, column_family).await;
+        if result.success {
+            Ok(generated_key)
+        } else {
+            Err(result.error)
+        }
+    }
+
+    pub async fn set_versionstamped_value(&self, transaction_id: &str, key: &str, value_prefix: &str, column_family: Option<&str>) -> Result<String, String> {
+        // Generate a version stamp based on current time
+        let version_stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| "failed to generate version stamp".to_string())?
+            .as_millis();
+        
+        let generated_value = format!("{}{:016x}", value_prefix, version_stamp);
+        
+        let result = self.transactional_set(transaction_id, key, &generated_value, column_family).await;
+        if result.success {
+            Ok(generated_value)
+        } else {
+            Err(result.error)
+        }
+    }
+
+    // Transaction cleanup and management
+    pub async fn cleanup_expired_transactions(&self) -> Result<(), String> {
+        let mut active_txns = self.active_transactions.write().await;
+        let now = SystemTime::now();
+        
+        active_txns.retain(|_id, txn| {
+            if let Ok(elapsed) = now.duration_since(txn.created_at) {
+                elapsed < txn.timeout_duration
+            } else {
+                false // Remove transactions with invalid timestamps
+            }
+        });
+        
+        Ok(())
     }
 
     // Keep write worker logic from original implementation
