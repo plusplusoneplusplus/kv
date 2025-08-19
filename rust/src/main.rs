@@ -12,7 +12,7 @@ pub mod kvstore {
     tonic::include_proto!("kvstore");
 }
 
-use crate::db::KvDatabase;
+use crate::db::TransactionalKvDatabase;
 use crate::service::KvStoreGrpcService;
 use crate::config::Config;
 use kvstore::kv_store_server::KvStoreServer;
@@ -76,8 +76,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&db_path)?;
     info!("Using database path: {}", db_path);
 
-    // Create database and server with configuration
-    let db = KvDatabase::new(&db_path, &config)?;
+    // Create database and server with configuration - no column families for gRPC compatibility
+    let db = TransactionalKvDatabase::new(&db_path, &config, &[])?;
     let service = KvStoreGrpcService::new(db);
     
     let addr = args.addr.parse()?;

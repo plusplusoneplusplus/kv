@@ -1,5 +1,5 @@
 use tonic::{Request, Response, Status};
-use crate::db::KvDatabase;
+use crate::db::TransactionalKvDatabase;
 use crate::kvstore::{
     GetRequest, GetResponse, PutRequest, PutResponse, DeleteRequest, DeleteResponse,
     ListKeysRequest, ListKeysResponse, PingRequest, PingResponse,
@@ -7,11 +7,11 @@ use crate::kvstore::{
 use crate::kvstore::kv_store_server::KvStore;
 
 pub struct KvStoreGrpcService {
-    db: KvDatabase,
+    db: TransactionalKvDatabase,
 }
 
 impl KvStoreGrpcService {
-    pub fn new(db: KvDatabase) -> Self {
+    pub fn new(db: TransactionalKvDatabase) -> Self {
         Self { db }
     }
 }

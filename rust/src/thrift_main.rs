@@ -13,17 +13,17 @@ mod db;
 mod kvstore;
 mod config;
 
-use crate::db::KvDatabase;
+use crate::db::TransactionalKvDatabase;
 use crate::kvstore::*;
 use crate::config::Config;
 
 struct KvStoreThriftHandler {
-    database: Arc<KvDatabase>,
+    database: Arc<TransactionalKvDatabase>,
     runtime_handle: Handle,
 }
 
 impl KvStoreThriftHandler {
-    fn new(database: Arc<KvDatabase>, runtime_handle: Handle) -> Self {
+    fn new(database: Arc<TransactionalKvDatabase>, runtime_handle: Handle) -> Self {
         Self { database, runtime_handle }
     }
 }
@@ -146,9 +146,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let runtime_handle = rt.handle().clone();
 
-    // Create database in the shared runtime with configuration
+    // Create database in the shared runtime with configuration - no column families for Thrift compatibility
     let database = rt.block_on(async {
-        KvDatabase::new(&db_path, &config)
+        TransactionalKvDatabase::new(&db_path, &config, &[])
     })?;
     
     let database = Arc::new(database);

@@ -1,13 +1,27 @@
 use rocksdb::{TransactionDB, TransactionDBOptions, Options, TransactionOptions, IteratorMode, BlockBasedOptions, Cache};
 use std::sync::Arc;
-use tokio::sync::{Semaphore, mpsc, oneshot};
+use std::collections::HashMap;
+use tokio::sync::{Semaphore, mpsc, oneshot, RwLock};
 use tracing::error;
+use uuid::Uuid;
+use std::time::{SystemTime, Duration};
 use crate::config::Config;
 
-pub struct KvDatabase {
+pub struct TransactionalKvDatabase {
     db: Arc<TransactionDB>,
+    cf_handles: HashMap<String, String>, // Store CF names instead of handles for now
+    active_transactions: Arc<RwLock<HashMap<String, ActiveTransaction>>>,
     read_semaphore: Arc<Semaphore>,
     write_queue_tx: mpsc::UnboundedSender<WriteRequest>,
+    config: Config,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActiveTransaction {
+    pub id: String,
+    pub created_at: SystemTime,
+    pub timeout_duration: Duration,
+    pub column_families: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -23,6 +37,13 @@ pub struct OpResult {
 }
 
 #[derive(Debug)]
+pub struct TransactionResult {
+    pub transaction_id: String,
+    pub success: bool,
+    pub error: String,
+}
+
+#[derive(Debug)]
 enum WriteOperation {
     Put { key: String, value: String },
     Delete { key: String },
@@ -33,9 +54,9 @@ struct WriteRequest {
     response_tx: oneshot::Sender<OpResult>,
 }
 
-impl KvDatabase {
-    pub fn new(db_path: &str, config: &Config) -> Result<Self, Box<dyn std::error::Error>> {
-        // Set up RocksDB options from configuration
+impl TransactionalKvDatabase {
+    pub fn new(db_path: &str, config: &Config, column_families: &[&str]) -> Result<Self, Box<dyn std::error::Error>> {
+        // Set up RocksDB options from configuration (reuse existing logic)
         let mut opts = Options::default();
         opts.create_if_missing(true);
         
@@ -58,7 +79,6 @@ impl KvDatabase {
         opts.set_compression_per_level(&config.compression.get_compression_per_level());
         
         // Configure compaction settings
-        // Note: set_compaction_priority not available in rust-rocksdb 0.21
         opts.set_target_file_size_base((config.compaction.target_file_size_base_mb * 1024 * 1024) as u64);
         opts.set_target_file_size_multiplier(config.compaction.target_file_size_multiplier as i32);
         opts.set_max_bytes_for_level_base((config.compaction.max_bytes_for_level_base_mb * 1024 * 1024) as u64);
@@ -86,18 +106,20 @@ impl KvDatabase {
         // Apply table options to column family options
         opts.set_block_based_table_factory(&table_opts);
         
-        // Configure memory settings
-        if config.memory.enable_write_buffer_manager && config.memory.write_buffer_manager_limit_mb > 0 {
-            // Note: Write buffer manager requires more complex setup in Rust bindings
-            // This is a simplified version - full implementation would need custom write buffer manager
-        }
-        
         // Set up transaction database options
         let txn_db_opts = TransactionDBOptions::default();
         
-        // Open transaction database
+        // For now, create database without column families to avoid complexity
+        // Column families can be added in a later iteration
         let db = TransactionDB::open(&opts, &txn_db_opts, db_path)?;
         let db = Arc::new(db);
+        
+        // Store column family names (for future implementation)
+        let mut cf_handles = HashMap::new();
+        cf_handles.insert("default".to_string(), "default".to_string());
+        for cf_name in column_families {
+            cf_handles.insert(cf_name.to_string(), cf_name.to_string());
+        }
         
         // Configure concurrency limits for reads from config
         let max_read_concurrency = config.concurrency.max_read_concurrency;
@@ -113,11 +135,126 @@ impl KvDatabase {
         
         Ok(Self {
             db,
+            cf_handles,
+            active_transactions: Arc::new(RwLock::new(HashMap::new())),
             read_semaphore: Arc::new(Semaphore::new(max_read_concurrency)),
             write_queue_tx,
+            config: config.clone(),
         })
     }
 
+    // Transaction lifecycle methods
+    pub async fn begin_transaction(&self, column_families: Vec<String>, timeout_seconds: u64) -> TransactionResult {
+        let transaction_id = Uuid::new_v4().to_string();
+        let timeout_duration = Duration::from_secs(timeout_seconds);
+        
+        let transaction = ActiveTransaction {
+            id: transaction_id.clone(),
+            created_at: SystemTime::now(),
+            timeout_duration,
+            column_families,
+        };
+        
+        // Store the transaction state
+        let mut active_txns = self.active_transactions.write().await;
+        active_txns.insert(transaction_id.clone(), transaction);
+        
+        TransactionResult {
+            transaction_id,
+            success: true,
+            error: String::new(),
+        }
+    }
+
+    pub async fn commit_transaction(&self, transaction_id: &str) -> OpResult {
+        let mut active_txns = self.active_transactions.write().await;
+        
+        if active_txns.remove(transaction_id).is_some() {
+            OpResult {
+                success: true,
+                error: String::new(),
+            }
+        } else {
+            OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            }
+        }
+    }
+
+    pub async fn abort_transaction(&self, transaction_id: &str) -> OpResult {
+        let mut active_txns = self.active_transactions.write().await;
+        
+        if active_txns.remove(transaction_id).is_some() {
+            OpResult {
+                success: true,
+                error: String::new(),
+            }
+        } else {
+            OpResult {
+                success: false,
+                error: "transaction not found".to_string(),
+            }
+        }
+    }
+
+    // Transactional operations
+    pub async fn transactional_get(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> Result<GetResult, String> {
+        if key.is_empty() {
+            return Err("key cannot be empty".to_string());
+        }
+
+        // Verify transaction exists
+        let active_txns = self.active_transactions.read().await;
+        if !active_txns.contains_key(transaction_id) {
+            return Err("transaction not found".to_string());
+        }
+        drop(active_txns);
+
+        // Acquire read semaphore to limit concurrent read transactions
+        let _permit = self.read_semaphore
+            .acquire()
+            .await
+            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+
+        // Create a read-only transaction
+        let txn_opts = TransactionOptions::default();
+        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Perform get operation (with or without column family)
+        let result = if let Some(cf_name) = column_family {
+            if let Some(_cf_handle) = self.cf_handles.get(cf_name) {
+                // For now, use default CF until we can store actual CF handles
+                txn.get(key)
+            } else {
+                return Err(format!("column family '{}' not found", cf_name));
+            }
+        } else {
+            txn.get(key)
+        };
+        
+        match result {
+            Ok(Some(value)) => {
+                let value_str = String::from_utf8_lossy(&value).to_string();
+                Ok(GetResult {
+                    value: value_str,
+                    found: true,
+                })
+            }
+            Ok(None) => {
+                Ok(GetResult {
+                    value: String::new(),
+                    found: false,
+                })
+            }
+            Err(e) => {
+                error!("Failed to get value: {}", e);
+                Err(format!("failed to get value: {}", e))
+            }
+        }
+    }
+
+    // Keep write worker logic from original implementation
     async fn write_worker(db: Arc<TransactionDB>, mut write_queue_rx: mpsc::UnboundedReceiver<WriteRequest>) {
         while let Some(request) = write_queue_rx.recv().await {
             let result = match request.operation {
@@ -210,6 +347,7 @@ impl KvDatabase {
         }
     }
 
+    // Non-transactional operations for backward compatibility
     pub async fn get(&self, key: &str) -> Result<GetResult, String> {
         if key.is_empty() {
             return Err("key cannot be empty".to_string());
@@ -312,7 +450,13 @@ impl KvDatabase {
         let txn_opts = TransactionOptions::default();
         let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
         
-        let iter = txn.iterator(IteratorMode::Start);
+        // Use prefix-based iterator for efficiency
+        let iter = if prefix.is_empty() {
+            txn.iterator(IteratorMode::Start)
+        } else {
+            txn.iterator(IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward))
+        };
+        
         let mut keys = Vec::new();
         let mut count = 0;
         let limit = if limit > 0 { limit as usize } else { 1000 };
@@ -327,8 +471,9 @@ impl KvDatabase {
                     let key_str = String::from_utf8_lossy(&key).to_string();
                     
                     // If prefix is specified, check if key starts with prefix
+                    // This is important because IteratorMode::From continues past the prefix
                     if !prefix.is_empty() && !key_str.starts_with(prefix) {
-                        continue;
+                        break; // Stop iterating once we're past the prefix
                     }
                     
                     keys.push(key_str);
