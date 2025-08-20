@@ -52,7 +52,8 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         
         Ok(CommitTransactionResponse::new(
             result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            if result.error.is_empty() { None } else { Some(result.error) },
+            result.error_code
         ))
     }
 
@@ -94,7 +95,8 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         
         Ok(SetResponse::new(
             result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            if result.error.is_empty() { None } else { Some(result.error) },
+            result.error_code
         ))
     }
 
@@ -105,7 +107,8 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         
         Ok(DeleteResponse::new(
             result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            if result.error.is_empty() { None } else { Some(result.error) },
+            result.error_code
         ))
     }
 
@@ -288,6 +291,31 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
                 Some(e)
             )),
         }
+    }
+
+    // Fault injection for testing
+    fn handle_set_fault_injection(&self, req: FaultInjectionRequest) -> thrift::Result<FaultInjectionResponse> {
+        use crate::db::FaultInjectionConfig;
+        
+        let config = if req.probability.map(|p| p.into_inner()).unwrap_or(0.0) > 0.0 {
+            Some(FaultInjectionConfig {
+                fault_type: req.fault_type,
+                probability: req.probability.map(|p| p.into_inner()).unwrap_or(0.0),
+                duration_ms: req.duration_ms.unwrap_or(0),
+                target_operation: req.target_operation,
+            })
+        } else {
+            None // Disable fault injection
+        };
+        
+        let result = self.runtime_handle.block_on(
+            self.database.set_fault_injection(config)
+        );
+        
+        Ok(FaultInjectionResponse::new(
+            result.success,
+            if result.error.is_empty() { None } else { Some(result.error) }
+        ))
     }
 
     // Health check

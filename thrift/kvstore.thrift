@@ -18,7 +18,8 @@ struct CommitTransactionRequest {
 
 struct CommitTransactionResponse {
     1: required bool success,
-    2: optional string error
+    2: optional string error,
+    3: optional string error_code  // Added for conflict detection
 }
 
 struct AbortTransactionRequest {
@@ -52,7 +53,8 @@ struct SetRequest {
 
 struct SetResponse {
     1: required bool success,
-    2: optional string error
+    2: optional string error,
+    3: optional string error_code  // Added for conflict detection
 }
 
 struct DeleteRequest {
@@ -63,7 +65,8 @@ struct DeleteRequest {
 
 struct DeleteResponse {
     1: required bool success,
-    2: optional string error
+    2: optional string error,
+    3: optional string error_code  // Added for conflict detection
 }
 
 // Range operations
@@ -187,6 +190,19 @@ struct SetVersionstampedValueResponse {
     3: optional string error
 }
 
+// Fault injection for testing
+struct FaultInjectionRequest {
+    1: required string fault_type,  // "timeout", "conflict", "corruption", "network"
+    2: optional double probability = 0.0,  // 0.0 to 1.0
+    3: optional i32 duration_ms = 0,
+    4: optional string target_operation  // "get", "set", "commit", etc.
+}
+
+struct FaultInjectionResponse {
+    1: required bool success,
+    2: optional string error
+}
+
 // Health check (preserved from original)
 struct PingRequest {
     1: optional string message,
@@ -229,6 +245,9 @@ service TransactionalKV {
     // Versionstamped operations
     SetVersionstampedKeyResponse setVersionstampedKey(1: SetVersionstampedKeyRequest request),
     SetVersionstampedValueResponse setVersionstampedValue(1: SetVersionstampedValueRequest request),
+    
+    // Fault injection for testing
+    FaultInjectionResponse setFaultInjection(1: FaultInjectionRequest request),
     
     // Health check
     PingResponse ping(1: PingRequest request)
