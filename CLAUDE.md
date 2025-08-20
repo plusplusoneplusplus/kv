@@ -20,7 +20,9 @@ The codebase implements the same KVStore service across multiple protocols in th
   - `thrift/kvstore.thrift`: Thrift service contract
 - **Database Storage**: Each implementation uses RocksDB with configurable settings
 - **Benchmarking Suite** (`benchmark-rust/`): Multi-protocol performance testing with support for gRPC, Thrift, and raw RocksDB access
-- **Client Tools** (`go/client.go`, `go/ping_client.go`): Language-agnostic clients
+- **Client Tools**: 
+  - Go gRPC client (`go/client.go`, `go/ping_client.go`): Language-agnostic gRPC clients
+  - Rust Client SDK (`rust/client/`): High-performance Thrift client with async support and C FFI bindings
 - **Configuration Management** (`configs/db/`): RocksDB tuning presets for different workloads
 
 ### Data Storage
@@ -54,21 +56,28 @@ cd cpp && make debug       # or make release
 ```
 
 ### Running Servers
-All servers listen on port 50051 - run one at a time:
+All servers listen on port 50051 (gRPC) or 9090 (Thrift) - run one at a time:
 ```bash
-./bin/rocksdbserver        # Go gRPC server
-./bin/rocksdbserver-rust   # Rust gRPC server
-./bin/rocksdbserver-thrift # Rust Thrift server
-./bin/rocksdbserver-cpp    # C++ gRPC server
+./bin/rocksdbserver        # Go gRPC server (port 50051)
+./bin/rocksdbserver-rust   # Rust gRPC server (port 50051)
+./bin/rocksdbserver-thrift # Rust Thrift server (port 9090)
+./bin/rocksdbserver-cpp    # C++ gRPC server (port 50051)
 ```
 
 ### Client Operations
-The Go client works with all server implementations:
+
+**Go gRPC Client** (works with gRPC servers):
 ```bash
 ./bin/client -op put -key "test" -value "data"
 ./bin/client -op get -key "test"
 ./bin/client -op delete -key "test"
 ./bin/client -op list -prefix "user:" -limit 20
+```
+
+**Rust Thrift Client SDK** (works with Thrift server):
+```bash
+# Use as library (see rust/client/README.md for full API documentation)
+# Run tests: cd rust/client && cargo test
 ```
 
 ### Benchmarking

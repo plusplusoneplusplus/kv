@@ -10,8 +10,8 @@ use crate::{BenchmarkConfig, BenchmarkResult};
 use super::{ClientFactory, KvOperations};
 
 // Use the generated Thrift code re-exported by the server crate's library.
-use rocksdb_server::kvstore as thrift_kv;
-use rocksdb_server::kvstore::TKVStoreSyncClient;
+use rocksdb_server::lib::kvstore as thrift_kv;
+use rocksdb_server::lib::kvstore::TransactionalKVSyncClient;
 
 use tokio::sync::oneshot;
 
@@ -57,7 +57,7 @@ impl ClientFactory for ThriftClientFactory {
             let o_tr = TBufferedWriteTransport::new(o_chan);
             let i_prot = TBinaryInputProtocol::new(i_tr, true);
             let o_prot = TBinaryOutputProtocol::new(o_tr, true);
-            let mut client = thrift_kv::KVStoreSyncClient::new(i_prot, o_prot);
+            let mut client = thrift_kv::TransactionalKVSyncClient::new(i_prot, o_prot);
 
             while let Ok(rpc) = rx.recv() {
                 match rpc {

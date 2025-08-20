@@ -30,6 +30,7 @@ build-release: proto thrift $(BIN_DIR)
 	cd benchmark-rust && cargo build --release --bin benchmark && cp target/release/benchmark ../$(BIN_DIR)/benchmark-rust
 	cd rust && cargo build --release --bin server && cp target/release/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --release --bin thrift-server && cp target/release/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
+	cd rust/client && cargo build --release --features ffi && cp target/release/libkvstore_client.so ../../$(BIN_DIR)/ 2>/dev/null || cp target/release/libkvstore_client.dylib ../../$(BIN_DIR)/ 2>/dev/null || cp target/release/kvstore_client.dll ../../$(BIN_DIR)/ 2>/dev/null || true
 # Disabled Go benchmark - replaced with Rust version
 # cd benchmark && go build $(RELEASE_FLAGS) -o ../$(BIN_DIR)/benchmark .
 # ignore c++
