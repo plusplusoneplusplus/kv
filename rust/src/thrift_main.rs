@@ -400,7 +400,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     
     let database = Arc::new(database);
-    let listen_address = "0.0.0.0:9090";
+    
+    // Get port from environment variable or use default
+    let port = std::env::var("THRIFT_PORT")
+        .unwrap_or_else(|_| "9090".to_string())
+        .parse::<u16>()
+        .unwrap_or(9090);
+    let listen_address = format!("0.0.0.0:{}", port);
     info!("Starting Transactional Thrift server on {}", listen_address);
 
     // Create TCP listener
