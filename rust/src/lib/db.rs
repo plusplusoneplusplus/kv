@@ -14,7 +14,7 @@ pub struct TransactionalKvDatabase {
     active_transactions: Arc<RwLock<HashMap<String, ActiveTransaction>>>,
     read_semaphore: Arc<Semaphore>,
     write_queue_tx: mpsc::UnboundedSender<WriteRequest>,
-    config: Config,
+    _config: Config,
     fault_injection: Arc<RwLock<Option<FaultInjectionConfig>>>,
     conflict_detection: ConflictDetectionConfig,
 }
@@ -188,7 +188,7 @@ impl TransactionalKvDatabase {
             active_transactions: Arc::new(RwLock::new(HashMap::new())),
             read_semaphore: Arc::new(Semaphore::new(max_read_concurrency)),
             write_queue_tx,
-            config: config.clone(),
+            _config: config.clone(),
             fault_injection: Arc::new(RwLock::new(None)),
             conflict_detection: ConflictDetectionConfig {
                 enabled: true,
@@ -1032,7 +1032,6 @@ impl TransactionalKvDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::config::Config;
     use tempfile::TempDir;
     use tokio;
 
@@ -1835,7 +1834,7 @@ mod tests {
         assert!(set_result.success, "Set should work as it's not targeted by fault injection");
         
         // Get should fail (targeted by fault injection)
-        let get_result = db.transactional_get(&transaction_id, "test_key", None).await;
+        let _get_result = db.transactional_get(&transaction_id, "test_key", None).await;
         // Note: In the current implementation, fault injection is checked in execute_with_retry,
         // but transactional_get doesn't use that method. This test demonstrates the concept.
         
