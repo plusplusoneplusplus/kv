@@ -1,10 +1,10 @@
 use tonic::{Request, Response, Status};
-use crate::db::TransactionalKvDatabase;
-use crate::kvstore::{
+use super::db::TransactionalKvDatabase;
+use super::proto::{
     GetRequest, GetResponse, PutRequest, PutResponse, DeleteRequest, DeleteResponse,
     ListKeysRequest, ListKeysResponse, PingRequest, PingResponse,
 };
-use crate::kvstore::kv_store_server::KvStore;
+use super::proto::kv_store_server::KvStore;
 
 pub struct KvStoreGrpcService {
     db: TransactionalKvDatabase,

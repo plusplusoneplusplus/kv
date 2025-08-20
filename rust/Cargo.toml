@@ -9,11 +9,11 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "server"
-path = "src/main.rs"
+path = "src/bin/grpc_server.rs"
 
 [[bin]]
 name = "thrift-server"
-path = "src/thrift_main.rs"
+path = "src/bin/thrift_server.rs"
 
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }

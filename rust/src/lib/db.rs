@@ -5,7 +5,7 @@ use tokio::sync::{Semaphore, mpsc, oneshot, RwLock};
 use tracing::error;
 use uuid::Uuid;
 use std::time::{SystemTime, Duration};
-use crate::config::Config;
+use super::config::Config;
 use rand::Rng;
 
 pub struct TransactionalKvDatabase {
@@ -1032,7 +1032,7 @@ impl TransactionalKvDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use super::config::Config;
     use tempfile::TempDir;
     use tokio;
 
