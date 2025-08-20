@@ -1,4 +1,4 @@
-name: CI
+name: Tests
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  build-go:
-    name: Build Go
+  test-go:
+    name: Test Go
     runs-on: ubuntu-latest
     
     steps:
@@ -33,14 +33,14 @@ jobs:
     - name: Generate protobuf files
       run: ./generate.sh
 
-    - name: Build Go server
+    - name: Run Go tests
       run: |
         cd go
         go mod download
-        go build -o ../bin/rocksdbserver main.go
+        go test -v ./...
 
-  build-rust:
-    name: Build Rust
+  test-rust:
+    name: Test Rust
     runs-on: ubuntu-latest
     
     steps:
@@ -52,12 +52,12 @@ jobs:
       with:
         toolchain: stable
 
-    - name: Install Protocol Buffers
+    - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
+        sudo apt-get install -y protobuf-compiler librocksdb-dev
 
-    - name: Build Rust server
+    - name: Run Rust tests
       run: |
         cd rust
-        cargo build --bin server
+        cargo test --verbose
