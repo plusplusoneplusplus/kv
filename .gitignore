@@ -1,6 +1,6 @@
 data/
 kvstore/
-/bin/
+bin/
 *.log
 server
 .DS_Store
