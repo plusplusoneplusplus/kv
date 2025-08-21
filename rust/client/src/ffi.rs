@@ -499,6 +499,118 @@ pub extern "C" fn kv_result_free(result: *mut KvResult) {
     }
 }
 
+/// Get a value from a read transaction
+#[no_mangle]
+pub extern "C" fn kv_read_transaction_get(
+    transaction: KvReadTransactionHandle,
+    key: *const c_char,
+    column_family: *const c_char,
+) -> KvFutureHandle {
+    if transaction.is_null() || key.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match READ_TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return ptr::null_mut(),
+    };
+    
+    let key_str = unsafe {
+        match CStr::from_ptr(key).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+    
+    let cf_str = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let future = tx_arc.snapshot_get(key_str, cf_str);
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
+/// Get a range of key-value pairs from a read transaction
+#[no_mangle]
+pub extern "C" fn kv_read_transaction_get_range(
+    transaction: KvReadTransactionHandle,
+    start_key: *const c_char,
+    end_key: *const c_char,
+    limit: c_int,
+    column_family: *const c_char,
+) -> KvFutureHandle {
+    if transaction.is_null() || start_key.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match READ_TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return ptr::null_mut(),
+    };
+    
+    let start_key_str = unsafe {
+        match CStr::from_ptr(start_key).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+    
+    let end_key_str = if end_key.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(end_key).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let cf_str = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let limit_val = if limit > 0 { Some(limit as usize) } else { None };
+    
+    let future = tx_arc.snapshot_get_range(start_key_str, end_key_str, limit_val.map(|l| l as u32), cf_str);
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
+/// Destroy a read transaction
+#[no_mangle]
+pub extern "C" fn kv_read_transaction_destroy(transaction: KvReadTransactionHandle) {
+    if !transaction.is_null() {
+        let tx_id = transaction as usize;
+        READ_TRANSACTIONS.lock().remove(&tx_id);
+    }
+}
+
 /// Cleanup and shutdown the library
 #[no_mangle]
 pub extern "C" fn kv_shutdown() {
