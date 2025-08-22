@@ -322,6 +322,115 @@ int test_concurrent_transactions() {
     TEST_PASS();
 }
 
+// Test client ping functionality
+int test_client_ping() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Test ping with NULL message
+    KvFutureHandle ping_future1 = kv_client_ping(client, NULL);
+    TEST_ASSERT(ping_future1 != NULL, "Failed to create ping future with NULL message");
+    
+    int ready = wait_for_future(ping_future1);
+    TEST_ASSERT(ready == 1, "Ping future not ready");
+    
+    char* response = NULL;
+    KvResult ping_result1 = kv_future_get_string_result(ping_future1, &response);
+    TEST_ASSERT(ping_result1.success == 1, "Ping operation failed");
+    TEST_ASSERT(response != NULL, "Got NULL ping response");
+    printf("Ping response: %s\n", response);
+    kv_string_free(response);
+    
+    // Test ping with custom message
+    KvFutureHandle ping_future2 = kv_client_ping(client, "Hello from C FFI test!");
+    TEST_ASSERT(ping_future2 != NULL, "Failed to create ping future with custom message");
+    
+    ready = wait_for_future(ping_future2);
+    TEST_ASSERT(ready == 1, "Ping future not ready");
+    
+    char* response2 = NULL;
+    KvResult ping_result2 = kv_future_get_string_result(ping_future2, &response2);
+    TEST_ASSERT(ping_result2.success == 1, "Ping operation with custom message failed");
+    TEST_ASSERT(response2 != NULL, "Got NULL ping response with custom message");
+    printf("Ping response with custom message: %s\n", response2);
+    kv_string_free(response2);
+    
+    // Test ping with NULL client (should fail)
+    KvFutureHandle ping_future3 = kv_client_ping(NULL, "test");
+    TEST_ASSERT(ping_future3 == NULL, "Should fail with NULL client");
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+}
+
+// Test transaction abort functionality
+int test_transaction_abort() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(tx_future != NULL, "Failed to begin transaction");
+    
+    int ready = wait_for_future(tx_future);
+    TEST_ASSERT(ready == 1, "Transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
+    
+    // Set a key-value pair in the transaction
+    KvFutureHandle set_future = kv_transaction_set(tx, "abort_test_key_c", "abort_test_value_c", NULL);
+    TEST_ASSERT(set_future != NULL, "Failed to create set future");
+    
+    ready = wait_for_future(set_future);
+    TEST_ASSERT(ready == 1, "Set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Set operation failed");
+    
+    // Abort the transaction instead of committing
+    KvFutureHandle abort_future = kv_transaction_abort(tx);
+    TEST_ASSERT(abort_future != NULL, "Failed to create abort future");
+    
+    ready = wait_for_future(abort_future);
+    TEST_ASSERT(ready == 1, "Abort future not ready");
+    
+    KvResult abort_result = kv_future_get_void_result(abort_future);
+    TEST_ASSERT(abort_result.success == 1, "Abort operation failed");
+    printf("Transaction abort FFI call succeeded\n");
+    
+    // Test abort with NULL transaction (should fail)
+    KvFutureHandle abort_future2 = kv_transaction_abort(NULL);
+    TEST_ASSERT(abort_future2 == NULL, "Should fail with NULL transaction");
+    
+    // Test that we can still use the client after abort
+    KvFutureHandle new_tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(new_tx_future != NULL, "Failed to begin new transaction after abort");
+    
+    ready = wait_for_future(new_tx_future);
+    TEST_ASSERT(ready == 1, "New transaction begin future not ready");
+    
+    KvTransactionHandle new_tx = kv_future_get_transaction(new_tx_future);
+    TEST_ASSERT(new_tx != NULL, "Failed to get new transaction handle");
+    
+    // Just commit the new transaction to verify client still works
+    KvFutureHandle new_commit_future = kv_transaction_commit(new_tx);
+    ready = wait_for_future(new_commit_future);
+    TEST_ASSERT(ready == 1, "New commit future not ready");
+    
+    KvResult new_commit_result = kv_future_get_void_result(new_commit_future);
+    TEST_ASSERT(new_commit_result.success == 1, "New commit operation failed");
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+}
+
 // Main test runner
 int main() {
     printf("Running KV Store C FFI Tests\n");
@@ -342,6 +451,8 @@ int main() {
         {"String Memory Management", test_string_memory},
         {"Future Polling", test_future_polling},
         {"Concurrent Transactions", test_concurrent_transactions},
+        {"Client Ping", test_client_ping},
+        {"Transaction Abort", test_transaction_abort},
         {NULL, NULL}
     };
     

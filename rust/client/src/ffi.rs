@@ -611,6 +611,71 @@ pub extern "C" fn kv_read_transaction_destroy(transaction: KvReadTransactionHand
     }
 }
 
+/// Ping the server (health check)
+#[no_mangle]
+pub extern "C" fn kv_client_ping(
+    client: KvClientHandle,
+    message: *const c_char,
+) -> KvFutureHandle {
+    if client.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let id = client as usize;
+    let client_arc = match CLIENTS.lock().get(&id).cloned() {
+        Some(c) => c,
+        None => return ptr::null_mut(),
+    };
+    
+    let message_str = if message.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(message).to_str() {
+                Ok(s) => Some(s.to_string()),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let future = client_arc.ping(message_str);
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
+/// Abort a transaction
+#[no_mangle]
+pub extern "C" fn kv_transaction_abort(transaction: KvTransactionHandle) -> KvFutureHandle {
+    if transaction.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx = match TRANSACTIONS.lock().remove(&tx_id) {
+        Some(tx) => match Arc::try_unwrap(tx) {
+            Ok(tx) => tx,
+            Err(tx_arc) => {
+                // Put it back if we can't unwrap
+                TRANSACTIONS.lock().insert(tx_id, tx_arc);
+                return ptr::null_mut();
+            }
+        },
+        None => return ptr::null_mut(),
+    };
+    
+    let future = tx.abort();
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
 /// Cleanup and shutdown the library
 #[no_mangle]
 pub extern "C" fn kv_shutdown() {
