@@ -9,7 +9,7 @@ license = "MIT"
 [lib]
 name = "kvstore_client"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
 
 
 [dependencies]
