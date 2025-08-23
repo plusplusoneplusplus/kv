@@ -55,8 +55,12 @@ else
     cargo build --release > /dev/null 2>&1
 fi
 
-# Check if the shared library was built
-LIBPATH="$CLIENT_DIR/target/release/libkvstore_client.so"
+# Check if the shared library was built (platform-specific extension)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    LIBPATH="$CLIENT_DIR/target/release/libkvstore_client.dylib"
+else
+    LIBPATH="$CLIENT_DIR/target/release/libkvstore_client.so"
+fi
 if [ ! -f "$LIBPATH" ]; then
     echo "Error: Shared library not found at $LIBPATH"
     exit 1
@@ -65,8 +69,12 @@ fi
 echo "Rust library built successfully!"
 echo ""
 
-# Set library path for runtime
-export LD_LIBRARY_PATH="$CLIENT_DIR/target/release:$LD_LIBRARY_PATH"
+# Set library path for runtime (platform-specific)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export DYLD_LIBRARY_PATH="$CLIENT_DIR/target/release:$DYLD_LIBRARY_PATH"
+else
+    export LD_LIBRARY_PATH="$CLIENT_DIR/target/release:$LD_LIBRARY_PATH"
+fi
 
 # Check if the KV server is running and start it if needed
 echo "Checking if KV server is running on localhost:9090..."
@@ -84,14 +92,14 @@ if ! nc -z localhost 9090 2>/dev/null; then
     if [ ! -f "bin/rocksdbserver-thrift" ]; then
         echo "Building Thrift server..."
         if [ "$VERBOSE" = true ]; then
-            make rust-deps && cd rust && cargo build --release --bin thrift_server
+            make rust-deps && cd rust && cargo build --release --bin thrift-server
         else
-            make rust-deps > /dev/null 2>&1 && cd rust && cargo build --release --bin thrift_server > /dev/null 2>&1
+            make rust-deps > /dev/null 2>&1 && cd rust && cargo build --release --bin thrift-server > /dev/null 2>&1
         fi
         
         # Copy binary to bin directory
         mkdir -p bin
-        cp rust/target/release/thrift_server bin/rocksdbserver-thrift
+        cp rust/target/release/thrift-server bin/rocksdbserver-thrift
         cd "$PROJECT_ROOT"
     fi
     
