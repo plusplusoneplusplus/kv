@@ -82,7 +82,7 @@ pub struct KvPairArray {
 pub extern "C" fn kv_init() -> c_int {
     // Initialize tracing for debugging
     let _ = tracing_subscriber::fmt::try_init();
-    1
+    0  // Return 0 for success (C convention)
 }
 
 /// Create a new client connection
