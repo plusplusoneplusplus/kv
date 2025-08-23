@@ -65,7 +65,7 @@ jobs:
     - name: Build Rust Thrift server
       run: |
         cd rust
-        cargo build --bin thrift_server
+        cargo build --bin thrift-server
 
     - name: Install system dependencies for FFI tests
       run: |
