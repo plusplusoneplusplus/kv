@@ -61,3 +61,18 @@ jobs:
       run: |
         cd rust
         cargo build --bin server
+
+    - name: Build Rust Thrift server
+      run: |
+        cd rust
+        cargo build --bin thrift_server
+
+    - name: Install system dependencies for FFI tests
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential netcat-openbsd
+
+    - name: Run Rust client FFI tests
+      run: |
+        chmod +x rust/scripts/build_and_run_ffi_tests.sh
+        rust/scripts/build_and_run_ffi_tests.sh

@@ -75,21 +75,16 @@ block_based = true
         let port = find_available_port()?;
         self.port = Some(port);
         
-        // Get the path to the thrift-server binary
-        let server_path = std::env::current_exe()?
-            .parent()
-            .ok_or("No parent directory")?
-            .parent()
-            .ok_or("No grandparent directory")?
-            .join("thrift-server");
-            
-        // Change to config directory so server finds the config file
-        std::env::set_current_dir(self.config_dir.path())?;
+        // Get the absolute path to the debug thrift server binary
+        let current_dir = std::env::current_dir()?;
+        let server_path = current_dir.join("target").join("debug").join("thrift-server");
+        let _config_path = self.config_dir.path().join("db_config.toml");
         
-        // Start server process
-        let mut cmd = Command::new(&server_path);
+        // Start server process from the config directory so it finds the config file
+        let mut cmd = Command::new(server_path);
         cmd.env("THRIFT_PORT", port.to_string())
-           .env("RUST_LOG", "info");
+           .env("RUST_LOG", "info")
+           .current_dir(self.config_dir.path());
         
         let child = cmd.spawn()?;
         self.child = Some(child);

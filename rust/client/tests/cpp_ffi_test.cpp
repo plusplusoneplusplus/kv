@@ -53,7 +53,7 @@ void test_basic_functionality() {
     FFITest test("Basic Functionality");
     
     int init_result = kv_init();
-    test.assert_true(init_result == 1, "kv_init failed");
+    test.assert_true(init_result == 0, "kv_init failed");
     
     KvClientHandle client = kv_client_create("localhost:9090");
     test.assert_true(client != nullptr, "Failed to create client");

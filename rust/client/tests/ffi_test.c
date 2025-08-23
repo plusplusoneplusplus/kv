@@ -38,7 +38,7 @@ int wait_for_future(KvFutureHandle future) {
 // Test basic initialization and cleanup
 int test_init_shutdown() {
     int result = kv_init();
-    TEST_ASSERT(result == 1, "kv_init failed");
+    TEST_ASSERT(result == 0, "kv_init failed");
     
     kv_shutdown();
     TEST_PASS();

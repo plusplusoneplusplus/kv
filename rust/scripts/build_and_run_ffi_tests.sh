@@ -68,14 +68,84 @@ echo ""
 # Set library path for runtime
 export LD_LIBRARY_PATH="$CLIENT_DIR/target/release:$LD_LIBRARY_PATH"
 
-# Check if the KV server is running
+# Check if the KV server is running and start it if needed
 echo "Checking if KV server is running on localhost:9090..."
+SERVER_STARTED=false
+SERVER_PID=""
+
 if ! nc -z localhost 9090 2>/dev/null; then
-    echo "Warning: KV server not detected on localhost:9090"
-    echo "Please start the Thrift server with: ./bin/rocksdbserver-thrift"
-    echo "Some tests may fail without a running server."
+    echo "KV server not detected. Starting Thrift server..."
+    
+    # Navigate to project root to build and start server
+    PROJECT_ROOT="$(cd "$RUST_DIR/.." && pwd)"
+    cd "$PROJECT_ROOT"
+    
+    # Build the Thrift server if it doesn't exist
+    if [ ! -f "bin/rocksdbserver-thrift" ]; then
+        echo "Building Thrift server..."
+        if [ "$VERBOSE" = true ]; then
+            make rust-deps && cd rust && cargo build --release --bin thrift_server
+        else
+            make rust-deps > /dev/null 2>&1 && cd rust && cargo build --release --bin thrift_server > /dev/null 2>&1
+        fi
+        
+        # Copy binary to bin directory
+        mkdir -p bin
+        cp rust/target/release/thrift_server bin/rocksdbserver-thrift
+        cd "$PROJECT_ROOT"
+    fi
+    
+    # Start the server in the background
+    echo "Starting Thrift server on localhost:9090..."
+    ./bin/rocksdbserver-thrift > /dev/null 2>&1 &
+    SERVER_PID=$!
+    SERVER_STARTED=true
+    
+    # Wait for server to start
+    echo "Waiting for server to start..."
+    for i in {1..10}; do
+        if nc -z localhost 9090 2>/dev/null; then
+            echo "Server started successfully!"
+            break
+        fi
+        sleep 1
+        if [ $i -eq 10 ]; then
+            echo "Error: Server failed to start after 10 seconds"
+            if [ -n "$SERVER_PID" ]; then
+                kill $SERVER_PID 2>/dev/null || true
+            fi
+            exit 1
+        fi
+    done
+    echo ""
+else
+    echo "Server is already running."
     echo ""
 fi
+
+# Function to cleanup server on exit
+cleanup_server() {
+    if [ "$SERVER_STARTED" = true ] && [ -n "$SERVER_PID" ]; then
+        echo ""
+        echo "Stopping test server..."
+        kill $SERVER_PID 2>/dev/null || true
+        
+        # Wait for server to stop
+        for i in {1..5}; do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        kill -9 $SERVER_PID 2>/dev/null || true
+        echo "Server stopped."
+    fi
+}
+
+# Set trap to cleanup server on script exit
+trap cleanup_server EXIT
 
 cd "$CLIENT_DIR/tests"
 
