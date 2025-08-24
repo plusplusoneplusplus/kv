@@ -1,141 +1,236 @@
-# CLAUDE.md
+# CLAUDE.md - Rust KV Store Implementation
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with the Rust implementation of the high-performance key-value store service.
 
 ## Project Overview
 
-This is a high-performance key-value store service supporting both gRPC and Thrift protocols, using RocksDB as the storage engine. The project demonstrates multi-language implementation patterns with identical service interfaces across Go, Rust, and C++ implementations, featuring comprehensive benchmarking and configurable database settings.
+This is the Rust implementation of a transactional key-value store service supporting both gRPC and Thrift protocols, using RocksDB as the storage engine. The Rust implementation emphasizes async performance using Tokio and provides a comprehensive client SDK with C FFI bindings.
 
 ## Architecture
 
-### Multi-Language Service Implementation
-The codebase implements the same KVStore service across multiple protocols in three languages:
-- **Go** (`go/main.go`, `go/server.go`): gRPC server with transaction database support
-- **Rust** (`rust/src/main.rs`, `rust/src/thrift_main.rs`): Both gRPC and Thrift servers using Tokio async runtime
-- **C++** (`cpp/src/`): High-performance gRPC server with TransactionDB and custom semaphore implementation
-
 ### Core Components
-- **Protocol Definitions**: 
-  - `proto/kvstore.proto`: gRPC service contract
-  - `thrift/kvstore.thrift`: Thrift service contract
-- **Database Storage**: Each implementation uses RocksDB with configurable settings
-- **Benchmarking Suite** (`benchmark-rust/`): Multi-protocol performance testing with support for gRPC, Thrift, and raw RocksDB access
-- **Client Tools**: 
-  - Go gRPC client (`go/client.go`, `go/ping_client.go`): Language-agnostic gRPC clients
-  - Rust Client SDK (`rust/client/`): High-performance Thrift client with async support and C FFI bindings
-- **Configuration Management** (`configs/db/`): RocksDB tuning presets for different workloads
+- **Main Server Library** (`src/lib.rs`): Library exports and common types
+- **Service Implementations**:
+  - `src/servers/grpc_server.rs`: gRPC server binary using Tokio async runtime
+  - `src/servers/thrift_server.rs`: Thrift server binary with async support
+- **Core Libraries** (`src/lib/`):
+  - `service.rs`: gRPC service implementation with TransactionalKvDatabase
+  - `db.rs`: RocksDB wrapper with transaction support
+  - `config.rs`: Configuration management with TOML support
+  - `proto.rs`: Generated protobuf types and service definitions
+  - `kvstore.rs`: Core KV store logic and types
+- **Client SDK** (`client/`): High-performance async client with C FFI bindings
+- **Testing** (`tests/`): Integration tests with common utilities
 
 ### Data Storage
-- Go gRPC server: `./data/rocksdb/`
-- Rust gRPC server: `./data/rocksdb-rust/`
-- Rust Thrift server: `./data/rocksdb-thrift/`
-- C++ gRPC server: `./data/rocksdb-cpp/`
-- Benchmark raw databases: `./data/cold-*`, `./data/test-*`, etc.
+- gRPC server database: `./data/rocksdb-rust/`
+- Thrift server database: `./data/rocksdb-thrift/`
 
-## Common Development Commands
-
-### Protocol Code Generation
-```bash
-./generate.sh              # Generate protobuf files for all languages
-make proto                 # Same as above
-make thrift                # Generate Thrift files for Go and Rust
-```
+## Development Commands
 
 ### Building
 ```bash
-# Build all implementations (debug)
-make build
+# Build all binaries (debug)
+cargo build
 
-# Build all implementations (release)
-make build-release
+# Build all binaries (release)
+cargo build --release
 
-# Individual language builds
-make go-deps && cd go && go build -o ../bin/rocksdbserver main.go
-make rust-deps && cd rust && cargo build --bin server
-cd cpp && make debug       # or make release
+# Build specific server
+cargo build --bin server          # gRPC server
+cargo build --bin thrift-server   # Thrift server
+
+# Build client SDK
+cd client && cargo build --release
+
+# Build with C FFI support
+cd client && cargo build --release --features ffi
 ```
 
 ### Running Servers
-All servers listen on port 50051 (gRPC) or 9090 (Thrift) - run one at a time:
 ```bash
-./bin/rocksdbserver        # Go gRPC server (port 50051)
-./bin/rocksdbserver-rust   # Rust gRPC server (port 50051)
-./bin/rocksdbserver-thrift # Rust Thrift server (port 9090)
-./bin/rocksdbserver-cpp    # C++ gRPC server (port 50051)
+# gRPC server (port 50051)
+cargo run --bin server
+# or from bin directory:
+./bin/rocksdbserver-rust
+
+# Thrift server (port 9090)
+cargo run --bin thrift-server
+# or from bin directory:
+./bin/rocksdbserver-thrift
 ```
 
-### Client Operations
-
-**Go gRPC Client** (works with gRPC servers):
+### Protocol Code Generation
 ```bash
-./bin/client -op put -key "test" -value "data"
-./bin/client -op get -key "test"
-./bin/client -op delete -key "test"
-./bin/client -op list -prefix "user:" -limit 20
+# Generate protobuf files (automatic during build via build.rs)
+cargo build
+
+# From project root for all languages:
+make proto thrift
 ```
 
-**Rust Thrift Client SDK** (works with Thrift server):
+### Testing
 ```bash
-# Use as library (see rust/client/README.md for full API documentation)
-# Run tests: cd rust/client && cargo test
+# Unit tests
+cargo test
+
+# Integration tests (requires running server)
+cargo test --test integration_tests
+
+# Client SDK tests (requires Thrift server)
+cd client && cargo test
+
+# C FFI tests
+cd client && ./scripts/build_and_run_ffi_tests.sh
 ```
 
-### Benchmarking
-Use the Rust benchmark tool for performance testing across protocols:
-```bash
-./bin/benchmark-rust                               # Default gRPC mixed workload
-./bin/benchmark-rust --thrift -w 10 -n 1000000   # Thrift protocol, read-heavy
-./bin/benchmark-rust --raw -t 32 -n 500000       # Raw RocksDB access
-./bin/benchmark-rust -c configs/db/cold_block_cache.toml  # Custom config
+## Configuration
+
+### Database Configuration
+The server loads RocksDB configuration from TOML files:
+- Default location: `bin/db_config.toml` (relative to executable)
+- Fallback: Uses default RocksDB settings if config file not found
+- Configuration covers cache sizes, bloom filters, compaction settings, etc.
+
+### Server Configuration
+Both servers support:
+- Configurable database paths
+- Async runtime with Tokio
+- Structured logging with tracing
+- Graceful shutdown handling
+
+## Client SDK
+
+### Features
+- **Async/Await Support**: Full Tokio async runtime integration
+- **Transaction Management**: ACID transactions with conflict detection
+- **C FFI Bindings**: C-compatible API for cross-language integration
+- **Connection Pooling**: Built-in pooling for high-throughput applications
+- **Range Operations**: Efficient key iteration and range queries
+- **Error Handling**: Comprehensive error types with detailed codes
+
+### Usage Examples
+
+**Basic Rust Client:**
+```rust
+use kvstore_client::{KvStoreClient, KvResult};
+
+#[tokio::main]
+async fn main() -> KvResult<()> {
+    let client = KvStoreClient::connect("localhost:9090")?;
+    let tx_future = client.begin_transaction(None, Some(60));
+    let tx = tx_future.await_result().await?;
+    
+    let set_future = tx.set("key", "value", None);
+    set_future.await_result().await?;
+    
+    let commit_future = tx.commit();
+    commit_future.await_result().await?;
+    Ok(())
+}
+```
+
+**C FFI Integration:**
+```c
+#include "kvstore_client.h"
+
+KvStoreClient* client = kv_client_connect("localhost:9090");
+KvTransactionFuture* tx_future = kv_client_begin_transaction(client, NULL, 60);
+KvTransaction* tx = kv_future_get_transaction(tx_future);
+// ... use transaction
 ```
 
 ## Development Workflow
 
 ### Adding New Service Methods
-1. Edit protocol definition files:
-   - `proto/kvstore.proto` for gRPC methods and messages
-   - `thrift/kvstore.thrift` for Thrift methods and messages
-2. Run `make proto thrift` to regenerate code for all languages
-3. Implement the new method in each server implementation:
-   - Go: Add method to Server struct in `go/server.go`
-   - Rust gRPC: Add method to KvStoreService impl in `rust/src/service.rs`
-   - Rust Thrift: Add method to ThriftKvStoreService impl in `rust/src/thrift_main.rs`
-   - C++: Add method to KvStoreService class in `cpp/src/kvstore_service.cpp`
-4. Update client if needed in `go/client.go`
+1. Update protocol definitions in project root:
+   - `proto/kvstore.proto` for gRPC
+   - `thrift/kvstore.thrift` for Thrift
+2. Run `make proto thrift` to regenerate all protocol files
+3. Implement methods:
+   - gRPC: Add to `KvStoreGrpcService` impl in `src/lib/service.rs`
+   - Thrift: Add to `ThriftKvStoreService` impl in `src/servers/thrift_server.rs`
+4. Update client SDK in `client/src/` if needed
+5. Add tests to verify functionality
 
-### Testing Changes
-- Use the Rust benchmark tool to verify performance across implementations and protocols
-- Test with the client to verify functionality (supports both gRPC and Thrift)
-- Each server creates separate database directories for isolation
-- Use different configuration files to test various database tunings
+### Database Operations
+- All database operations go through `TransactionalKvDatabase` in `src/lib/db.rs`
+- Supports async operations with proper error handling
+- Automatic transaction management and rollback on errors
+- Configurable RocksDB options via TOML files
 
-### Language-Specific Build Systems
-- **Go**: Standard Go modules with `go.mod` and `go.sum`
-- **Rust**: Cargo with `build.rs` for protobuf generation and separate binaries for gRPC and Thrift servers
-- **C++**: CMake with automatic protobuf generation in build process
-- **Benchmark**: Separate Rust project with comprehensive client implementations
+### Error Handling
+The codebase uses structured error handling:
+- Database errors are wrapped and propagated appropriately
+- gRPC/Thrift protocol errors are handled at service boundaries
+- Client SDK provides comprehensive error types (`KvError` enum)
+- C FFI uses numeric error codes for cross-language compatibility
 
 ## Performance Characteristics
 
-### Concurrency Model
-Different implementations have varying concurrency approaches:
-- **Go**: Configurable connection limits and goroutine-based concurrency
-- **Rust**: Tokio async runtime with configurable connection pools
-- **C++**: Thread-based concurrency with semaphore controls
-- **Benchmarking**: Multi-threaded client with configurable thread counts
+### Async Runtime
+- Built on Tokio async runtime for high concurrency
+- Non-blocking I/O throughout the stack
+- Efficient connection pooling in client SDK
+- Configurable connection limits and timeouts
 
-### Database Features
-- RocksDB storage engine with configurable options via TOML files
-- Support for different cache configurations (cold, warm, large cache)
-- Efficient prefix-based key iteration for ListKeys operation
-- Automatic database creation and directory setup
-- Separate database instances per server implementation
+### Database Performance
+- RocksDB storage engine with configurable options
+- Support for different cache and compaction strategies via TOML config
+- Efficient prefix-based iteration for range operations
+- Automatic database creation and directory management
 
-## Cross-Language and Cross-Protocol Compatibility
+### Memory Management
+- Zero-copy operations where possible
+- Efficient string handling with minimal allocations
+- Connection pooling to reuse network resources
+- Proper cleanup and resource management
 
-The client is implemented in Go and the benchmark tool in Rust, both work seamlessly with all server implementations due to shared protocol contracts. This design allows for:
-- Performance comparison between language implementations and protocols
-- Mixed-language deployments with protocol flexibility
-- Consistent API behavior across all implementations and protocols
-- Protocol-specific optimizations (gRPC vs Thrift vs raw RocksDB)
-- Comprehensive benchmarking across all combinations
+## Testing Strategy
+
+### Unit Tests
+- Individual component testing in `tests/` directory
+- Mock implementations for isolated testing
+- Common test utilities in `tests/common/mod.rs`
+
+### Integration Tests
+- Full server lifecycle testing
+- Multi-protocol compatibility verification
+- Client SDK functionality validation
+- C FFI binding correctness
+
+### Performance Testing
+- Use the benchmark tool from `../benchmark-rust/`
+- Supports both gRPC and Thrift protocol benchmarking
+- Configurable workload patterns and thread counts
+- Database configuration testing with different TOML files
+
+## Dependencies
+
+### Core Dependencies
+- `tokio`: Async runtime and utilities
+- `tonic`: gRPC server and client implementation  
+- `thrift`: Thrift protocol support
+- `rocksdb`: RocksDB database bindings
+- `prost`: Protocol Buffers implementation
+- `tracing`: Structured logging and diagnostics
+
+### Client SDK Dependencies
+- `tokio`: Async runtime for client operations
+- `thrift`: Thrift client protocol implementation
+- `uuid`: Transaction ID generation
+- `futures`: Future composition and utilities
+
+### Build Dependencies
+- `tonic-build`: Protocol buffer code generation
+- Standard Rust toolchain (1.70+)
+
+## Cross-Language Compatibility
+
+The Rust implementation maintains full compatibility with:
+- Go gRPC/Thrift clients via shared protocol definitions
+- C++ gRPC servers via standard gRPC protocol
+- C applications via FFI bindings in client SDK
+- Benchmark tools via consistent protocol implementation
+
+All protocol changes must maintain backward compatibility across language implementations.
