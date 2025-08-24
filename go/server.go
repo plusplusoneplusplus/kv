@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "rocksdb_svc/go/proto"
+	pb "rocksdb_svc/proto"
 )
 
 // Server implements the KVStore service

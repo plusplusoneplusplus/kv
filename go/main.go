@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	pb "rocksdb_svc/go/proto"
+	pb "rocksdb_svc/proto"
 )
 
 func main() {

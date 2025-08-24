@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "rocksdb_svc/go/proto"
+	pb "rocksdb_svc/proto"
 )
 
 func main() {

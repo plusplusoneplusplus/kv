@@ -13,8 +13,8 @@ $(BIN_DIR):
 
 # Build all (debug mode)
 build: proto thrift $(BIN_DIR)
-	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
-	go build $(DEBUG_FLAGS) -o $(BIN_DIR)/client go/client.go
+	cd go && go build $(DEBUG_FLAGS) -o ../$(BIN_DIR)/rocksdbserver main.go server.go
+	cd go && go build $(DEBUG_FLAGS) -o ../$(BIN_DIR)/client client.go
 	cd benchmark-rust && cargo build --bin benchmark && cp target/debug/benchmark ../$(BIN_DIR)/benchmark-rust
 	cd rust && cargo build --bin server && cp target/debug/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --bin thrift-server && cp target/debug/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
@@ -25,8 +25,8 @@ build: proto thrift $(BIN_DIR)
 
 # Build all (release mode)
 build-release: proto thrift $(BIN_DIR)
-	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/rocksdbserver go/main.go go/server.go
-	go build $(RELEASE_FLAGS) -o $(BIN_DIR)/client go/client.go
+	cd go && go build $(RELEASE_FLAGS) -o ../$(BIN_DIR)/rocksdbserver main.go server.go
+	cd go && go build $(RELEASE_FLAGS) -o ../$(BIN_DIR)/client client.go
 	cd benchmark-rust && cargo build --release --bin benchmark && cp target/release/benchmark ../$(BIN_DIR)/benchmark-rust
 	cd rust && cargo build --release --bin server && cp target/release/server ../$(BIN_DIR)/rocksdbserver-rust
 	cd rust && cargo build --release --bin thrift-server && cp target/release/thrift-server ../$(BIN_DIR)/rocksdbserver-thrift
@@ -59,7 +59,7 @@ clean:
 
 # Install Go dependencies
 go-deps:
-	go mod tidy && go mod download
+	cd go && go mod tidy && go mod download
 
 # Install Rust dependencies
 rust-deps:
