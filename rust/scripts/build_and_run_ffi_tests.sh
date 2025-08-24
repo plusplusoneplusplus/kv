@@ -92,15 +92,20 @@ if ! nc -z localhost 9090 2>/dev/null; then
     if [ ! -f "bin/rocksdbserver-thrift" ]; then
         echo "Building Thrift server..."
         if [ "$VERBOSE" = true ]; then
-            make rust-deps && cd rust && cargo build --release --bin thrift-server
+            make rust-deps
+            cd rust
+            cargo build --release --bin thrift-server
+            cd "$PROJECT_ROOT"
         else
-            make rust-deps > /dev/null 2>&1 && cd rust && cargo build --release --bin thrift-server > /dev/null 2>&1
+            make rust-deps > /dev/null 2>&1
+            cd rust
+            cargo build --release --bin thrift-server > /dev/null 2>&1
+            cd "$PROJECT_ROOT"
         fi
         
         # Copy binary to bin directory
         mkdir -p bin
         cp rust/target/release/thrift-server bin/rocksdbserver-thrift
-        cd "$PROJECT_ROOT"
     fi
     
     # Start the server in the background
