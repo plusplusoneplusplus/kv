@@ -11,12 +11,12 @@ use super::{ClientFactory, KvOperations};
 
 // Use the generated Thrift code re-exported by the server crate's library.
 use rocksdb_server::lib::kvstore as thrift_kv;
-use rocksdb_server::lib::kvstore::TransactionalKVSyncClient;
+use rocksdb_server::lib::kvstore::TTransactionalKVSyncClient; // bring client trait methods into scope
 
 use tokio::sync::oneshot;
 
 enum Rpc {
-    Put { key: String, value: String, tx: oneshot::Sender<Result<thrift_kv::PutResponse, thrift::Error>> },
+    Put { key: String, value: String, tx: oneshot::Sender<Result<thrift_kv::SetResponse, thrift::Error>> },
     Get { key: String, tx: oneshot::Sender<Result<thrift_kv::GetResponse, thrift::Error>> },
     Ping { message: String, timestamp: i64, tx: oneshot::Sender<Result<thrift_kv::PingResponse, thrift::Error>> },
 }
@@ -36,6 +36,7 @@ impl ClientFactory for ThriftClientFactory {
         // Spawn a dedicated blocking thread to own the Thrift client and process requests
         let (tx, rx) = mpsc::channel::<Rpc>();
         let addr = server_addr.to_string();
+        let op_timeout_secs = config.timeout.as_secs() as i64;
         thread::spawn(move || {
             // Build client once and reuse it
             let mut channel = TTcpChannel::new();
@@ -62,11 +63,35 @@ impl ClientFactory for ThriftClientFactory {
             while let Ok(rpc) = rx.recv() {
                 match rpc {
                     Rpc::Put { key, value, tx } => {
-                        let res = client.put(thrift_kv::PutRequest { key, value });
+                        // Begin a transaction
+                        let begin = client.begin_transaction(thrift_kv::BeginTransactionRequest { column_families: None, timeout_seconds: Some(op_timeout_secs) });
+                        let res = match begin {
+                            Ok(begin_resp) => {
+                                let txid = begin_resp.transaction_id.clone();
+                                // Perform set
+                                let set_res = client.set_key(thrift_kv::SetRequest { transaction_id: txid.clone(), key, value, column_family: None });
+                                // Attempt to commit regardless of set outcome to clean up server-side state
+                                let _ = client.commit_transaction(thrift_kv::CommitTransactionRequest { transaction_id: txid });
+                                set_res
+                            }
+                            Err(e) => Err(e),
+                        };
                         let _ = tx.send(res);
                     }
                     Rpc::Get { key, tx } => {
-                        let res = client.get(thrift_kv::GetRequest { key });
+                        // Begin a transaction
+                        let begin = client.begin_transaction(thrift_kv::BeginTransactionRequest { column_families: None, timeout_seconds: Some(op_timeout_secs) });
+                        let res = match begin {
+                            Ok(begin_resp) => {
+                                let txid = begin_resp.transaction_id.clone();
+                                // Perform get
+                                let get_res = client.get(thrift_kv::GetRequest { transaction_id: txid.clone(), key, column_family: None });
+                                // Commit to clean up
+                                let _ = client.commit_transaction(thrift_kv::CommitTransactionRequest { transaction_id: txid });
+                                get_res
+                            }
+                            Err(e) => Err(e),
+                        };
                         let _ = tx.send(res);
                     }
                     Rpc::Ping { message, timestamp, tx } => {
