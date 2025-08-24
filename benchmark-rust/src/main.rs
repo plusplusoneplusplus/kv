@@ -489,7 +489,7 @@ fn show_usage_examples() {
     println!("7. Using default addresses:");
     println!("   ./benchmark --protocol=grpc --mode=ping    # uses localhost:50051");
     println!("   ./benchmark --protocol=thrift --mode=ping  # uses localhost:9090");
-    println!("   ./benchmark --protocol=raw --mode=ping     # uses ./data/rocksdb-benchmark");
+    println!("   ./benchmark --protocol=raw --mode=ping     # uses default path with benchmark suffix");
     println!();
     println!("8. Raw RocksDB benchmarking (no network overhead):");
     println!("   ./benchmark --protocol=raw --mode=write --requests=100000 --threads=16");
@@ -536,7 +536,11 @@ async fn main() -> Result<()> {
         match args.protocol.as_str() {
             "grpc" => "localhost:50051".to_string(),
             "thrift" => "localhost:9090".to_string(),
-            "raw" => "./data/rocksdb-benchmark".to_string(),
+            "raw" => {
+                use crate::config::get_default_config;
+                let db_config = get_default_config();
+                db_config.get_db_path("benchmark")
+            },
             _ => "localhost:50051".to_string(),
         }
     });
