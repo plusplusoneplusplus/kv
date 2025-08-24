@@ -30,14 +30,18 @@ jobs:
         go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
+    - name: Install RocksDB
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y librocksdb-dev
+
     - name: Generate protobuf files
       run: ./generate.sh
 
     - name: Build Go server
       run: |
-        cd go
         go mod download
-        go build -o ../bin/rocksdbserver main.go
+        go build -o bin/rocksdbserver go/main.go go/server.go
 
   build-rust:
     name: Build Rust
@@ -70,7 +74,7 @@ jobs:
     - name: Install system dependencies for FFI tests
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential netcat-openbsd
+        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev
 
     - name: Run Rust client FFI tests
       run: |

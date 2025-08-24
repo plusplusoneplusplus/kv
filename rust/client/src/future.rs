@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use crate::error::{KvResult, KvError};
+use crate::error::KvResult;
 
 /// A future that can be used from C code
 pub struct KvFuture<T> {

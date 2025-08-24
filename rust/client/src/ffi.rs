@@ -10,6 +10,7 @@ use crate::error::KvErrorCode;
 use crate::future::KvFuturePtr;
 
 // Global runtime for async operations
+#[allow(dead_code)]
 static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     tokio::runtime::Runtime::new().expect("Failed to create tokio runtime")
 });
