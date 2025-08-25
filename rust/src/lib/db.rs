@@ -1003,7 +1003,6 @@ impl TransactionalKvDatabase {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use tokio;
 
     fn create_test_db() -> (TransactionalKvDatabase, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
