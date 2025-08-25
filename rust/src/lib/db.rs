@@ -1,7 +1,6 @@
 use rocksdb::{TransactionDB, TransactionDBOptions, Options, TransactionOptions, IteratorMode, BlockBasedOptions, Cache};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, mpsc};
 use std::collections::HashMap;
-use tokio::sync::{Semaphore, mpsc, oneshot, RwLock};
 use tracing::error;
 use uuid::Uuid;
 use std::time::{SystemTime, Duration};
@@ -12,8 +11,7 @@ pub struct TransactionalKvDatabase {
     db: Arc<TransactionDB>,
     cf_handles: HashMap<String, String>, // Store CF names instead of handles for now
     active_transactions: Arc<RwLock<HashMap<String, ActiveTransaction>>>,
-    read_semaphore: Arc<Semaphore>,
-    write_queue_tx: mpsc::UnboundedSender<WriteRequest>,
+    write_queue_tx: mpsc::Sender<WriteRequest>,
     _config: Config,
     fault_injection: Arc<RwLock<Option<FaultInjectionConfig>>>,
     conflict_detection: ConflictDetectionConfig,
@@ -59,7 +57,7 @@ enum WriteOperation {
 
 struct WriteRequest {
     operation: WriteOperation,
-    response_tx: oneshot::Sender<OpResult>,
+    response_tx: mpsc::Sender<OpResult>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,23 +168,19 @@ impl TransactionalKvDatabase {
             cf_handles.insert(cf_name.to_string(), cf_name.to_string());
         }
         
-        // Configure concurrency limits for reads from config
-        let max_read_concurrency = config.concurrency.max_read_concurrency;
+        // Create sync write queue channel
+        let (write_queue_tx, write_queue_rx) = mpsc::channel::<WriteRequest>();
         
-        // Create write queue channel
-        let (write_queue_tx, write_queue_rx) = mpsc::unbounded_channel::<WriteRequest>();
-        
-        // Spawn write worker task to serialize write operations
+        // Spawn write worker thread to serialize write operations
         let db_clone = Arc::clone(&db);
-        tokio::spawn(async move {
-            Self::write_worker(db_clone, write_queue_rx).await;
+        std::thread::spawn(move || {
+            Self::write_worker(db_clone, write_queue_rx);
         });
-        
+
         Ok(Self {
             db,
             cf_handles,
             active_transactions: Arc::new(RwLock::new(HashMap::new())),
-            read_semaphore: Arc::new(Semaphore::new(max_read_concurrency)),
             write_queue_tx,
             _config: config.clone(),
             fault_injection: Arc::new(RwLock::new(None)),
@@ -200,8 +194,8 @@ impl TransactionalKvDatabase {
     }
 
     // Fault injection methods
-    pub async fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
-        let mut fault_injection = self.fault_injection.write().await;
+    pub fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
+        let mut fault_injection = self.fault_injection.write().unwrap();
         *fault_injection = config;
         OpResult {
             success: true,
@@ -210,9 +204,9 @@ impl TransactionalKvDatabase {
         }
     }
 
-    async fn should_inject_fault(&self, operation: &str) -> bool {
-        let fault_injection = self.fault_injection.read().await;
-        if let Some(config) = fault_injection.as_ref() {
+    fn should_inject_fault(&self, operation: &str) -> bool {
+        let fault_injection = self.fault_injection.read().unwrap();
+        if let Some(ref config) = *fault_injection {
             if let Some(target_op) = &config.target_operation {
                 if target_op != operation {
                     return false;
@@ -227,11 +221,11 @@ impl TransactionalKvDatabase {
         }
     }
 
-    async fn inject_fault(&self, _operation: &str) -> Option<OpResult> {
-        let fault_injection = self.fault_injection.read().await;
-        if let Some(config) = fault_injection.as_ref() {
+    fn inject_fault(&self, _operation: &str) -> Option<OpResult> {
+        let fault_injection = self.fault_injection.read().unwrap();
+        if let Some(ref config) = *fault_injection {
             if config.duration_ms > 0 {
-                tokio::time::sleep(Duration::from_millis(config.duration_ms as u64)).await;
+                std::thread::sleep(Duration::from_millis(config.duration_ms as u64));
             }
 
             match config.fault_type.as_str() {
@@ -263,26 +257,25 @@ impl TransactionalKvDatabase {
     }
 
     // Conflict detection and retry logic
-    async fn execute_with_retry<F, Fut>(&self, operation: &str, mut operation_fn: F) -> OpResult
+    fn execute_with_retry<F>(&self, operation: &str, mut operation_fn: F) -> OpResult
     where
-        F: FnMut() -> Fut + Send,
-        Fut: std::future::Future<Output = OpResult> + Send,
+        F: FnMut() -> OpResult,
     {
-        if self.should_inject_fault(operation).await {
-            if let Some(fault_result) = self.inject_fault(operation).await {
+        if self.should_inject_fault(operation) {
+            if let Some(fault_result) = self.inject_fault(operation) {
                 return fault_result;
             }
         }
 
         if !self.conflict_detection.enabled {
-            return operation_fn().await;
+            return operation_fn();
         }
 
         let start_time = SystemTime::now();
         let mut retry_count = 0;
 
         loop {
-            let result = operation_fn().await;
+            let result = operation_fn();
             
             // Check if it's a conflict that we should retry
             let should_retry = if let Some(error_code) = &result.error_code {
@@ -315,12 +308,12 @@ impl TransactionalKvDatabase {
             let mut rng = rand::thread_rng();
             let jitter: u64 = rng.gen_range(0..50);
             let delay = self.conflict_detection.retry_delay_ms * (2_u64.pow(retry_count as u32 - 1)) + jitter;
-            tokio::time::sleep(Duration::from_millis(delay)).await;
+            std::thread::sleep(Duration::from_millis(delay));
         }
     }
 
     // Transaction lifecycle methods
-    pub async fn begin_transaction(&self, column_families: Vec<String>, timeout_seconds: u64) -> TransactionResult {
+    pub fn begin_transaction(&self, column_families: Vec<String>, timeout_seconds: u64) -> TransactionResult {
         let transaction_id = Uuid::new_v4().to_string();
         let timeout_duration = Duration::from_secs(timeout_seconds);
         
@@ -335,7 +328,7 @@ impl TransactionalKvDatabase {
         };
         
         // Store the transaction state
-        let mut active_txns = self.active_transactions.write().await;
+        let mut active_txns = self.active_transactions.write().unwrap();
         active_txns.insert(transaction_id.clone(), transaction);
         
         TransactionResult {
@@ -346,9 +339,9 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn commit_transaction(&self, transaction_id: &str) -> OpResult {
-        async fn commit_impl(db: &TransactionalKvDatabase, transaction_id: &str) -> OpResult {
-            let mut active_txns = db.active_transactions.write().await;
+    pub fn commit_transaction(&self, transaction_id: &str) -> OpResult {
+        fn commit_impl(db: &TransactionalKvDatabase, transaction_id: &str) -> OpResult {
+            let mut active_txns = db.active_transactions.write().unwrap();
             
             if let Some(txn) = active_txns.get(transaction_id) {
                 // Check for read conflicts
@@ -382,15 +375,11 @@ impl TransactionalKvDatabase {
 
         let txn_id = transaction_id.to_string();
         self.execute_with_retry("commit", || {
-            let txn_id = txn_id.clone();
-            async move {
-                commit_impl(self, &txn_id).await
-            }
-        }).await
-    }
+            commit_impl(self, &txn_id)
+        })    }
 
-    pub async fn abort_transaction(&self, transaction_id: &str) -> OpResult {
-        let mut active_txns = self.active_transactions.write().await;
+    pub fn abort_transaction(&self, transaction_id: &str) -> OpResult {
+        let mut active_txns = self.active_transactions.write().unwrap();
         
         if active_txns.remove(transaction_id).is_some() {
             OpResult {
@@ -408,23 +397,19 @@ impl TransactionalKvDatabase {
     }
 
     // Transactional operations
-    pub async fn transactional_get(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> Result<GetResult, String> {
+    pub fn transactional_get(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> Result<GetResult, String> {
         if key.is_empty() {
             return Err("key cannot be empty".to_string());
         }
 
         // Verify transaction exists
-        let active_txns = self.active_transactions.read().await;
+        let active_txns = self.active_transactions.read().unwrap();
         if !active_txns.contains_key(transaction_id) {
             return Err("transaction not found".to_string());
         }
         drop(active_txns);
 
-        // Acquire read semaphore to limit concurrent read transactions
-        let _permit = self.read_semaphore
-            .acquire()
-            .await
-            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+        // No longer need read semaphore in sync version
 
         // Create a read-only transaction
         let txn_opts = TransactionOptions::default();
@@ -464,7 +449,7 @@ impl TransactionalKvDatabase {
     }
 
     // Additional transactional operations
-    pub async fn transactional_set(&self, transaction_id: &str, key: &str, value: &str, column_family: Option<&str>) -> OpResult {
+    pub fn transactional_set(&self, transaction_id: &str, key: &str, value: &str, column_family: Option<&str>) -> OpResult {
         if key.is_empty() {
             return OpResult {
                 success: false,
@@ -474,7 +459,7 @@ impl TransactionalKvDatabase {
         }
 
         // Verify transaction exists
-        let active_txns = self.active_transactions.read().await;
+        let active_txns = self.active_transactions.read().unwrap();
         if !active_txns.contains_key(transaction_id) {
             return OpResult {
                 success: false,
@@ -495,7 +480,7 @@ impl TransactionalKvDatabase {
             let db = &self.db;
             let cf_handles = &self.cf_handles;
             
-            async move {
+            {
                 // Create a transaction for the set operation
                 let txn_opts = TransactionOptions::default();
                 let txn = db.transaction_opt(&Default::default(), &txn_opts);
@@ -541,10 +526,9 @@ impl TransactionalKvDatabase {
                     }
                 }
             }
-        }).await
-    }
+        })    }
 
-    pub async fn transactional_delete(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> OpResult {
+    pub fn transactional_delete(&self, transaction_id: &str, key: &str, column_family: Option<&str>) -> OpResult {
         if key.is_empty() {
             return OpResult {
                 success: false,
@@ -554,7 +538,7 @@ impl TransactionalKvDatabase {
         }
 
         // Verify transaction exists
-        let active_txns = self.active_transactions.read().await;
+        let active_txns = self.active_transactions.read().unwrap();
         if !active_txns.contains_key(transaction_id) {
             return OpResult {
                 success: false,
@@ -610,19 +594,15 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn transactional_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, limit: u32, _column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
+    pub fn transactional_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, limit: u32, _column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
         // Verify transaction exists
-        let active_txns = self.active_transactions.read().await;
+        let active_txns = self.active_transactions.read().unwrap();
         if !active_txns.contains_key(transaction_id) {
             return Err("transaction not found".to_string());
         }
         drop(active_txns);
 
-        // Acquire read semaphore to limit concurrent read transactions
-        let _permit = self.read_semaphore
-            .acquire()
-            .await
-            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+        // No longer need read semaphore in sync version
 
         // Create a read-only transaction
         let txn_opts = TransactionOptions::default();
@@ -671,8 +651,8 @@ impl TransactionalKvDatabase {
     }
 
     // Conflict detection methods
-    pub async fn add_read_conflict(&self, transaction_id: &str, key: &str, _column_family: Option<&str>) -> OpResult {
-        let mut active_txns = self.active_transactions.write().await;
+    pub fn add_read_conflict(&self, transaction_id: &str, key: &str, _column_family: Option<&str>) -> OpResult {
+        let mut active_txns = self.active_transactions.write().unwrap();
         if let Some(txn) = active_txns.get_mut(transaction_id) {
             txn.read_conflicts.push(key.to_string());
             OpResult {
@@ -689,8 +669,8 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn add_read_conflict_range(&self, transaction_id: &str, start_key: &str, end_key: &str, _column_family: Option<&str>) -> OpResult {
-        let mut active_txns = self.active_transactions.write().await;
+    pub fn add_read_conflict_range(&self, transaction_id: &str, start_key: &str, end_key: &str, _column_family: Option<&str>) -> OpResult {
+        let mut active_txns = self.active_transactions.write().unwrap();
         if let Some(txn) = active_txns.get_mut(transaction_id) {
             txn.read_conflict_ranges.push((start_key.to_string(), end_key.to_string()));
             OpResult {
@@ -708,8 +688,8 @@ impl TransactionalKvDatabase {
     }
 
     // Version management methods
-    pub async fn set_read_version(&self, transaction_id: &str, version: i64) -> OpResult {
-        let mut active_txns = self.active_transactions.write().await;
+    pub fn set_read_version(&self, transaction_id: &str, version: i64) -> OpResult {
+        let mut active_txns = self.active_transactions.write().unwrap();
         if let Some(txn) = active_txns.get_mut(transaction_id) {
             txn.read_version = Some(version);
             OpResult {
@@ -726,8 +706,8 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn get_committed_version(&self, transaction_id: &str) -> Result<i64, String> {
-        let active_txns = self.active_transactions.read().await;
+    pub fn get_committed_version(&self, transaction_id: &str) -> Result<i64, String> {
+        let active_txns = self.active_transactions.read().unwrap();
         if let Some(txn) = active_txns.get(transaction_id) {
             // For now, return a basic timestamp-based version
             // In a real implementation, this would be the actual committed version from RocksDB
@@ -742,20 +722,18 @@ impl TransactionalKvDatabase {
     }
 
     // Snapshot operations
-    pub async fn snapshot_get(&self, transaction_id: &str, key: &str, _read_version: i64, column_family: Option<&str>) -> Result<GetResult, String> {
+    pub fn snapshot_get(&self, transaction_id: &str, key: &str, _read_version: i64, column_family: Option<&str>) -> Result<GetResult, String> {
         // For simplicity, delegate to regular transactional_get
         // In a full implementation, this would use the read_version for snapshot isolation
-        self.transactional_get(transaction_id, key, column_family).await
-    }
+        self.transactional_get(transaction_id, key, column_family)    }
 
-    pub async fn snapshot_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, _read_version: i64, limit: u32, column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
+    pub fn snapshot_get_range(&self, transaction_id: &str, start_key: &str, end_key: Option<&str>, _read_version: i64, limit: u32, column_family: Option<&str>) -> Result<Vec<(String, String)>, String> {
         // For simplicity, delegate to regular transactional_get_range
         // In a full implementation, this would use the read_version for snapshot isolation
-        self.transactional_get_range(transaction_id, start_key, end_key, limit, column_family).await
-    }
+        self.transactional_get_range(transaction_id, start_key, end_key, limit, column_family)    }
 
     // Versionstamped operations (basic implementation)
-    pub async fn set_versionstamped_key(&self, transaction_id: &str, key_prefix: &str, value: &str, column_family: Option<&str>) -> Result<String, String> {
+    pub fn set_versionstamped_key(&self, transaction_id: &str, key_prefix: &str, value: &str, column_family: Option<&str>) -> Result<String, String> {
         // Generate a version stamp based on current time
         let version_stamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -764,7 +742,7 @@ impl TransactionalKvDatabase {
         
         let generated_key = format!("{}{:016x}", key_prefix, version_stamp);
         
-        let result = self.transactional_set(transaction_id, &generated_key, value, column_family).await;
+        let result = self.transactional_set(transaction_id, &generated_key, value, column_family);
         if result.success {
             Ok(generated_key)
         } else {
@@ -772,7 +750,7 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn set_versionstamped_value(&self, transaction_id: &str, key: &str, value_prefix: &str, column_family: Option<&str>) -> Result<String, String> {
+    pub fn set_versionstamped_value(&self, transaction_id: &str, key: &str, value_prefix: &str, column_family: Option<&str>) -> Result<String, String> {
         // Generate a version stamp based on current time
         let version_stamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -781,7 +759,7 @@ impl TransactionalKvDatabase {
         
         let generated_value = format!("{}{:016x}", value_prefix, version_stamp);
         
-        let result = self.transactional_set(transaction_id, key, &generated_value, column_family).await;
+        let result = self.transactional_set(transaction_id, key, &generated_value, column_family);
         if result.success {
             Ok(generated_value)
         } else {
@@ -790,8 +768,8 @@ impl TransactionalKvDatabase {
     }
 
     // Transaction cleanup and management
-    pub async fn cleanup_expired_transactions(&self) -> Result<(), String> {
-        let mut active_txns = self.active_transactions.write().await;
+    pub fn cleanup_expired_transactions(&self) -> Result<(), String> {
+        let mut active_txns = self.active_transactions.write().unwrap();
         let now = SystemTime::now();
         
         active_txns.retain(|_id, txn| {
@@ -805,9 +783,9 @@ impl TransactionalKvDatabase {
         Ok(())
     }
 
-    // Keep write worker logic from original implementation
-    async fn write_worker(db: Arc<TransactionDB>, mut write_queue_rx: mpsc::UnboundedReceiver<WriteRequest>) {
-        while let Some(request) = write_queue_rx.recv().await {
+    // Single-thread write worker using sync channels
+    fn write_worker(db: Arc<TransactionDB>, write_queue_rx: mpsc::Receiver<WriteRequest>) {
+        while let Ok(request) = write_queue_rx.recv() {
             let result = match request.operation {
                 WriteOperation::Put { key, value } => Self::execute_put(&db, &key, &value),
                 WriteOperation::Delete { key } => Self::execute_delete(&db, &key),
@@ -899,16 +877,12 @@ impl TransactionalKvDatabase {
     }
 
     // Non-transactional operations for backward compatibility
-    pub async fn get(&self, key: &str) -> Result<GetResult, String> {
+    pub fn get(&self, key: &str) -> Result<GetResult, String> {
         if key.is_empty() {
             return Err("key cannot be empty".to_string());
         }
 
-        // Acquire read semaphore to limit concurrent read transactions
-        let _permit = self.read_semaphore
-            .acquire()
-            .await
-            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+        // No longer need read semaphore in sync version
 
         // Create a read-only transaction
         let txn_opts = TransactionOptions::default();
@@ -935,8 +909,8 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub async fn put(&self, key: &str, value: &str) -> OpResult {
-        let (response_tx, response_rx) = oneshot::channel();
+    pub fn put(&self, key: &str, value: &str) -> OpResult {
+        let (response_tx, response_rx) = mpsc::channel();
         let write_request = WriteRequest {
             operation: WriteOperation::Put {
                 key: key.to_string(),
@@ -947,18 +921,18 @@ impl TransactionalKvDatabase {
 
         // Send write request to the queue
         if let Err(_) = self.write_queue_tx.send(write_request) {
-            return OpResult { success: false, error: "write queue channel closed".to_string(), error_code: None, };
+            return OpResult { success: false, error: "write queue channel closed".to_string(), error_code: None };
         }
 
         // Wait for the response
-        match response_rx.await {
+        match response_rx.recv() {
             Ok(result) => result,
-            Err(_) => OpResult { success: false, error: "failed to receive response from write worker".to_string(), error_code: None, },
+            Err(_) => OpResult { success: false, error: "failed to receive response from write worker".to_string(), error_code: None },
         }
     }
 
-    pub async fn delete(&self, key: &str) -> OpResult {
-        let (response_tx, response_rx) = oneshot::channel();
+    pub fn delete(&self, key: &str) -> OpResult {
+        let (response_tx, response_rx) = mpsc::channel();
         let write_request = WriteRequest {
             operation: WriteOperation::Delete {
                 key: key.to_string(),
@@ -968,22 +942,18 @@ impl TransactionalKvDatabase {
 
         // Send write request to the queue
         if let Err(_) = self.write_queue_tx.send(write_request) {
-            return OpResult { success: false, error: "write queue channel closed".to_string(), error_code: None, };
+            return OpResult { success: false, error: "write queue channel closed".to_string(), error_code: None };
         }
 
         // Wait for the response
-        match response_rx.await {
+        match response_rx.recv() {
             Ok(result) => result,
-            Err(_) => OpResult { success: false, error: "failed to receive response from write worker".to_string(), error_code: None, },
+            Err(_) => OpResult { success: false, error: "failed to receive response from write worker".to_string(), error_code: None },
         }
     }
 
-    pub async fn list_keys(&self, prefix: &str, limit: u32) -> Result<Vec<String>, String> {
-        // Acquire read semaphore to limit concurrent read transactions
-        let _permit = self.read_semaphore
-            .acquire()
-            .await
-            .map_err(|_| "timeout waiting for read transaction slot".to_string())?;
+    pub fn list_keys(&self, prefix: &str, limit: u32) -> Result<Vec<String>, String> {
+        // No longer need read semaphore in sync version
 
         // Create a read-only transaction for consistent snapshot
         let txn_opts = TransactionOptions::default();
@@ -1035,7 +1005,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio;
 
-    async fn create_test_db() -> (TransactionalKvDatabase, TempDir) {
+    fn create_test_db() -> (TransactionalKvDatabase, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let config = Config::default();
@@ -1047,7 +1017,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transaction_lifecycle_basic() {
+    fn test_transaction_lifecycle_basic() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Test begin transaction
@@ -1068,7 +1038,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transaction_abort() {
+    fn test_transaction_abort() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1087,7 +1057,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transaction_with_column_families() {
+    fn test_transaction_with_column_families() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction with column families
@@ -1103,7 +1073,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_invalid_transaction_operations() {
+    fn test_invalid_transaction_operations() {
         let (db, _temp_dir) = create_test_db().await;
         
         let invalid_txn_id = "invalid-transaction-id";
@@ -1123,7 +1093,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_empty_key_validation() {
+    fn test_empty_key_validation() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1149,7 +1119,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_set_get() {
+    fn test_transactional_set_get() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1182,7 +1152,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_set_update() {
+    fn test_transactional_set_update() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1211,7 +1181,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_delete() {
+    fn test_transactional_delete() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1247,7 +1217,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_multiple_transactions_isolation() {
+    fn test_multiple_transactions_isolation() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin two transactions
@@ -1290,7 +1260,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transaction_rollback_on_abort() {
+    fn test_transaction_rollback_on_abort() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1334,7 +1304,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_get_range_basic() {
+    fn test_transactional_get_range_basic() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1380,7 +1350,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_get_range_with_limit() {
+    fn test_transactional_get_range_with_limit() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1414,7 +1384,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_get_range_with_end_key() {
+    fn test_transactional_get_range_with_end_key() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1446,7 +1416,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_get_range_empty_result() {
+    fn test_transactional_get_range_empty_result() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1471,7 +1441,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transactional_get_range_invalid_transaction() {
+    fn test_transactional_get_range_invalid_transaction() {
         let (db, _temp_dir) = create_test_db().await;
         
         let invalid_txn_id = "invalid-transaction-id";
@@ -1483,7 +1453,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_conflict_detection_basic() {
+    fn test_conflict_detection_basic() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1505,7 +1475,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_version_management() {
+    fn test_version_management() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1530,7 +1500,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_snapshot_operations() {
+    fn test_snapshot_operations() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1564,7 +1534,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_versionstamped_operations() {
+    fn test_versionstamped_operations() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1606,7 +1576,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_full_transaction_workflow() {
+    fn test_full_transaction_workflow() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1675,7 +1645,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fault_injection_timeout() {
+    fn test_fault_injection_timeout() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Configure timeout fault injection
@@ -1713,7 +1683,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fault_injection_conflict() {
+    fn test_fault_injection_conflict() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Configure conflict fault injection
@@ -1747,7 +1717,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_conflict_detection_and_retry() {
+    fn test_conflict_detection_and_retry() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin two transactions
@@ -1783,7 +1753,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_error_codes_in_responses() {
+    fn test_error_codes_in_responses() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Test invalid transaction ID
@@ -1810,7 +1780,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fault_injection_selective_operations() {
+    fn test_fault_injection_selective_operations() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Configure fault injection only for "get" operations
@@ -1846,7 +1816,7 @@ mod tests {
     }
 
     #[tokio::test] 
-    async fn test_conflict_detection_range_conflicts() {
+    fn test_conflict_detection_range_conflicts() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
@@ -1859,7 +1829,7 @@ mod tests {
         assert!(range_conflict.success, "Should successfully add read conflict range");
         
         // Verify the conflict range was recorded
-        let active_txns = db.active_transactions.read().await;
+        let active_txns = db.active_transactions.read().unwrap();
         let txn = active_txns.get(&transaction_id).unwrap();
         assert_eq!(txn.read_conflict_ranges.len(), 1);
         assert_eq!(txn.read_conflict_ranges[0], ("start_key".to_string(), "end_key".to_string()));
@@ -1870,7 +1840,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_version_management_with_conflicts() {
+    fn test_version_management_with_conflicts() {
         let (db, _temp_dir) = create_test_db().await;
         
         // Begin transaction
