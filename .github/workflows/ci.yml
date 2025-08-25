@@ -19,6 +19,8 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.21'
+        cache: true
+        cache-dependency-path: go/go.sum
 
     - name: Install Protocol Buffers
       run: |
@@ -64,6 +66,7 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
+        cache: true
 
     - name: Install Protocol Buffers
       run: |
