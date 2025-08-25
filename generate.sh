@@ -9,8 +9,10 @@ if ! command -v protoc &> /dev/null; then
 fi
 
 # Install Go plugins for protoc
+cd go
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+cd ..
 
 # Create kvstore directory for generated Go files in the go folder
 mkdir -p go/kvstore

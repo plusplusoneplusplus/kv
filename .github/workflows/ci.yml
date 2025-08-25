@@ -40,8 +40,9 @@ jobs:
 
     - name: Build Go server
       run: |
+        cd go
         go mod download
-        go build -o bin/rocksdbserver go/main.go go/server.go
+        go build -o ../bin/rocksdbserver main.go server.go
 
   build-rust:
     name: Build Rust
