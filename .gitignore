@@ -5,14 +5,24 @@ bin/
 server
 .DS_Store
 
+# CMake build artifacts
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
 # Benchmark results
 benchmark_results/
 
 # Generated protobuf files
 go/proto/*.pb.go
+cpp/generated/
 
 # Generated Thrift files
 rust/src/kvstore.rs
+go/thrift/
 
 # Rust build artifacts
 target/
