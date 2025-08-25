@@ -22,45 +22,67 @@ impl TransactionalKvStoreThriftHandler {
 }
 
 impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
-    // Transaction lifecycle methods
-    fn handle_begin_transaction(&self, req: BeginTransactionRequest) -> thrift::Result<BeginTransactionResponse> {
-        let column_families = req.column_families.unwrap_or_default();
-        let timeout_seconds = req.timeout_seconds.unwrap_or(60) as u64;
+    // FoundationDB-style client-side transaction methods (NEW)
+    
+    fn handle_get_read_version(&self, _req: GetReadVersionRequest) -> thrift::Result<GetReadVersionResponse> {
+        let read_version = self.database.get_read_version();
         
-        let result = self.database.begin_transaction(column_families, timeout_seconds);
-        
-        Ok(BeginTransactionResponse::new(
-            result.transaction_id,
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+        Ok(GetReadVersionResponse::new(
+            read_version as i64,
+            true,
+            None
         ))
     }
-
-    fn handle_commit_transaction(&self, req: CommitTransactionRequest) -> thrift::Result<CommitTransactionResponse> {
-        let result = self.database.commit_transaction(&req.transaction_id)
-;
+    
+    fn handle_snapshot_read(&self, req: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse> {
+        let result = self.database.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
         
-        Ok(CommitTransactionResponse::new(
+        match result {
+            Ok(get_result) => Ok(SnapshotReadResponse::new(
+                get_result.value,
+                get_result.found,
+                None
+            )),
+            Err(e) => Ok(SnapshotReadResponse::new(
+                String::new(),
+                false,
+                Some(e)
+            ))
+        }
+    }
+    
+    fn handle_atomic_commit(&self, req: AtomicCommitRequest) -> thrift::Result<AtomicCommitResponse> {
+        // Convert Thrift operations to internal format
+        let operations: Vec<rocksdb_server::lib::db::AtomicOperation> = req.operations.into_iter()
+            .map(|op| rocksdb_server::lib::db::AtomicOperation {
+                op_type: op.type_,
+                key: op.key,
+                value: op.value,
+                column_family: op.column_family,
+            })
+            .collect();
+        
+        let atomic_request = rocksdb_server::lib::db::AtomicCommitRequest {
+            read_version: req.read_version as u64,
+            operations,
+            read_conflict_keys: req.read_conflict_keys,
+            timeout_seconds: req.timeout_seconds.unwrap_or(60) as u64,
+        };
+        
+        let result = self.database.atomic_commit(atomic_request);
+        
+        Ok(AtomicCommitResponse::new(
             result.success,
             if result.error.is_empty() { None } else { Some(result.error) },
-            result.error_code
+            result.error_code,
+            result.committed_version.map(|v| v as i64)
         ))
     }
+    
 
-    fn handle_abort_transaction(&self, req: AbortTransactionRequest) -> thrift::Result<AbortTransactionResponse> {
-        let result = self.database.abort_transaction(&req.transaction_id)
-;
-        
-        Ok(AbortTransactionResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
-        ))
-    }
-
-    // Core transactional operations
+    // Non-transactional operations for backward compatibility
     fn handle_get(&self, req: GetRequest) -> thrift::Result<GetResponse> {
-        let result = self.database.transactional_get(&req.transaction_id, &req.key, req.column_family.as_deref())
-;
+        let result = self.database.get(&req.key);
         
         match result {
             Ok(get_result) => Ok(GetResponse::new(
@@ -77,8 +99,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_set_key(&self, req: SetRequest) -> thrift::Result<SetResponse> {
-        let result = self.database.transactional_set(&req.transaction_id, &req.key, &req.value, req.column_family.as_deref())
-;
+        let result = self.database.put(&req.key, &req.value);
         
         Ok(SetResponse::new(
             result.success,
@@ -88,8 +109,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_delete_key(&self, req: DeleteRequest) -> thrift::Result<DeleteResponse> {
-        let result = self.database.transactional_delete(&req.transaction_id, &req.key, req.column_family.as_deref())
-;
+        let result = self.database.delete(&req.key);
         
         Ok(DeleteResponse::new(
             result.success,
@@ -98,43 +118,18 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         ))
     }
 
-    // Range operations
-    fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
-        let limit = req.limit.unwrap_or(1000) as u32;
-        let result = self.database.transactional_get_range(
-                &req.transaction_id,
-                &req.start_key,
-                req.end_key.as_deref(),
-                limit,
-                req.column_family.as_deref()
-            )
-;
-        
-        match result {
-            Ok(key_values) => {
-                let thrift_key_values: Vec<KeyValue> = key_values
-                    .into_iter()
-                    .map(|(key, value)| KeyValue::new(key, value))
-                    .collect();
-                
-                Ok(GetRangeResponse::new(
-                    thrift_key_values,
-                    true,
-                    None
-                ))
-            }
-            Err(e) => Ok(GetRangeResponse::new(
-                Vec::new(),
-                false,
-                Some(e)
-            )),
-        }
+    // Range operations - not supported in simplified implementation
+    fn handle_get_range(&self, _req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
+        Ok(GetRangeResponse::new(
+            Vec::new(),
+            false,
+            Some("Range operations not supported in client-side transaction model".to_string())
+        ))
     }
 
-    // Snapshot operations
+    // Backward compatibility snapshot operations
     fn handle_snapshot_get(&self, req: SnapshotGetRequest) -> thrift::Result<SnapshotGetResponse> {
-        let result = self.database.snapshot_get(&req.transaction_id, &req.key, req.read_version, req.column_family.as_deref())
-;
+        let result = self.database.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
         
         match result {
             Ok(get_result) => Ok(SnapshotGetResponse::new(
@@ -150,124 +145,60 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         }
     }
 
-    fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
-        let limit = req.limit.unwrap_or(1000) as u32;
-        let result = self.database.snapshot_get_range(
-                &req.transaction_id,
-                &req.start_key,
-                req.end_key.as_deref(),
-                req.read_version,
-                limit,
-                req.column_family.as_deref()
-            )
-;
-        
-        match result {
-            Ok(key_values) => {
-                let thrift_key_values: Vec<KeyValue> = key_values
-                    .into_iter()
-                    .map(|(key, value)| KeyValue::new(key, value))
-                    .collect();
-                
-                Ok(SnapshotGetRangeResponse::new(
-                    thrift_key_values,
-                    true,
-                    None
-                ))
-            }
-            Err(e) => Ok(SnapshotGetRangeResponse::new(
-                Vec::new(),
-                false,
-                Some(e)
-            )),
-        }
+    fn handle_snapshot_get_range(&self, _req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
+        Ok(SnapshotGetRangeResponse::new(
+            Vec::new(),
+            false,
+            Some("Range operations not supported in client-side transaction model".to_string())
+        ))
     }
 
-    // Conflict detection
-    fn handle_add_read_conflict(&self, req: AddReadConflictRequest) -> thrift::Result<AddReadConflictResponse> {
-        let result = self.database.add_read_conflict(&req.transaction_id, &req.key, req.column_family.as_deref())
-;
-        
+    // Conflict detection stubs - handled client-side in FoundationDB model
+    fn handle_add_read_conflict(&self, _req: AddReadConflictRequest) -> thrift::Result<AddReadConflictResponse> {
         Ok(AddReadConflictResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            false,
+            Some("Conflict detection handled client-side in FoundationDB model".to_string())
         ))
     }
 
-    fn handle_add_read_conflict_range(&self, req: AddReadConflictRangeRequest) -> thrift::Result<AddReadConflictRangeResponse> {
-        let result = self.database.add_read_conflict_range(&req.transaction_id, &req.start_key, &req.end_key, req.column_family.as_deref())
-;
-        
+    fn handle_add_read_conflict_range(&self, _req: AddReadConflictRangeRequest) -> thrift::Result<AddReadConflictRangeResponse> {
         Ok(AddReadConflictRangeResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            false,
+            Some("Conflict detection handled client-side in FoundationDB model".to_string())
         ))
     }
 
-    // Version management
-    fn handle_set_read_version(&self, req: SetReadVersionRequest) -> thrift::Result<SetReadVersionResponse> {
-        let result = self.database.set_read_version(&req.transaction_id, req.version)
-;
-        
+    // Version management stubs - handled client-side in FoundationDB model
+    fn handle_set_read_version(&self, _req: SetReadVersionRequest) -> thrift::Result<SetReadVersionResponse> {
         Ok(SetReadVersionResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
+            false,
+            Some("Read version managed client-side in FoundationDB model".to_string())
         ))
     }
 
-    fn handle_get_committed_version(&self, req: GetCommittedVersionRequest) -> thrift::Result<GetCommittedVersionResponse> {
-        let result = self.database.get_committed_version(&req.transaction_id)
-;
-        
-        match result {
-            Ok(version) => Ok(GetCommittedVersionResponse::new(
-                version,
-                true,
-                None
-            )),
-            Err(e) => Ok(GetCommittedVersionResponse::new(
-                0,
-                false,
-                Some(e)
-            )),
-        }
+    fn handle_get_committed_version(&self, _req: GetCommittedVersionRequest) -> thrift::Result<GetCommittedVersionResponse> {
+        Ok(GetCommittedVersionResponse::new(
+            0,
+            false,
+            Some("Committed version managed client-side in FoundationDB model".to_string())
+        ))
     }
 
-    // Versionstamped operations
-    fn handle_set_versionstamped_key(&self, req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
-        let result = self.database.set_versionstamped_key(&req.transaction_id, &req.key_prefix, &req.value, req.column_family.as_deref())
-;
-        
-        match result {
-            Ok(generated_key) => Ok(SetVersionstampedKeyResponse::new(
-                generated_key,
-                true,
-                None
-            )),
-            Err(e) => Ok(SetVersionstampedKeyResponse::new(
-                String::new(),
-                false,
-                Some(e)
-            )),
-        }
+    // Versionstamped operation stubs - not supported in simplified model
+    fn handle_set_versionstamped_key(&self, _req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
+        Ok(SetVersionstampedKeyResponse::new(
+            String::new(),
+            false,
+            Some("Versionstamped operations not supported in simplified model".to_string())
+        ))
     }
 
-    fn handle_set_versionstamped_value(&self, req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
-        let result = self.database.set_versionstamped_value(&req.transaction_id, &req.key, &req.value_prefix, req.column_family.as_deref())
-;
-        
-        match result {
-            Ok(generated_value) => Ok(SetVersionstampedValueResponse::new(
-                generated_value,
-                true,
-                None
-            )),
-            Err(e) => Ok(SetVersionstampedValueResponse::new(
-                String::new(),
-                false,
-                Some(e)
-            )),
-        }
+    fn handle_set_versionstamped_value(&self, _req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
+        Ok(SetVersionstampedValueResponse::new(
+            String::new(),
+            false,
+            Some("Versionstamped operations not supported in simplified model".to_string())
+        ))
     }
 
     // Fault injection for testing
@@ -285,8 +216,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
             None // Disable fault injection
         };
         
-        let result = self.database.set_fault_injection(config)
-;
+        let result = self.database.set_fault_injection(config);
         
         Ok(FaultInjectionResponse::new(
             result.success,

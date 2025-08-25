@@ -10,5 +10,5 @@ pub mod lib {
 
 // Re-export commonly used types for convenience
 pub use lib::config::Config;
-pub use lib::db::{TransactionalKvDatabase, OpResult, GetResult, TransactionResult};
+pub use lib::db::{TransactionalKvDatabase, OpResult, GetResult, AtomicOperation, AtomicCommitRequest, AtomicCommitResult};
 pub use lib::kvstore::*;

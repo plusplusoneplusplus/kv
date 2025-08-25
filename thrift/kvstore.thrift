@@ -1,41 +1,9 @@
 namespace rs kvstore
 
-// Transaction lifecycle structures
-struct BeginTransactionRequest {
-    1: optional list<string> column_families,
-    2: optional i64 timeout_seconds = 60
-}
-
-struct BeginTransactionResponse {
-    1: required string transaction_id,
-    2: required bool success,
-    3: optional string error
-}
-
-struct CommitTransactionRequest {
-    1: required string transaction_id
-}
-
-struct CommitTransactionResponse {
-    1: required bool success,
-    2: optional string error,
-    3: optional string error_code  // Added for conflict detection
-}
-
-struct AbortTransactionRequest {
-    1: required string transaction_id
-}
-
-struct AbortTransactionResponse {
-    1: required bool success,
-    2: optional string error
-}
-
-// Core transactional operations
+// Core non-transactional operations (for backward compatibility)
 struct GetRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: optional string column_family
+    1: required string key,
+    2: optional string column_family
 }
 
 struct GetResponse {
@@ -45,37 +13,34 @@ struct GetResponse {
 }
 
 struct SetRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: required string value,
-    4: optional string column_family
+    1: required string key,
+    2: required string value,
+    3: optional string column_family
 }
 
 struct SetResponse {
     1: required bool success,
     2: optional string error,
-    3: optional string error_code  // Added for conflict detection
+    3: optional string error_code
 }
 
 struct DeleteRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: optional string column_family
+    1: required string key,
+    2: optional string column_family
 }
 
 struct DeleteResponse {
     1: required bool success,
     2: optional string error,
-    3: optional string error_code  // Added for conflict detection
+    3: optional string error_code
 }
 
-// Range operations
+// Range operations (simplified)
 struct GetRangeRequest {
-    1: required string transaction_id,
-    2: required string start_key,
-    3: optional string end_key,
-    4: optional i32 limit = 1000,
-    5: optional string column_family
+    1: required string start_key,
+    2: optional string end_key,
+    3: optional i32 limit = 1000,
+    4: optional string column_family
 }
 
 struct KeyValue {
@@ -89,12 +54,11 @@ struct GetRangeResponse {
     3: optional string error
 }
 
-// Snapshot operations
+// Legacy snapshot operations (for backward compatibility)
 struct SnapshotGetRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: required i64 read_version,
-    4: optional string column_family
+    1: required string key,
+    2: required i64 read_version,
+    3: optional string column_family
 }
 
 struct SnapshotGetResponse {
@@ -104,12 +68,11 @@ struct SnapshotGetResponse {
 }
 
 struct SnapshotGetRangeRequest {
-    1: required string transaction_id,
-    2: required string start_key,
-    3: optional string end_key,
-    4: required i64 read_version,
-    5: optional i32 limit = 1000,
-    6: optional string column_family
+    1: required string start_key,
+    2: optional string end_key,
+    3: required i64 read_version,
+    4: optional i32 limit = 1000,
+    5: optional string column_family
 }
 
 struct SnapshotGetRangeResponse {
@@ -118,11 +81,10 @@ struct SnapshotGetRangeResponse {
     3: optional string error
 }
 
-// Conflict detection
+// Legacy stub structures (for backward compatibility - return errors)
 struct AddReadConflictRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: optional string column_family
+    1: required string key,
+    2: optional string column_family
 }
 
 struct AddReadConflictResponse {
@@ -131,10 +93,9 @@ struct AddReadConflictResponse {
 }
 
 struct AddReadConflictRangeRequest {
-    1: required string transaction_id,
-    2: required string start_key,
-    3: required string end_key,
-    4: optional string column_family
+    1: required string start_key,
+    2: required string end_key,
+    3: optional string column_family
 }
 
 struct AddReadConflictRangeResponse {
@@ -142,10 +103,8 @@ struct AddReadConflictRangeResponse {
     2: optional string error
 }
 
-// Version management
 struct SetReadVersionRequest {
-    1: required string transaction_id,
-    2: required i64 version
+    1: required i64 version
 }
 
 struct SetReadVersionResponse {
@@ -154,7 +113,7 @@ struct SetReadVersionResponse {
 }
 
 struct GetCommittedVersionRequest {
-    1: required string transaction_id
+    // Empty request
 }
 
 struct GetCommittedVersionResponse {
@@ -163,12 +122,10 @@ struct GetCommittedVersionResponse {
     3: optional string error
 }
 
-// Versionstamped operations
 struct SetVersionstampedKeyRequest {
-    1: required string transaction_id,
-    2: required string key_prefix,
-    3: required string value,
-    4: optional string column_family
+    1: required string key_prefix,
+    2: required string value,
+    3: optional string column_family
 }
 
 struct SetVersionstampedKeyResponse {
@@ -178,10 +135,9 @@ struct SetVersionstampedKeyResponse {
 }
 
 struct SetVersionstampedValueRequest {
-    1: required string transaction_id,
-    2: required string key,
-    3: required string value_prefix,
-    4: optional string column_family
+    1: required string key,
+    2: required string value_prefix,
+    3: optional string column_family
 }
 
 struct SetVersionstampedValueResponse {
@@ -203,6 +159,50 @@ struct FaultInjectionResponse {
     2: optional string error
 }
 
+// Client-side atomic operations (FoundationDB style)
+struct Operation {
+    1: required string type,  // "set", "delete" 
+    2: required string key,
+    3: optional string value,  // Only for "set" operations
+    4: optional string column_family
+}
+
+struct AtomicCommitRequest {
+    1: required i64 read_version,  // Client's read version for conflict detection
+    2: required list<Operation> operations,  // All buffered operations
+    3: required list<string> read_conflict_keys,  // Keys read during transaction
+    4: optional i64 timeout_seconds = 60
+}
+
+struct AtomicCommitResponse {
+    1: required bool success,
+    2: optional string error,
+    3: optional string error_code,  // "CONFLICT", "TIMEOUT", etc.
+    4: optional i64 committed_version  // Version assigned to this commit
+}
+
+struct GetReadVersionRequest {
+    // Empty - just requests current read version
+}
+
+struct GetReadVersionResponse {
+    1: required i64 read_version,
+    2: required bool success,
+    3: optional string error
+}
+
+struct SnapshotReadRequest {
+    1: required string key,
+    2: required i64 read_version,
+    3: optional string column_family
+}
+
+struct SnapshotReadResponse {
+    1: required string value,
+    2: required bool found,
+    3: optional string error
+}
+
 // Health check (preserved from original)
 struct PingRequest {
     1: optional string message,
@@ -215,34 +215,32 @@ struct PingResponse {
     3: required i64 server_timestamp
 }
 
-// The transactional key-value store service definition
+// The FoundationDB-style transactional key-value store service
 service TransactionalKV {
-    // Transaction lifecycle
-    BeginTransactionResponse beginTransaction(1: BeginTransactionRequest request),
-    CommitTransactionResponse commitTransaction(1: CommitTransactionRequest request),
-    AbortTransactionResponse abortTransaction(1: AbortTransactionRequest request),
+    // FoundationDB-style client-side transactions
+    GetReadVersionResponse getReadVersion(1: GetReadVersionRequest request),
+    SnapshotReadResponse snapshotRead(1: SnapshotReadRequest request),  
+    AtomicCommitResponse atomicCommit(1: AtomicCommitRequest request),
     
-    // Core transactional operations
+    // Non-transactional operations for backward compatibility
     GetResponse get(1: GetRequest request),
     SetResponse setKey(1: SetRequest request),
-    DeleteResponse delete_key(1: DeleteRequest request),
+    DeleteResponse deleteKey(1: DeleteRequest request),
     
-    // Range operations
+    // Range operations (simplified)
     GetRangeResponse getRange(1: GetRangeRequest request),
     
-    // Snapshot operations
+    // Legacy snapshot operations (for backward compatibility)
     SnapshotGetResponse snapshotGet(1: SnapshotGetRequest request),
     SnapshotGetRangeResponse snapshotGetRange(1: SnapshotGetRangeRequest request),
     
-    // Conflict detection
+    // Legacy conflict detection and version management (stubs that return errors)
     AddReadConflictResponse addReadConflict(1: AddReadConflictRequest request),
     AddReadConflictRangeResponse addReadConflictRange(1: AddReadConflictRangeRequest request),
-    
-    // Version management
     SetReadVersionResponse setReadVersion(1: SetReadVersionRequest request),
     GetCommittedVersionResponse getCommittedVersion(1: GetCommittedVersionRequest request),
     
-    // Versionstamped operations
+    // Legacy versionstamped operations (stubs that return errors)
     SetVersionstampedKeyResponse setVersionstampedKey(1: SetVersionstampedKeyRequest request),
     SetVersionstampedValueResponse setVersionstampedValue(1: SetVersionstampedValueRequest request),
     
