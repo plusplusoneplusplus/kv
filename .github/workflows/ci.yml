@@ -33,7 +33,15 @@ jobs:
     - name: Install RocksDB
       run: |
         sudo apt-get update
-        sudo apt-get install -y librocksdb-dev
+        sudo apt-get install -y build-essential libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
+        # Build RocksDB from source to ensure compatibility with grocksdb
+        wget https://github.com/facebook/rocksdb/archive/refs/tags/v8.8.1.tar.gz
+        tar -xzf v8.8.1.tar.gz
+        cd rocksdb-8.8.1
+        make shared_lib -j$(nproc)
+        sudo make install-shared
+        sudo ldconfig
+        cd ..
 
     - name: Generate protobuf files
       run: ./generate.sh
