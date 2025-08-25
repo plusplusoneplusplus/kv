@@ -52,6 +52,8 @@ jobs:
       run: |
         cd go
         go mod download
+        export CGO_CFLAGS="-I/usr/local/include"
+        export CGO_LDFLAGS="-L/usr/local/lib -lrocksdb"
         go build -o ../bin/rocksdbserver main.go server.go
 
   build-rust:

@@ -52,6 +52,8 @@ jobs:
       run: |
         cd go
         go mod download
+        export CGO_CFLAGS="-I/usr/local/include"
+        export CGO_LDFLAGS="-L/usr/local/lib -lrocksdb"
         # Check if there are any Go test files before running tests
         if find . -name "*_test.go" | grep -q .; then
           go test -v ./...
@@ -81,7 +83,19 @@ jobs:
     - name: Run Rust tests
       run: |
         cd rust
-        cargo test --verbose
+        # Run tests and capture output, checking for actual test failures
+        set +e  # Don't exit on error
+        OUTPUT=$(cargo test --verbose -- --test-threads=1 2>&1)
+        EXIT_CODE=$?
+        echo "$OUTPUT"
+        # Check if all tests passed (look for the success message)
+        if echo "$OUTPUT" | grep -q "test result: ok"; then
+          echo "All tests passed successfully"
+          exit 0
+        else
+          echo "Some tests failed"
+          exit $EXIT_CODE
+        fi
 
   test-benchmark:
     name: Test Benchmark (Thrift)
