@@ -1,0 +1,7 @@
+[build]
+# Configure cargo test to run with single thread (no parallelism)
+jobs = 1
+
+[env]
+# Set default test threads to 1 for all test runs
+RUST_TEST_THREADS = "1"
