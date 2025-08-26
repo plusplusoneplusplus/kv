@@ -24,7 +24,9 @@ enum Rpc {
     AtomicCommit { operations: Vec<thrift_kv::Operation>, read_version: i64, read_conflicts: Vec<String>, tx: oneshot::Sender<Result<thrift_kv::AtomicCommitResponse, thrift::Error>> },
     
     // Non-transactional operations 
+    #[allow(dead_code)]
     Put { key: String, value: String, tx: oneshot::Sender<Result<thrift_kv::SetResponse, thrift::Error>> },
+    #[allow(dead_code)]
     Get { key: String, tx: oneshot::Sender<Result<thrift_kv::GetResponse, thrift::Error>> },
     
     Ping { message: String, timestamp: i64, tx: oneshot::Sender<Result<thrift_kv::PingResponse, thrift::Error>> },
@@ -89,6 +91,7 @@ impl ClientTransaction {
         self.pending_deletes.remove(&key);  // Remove from deletes if previously deleted
     }
     
+    #[allow(dead_code)]
     fn delete(&mut self, key: String) {
         // Pure client-side operation - no network I/O!
         self.pending_deletes.insert(key.clone());

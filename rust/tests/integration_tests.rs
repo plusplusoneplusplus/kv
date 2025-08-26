@@ -202,7 +202,7 @@ async fn test_conflict_detection_integration() {
         
         // Transaction 1 reads the key (simulating read conflict detection)
         let snapshot_req1 = SnapshotReadRequest::new("conflict_key".to_string(), read_version1, None::<String>);
-        let snapshot_resp1 = client1.snapshot_read(snapshot_req1).expect("Failed to snapshot read 1");
+        let _snapshot_resp1 = client1.snapshot_read(snapshot_req1).expect("Failed to snapshot read 1");
         
         // Transaction 2: Get same read version (simulating concurrent transaction)
         let read_version_req2 = GetReadVersionRequest::new();  
@@ -211,7 +211,7 @@ async fn test_conflict_detection_integration() {
         
         // Transaction 2 also reads the same key
         let snapshot_req2 = SnapshotReadRequest::new("conflict_key".to_string(), read_version2, None::<String>);
-        let snapshot_resp2 = client2.snapshot_read(snapshot_req2).expect("Failed to snapshot read 2");
+        let _snapshot_resp2 = client2.snapshot_read(snapshot_req2).expect("Failed to snapshot read 2");
         
         // Transaction 1 commits first with a write to the conflicting key
         let set_op1 = Operation::new("set".to_string(), "conflict_key".to_string(), Some("value1".to_string()), None::<String>);
