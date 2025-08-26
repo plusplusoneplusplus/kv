@@ -32,22 +32,22 @@ include(ExternalProject)
 #==============================================================================
 
 # Protocol Buffers Generation
-set(PROTO_DIR "${CMAKE_SOURCE_DIR}/proto")
+set(PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 set(PROTO_FILE "${PROTO_DIR}/kvstore.proto")
 
 # Generate Go protobuf files using generate.sh
 add_custom_command(
     OUTPUT 
-        "${CMAKE_SOURCE_DIR}/go/proto/kvstore.pb.go"
-        "${CMAKE_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
-    COMMAND ${CMAKE_SOURCE_DIR}/generate.sh
+        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore.pb.go"
+        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate.sh
     DEPENDS ${PROTO_FILE}
     COMMENT "Generating Go protobuf files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Generate C++ protobuf files (if needed in the future)
-set(CPP_PROTO_OUT_DIR "${CMAKE_SOURCE_DIR}/cpp/generated")
+set(CPP_PROTO_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cpp/generated")
 add_custom_command(
     OUTPUT 
         "${CPP_PROTO_OUT_DIR}/kvstore.pb.cc"
@@ -61,44 +61,44 @@ add_custom_command(
         kvstore.proto
     DEPENDS ${PROTO_FILE}
     COMMENT "Generating C++ protobuf files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Thrift Generation
-set(THRIFT_DIR "${CMAKE_SOURCE_DIR}/thrift")
+set(THRIFT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thrift")
 set(THRIFT_FILE "${THRIFT_DIR}/kvstore.thrift")
 
 # Generate Go thrift files
-set(GO_THRIFT_OUT_DIR "${CMAKE_SOURCE_DIR}/go/thrift")
+set(GO_THRIFT_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/go/thrift")
 add_custom_command(
     OUTPUT "${GO_THRIFT_OUT_DIR}/kvstore/kvstore.go"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${GO_THRIFT_OUT_DIR}"
     COMMAND ${THRIFT_COMPILER} --gen go -out "${GO_THRIFT_OUT_DIR}" "${THRIFT_FILE}"
     DEPENDS ${THRIFT_FILE}
     COMMENT "Generating Go thrift files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Generate Rust thrift files
 add_custom_command(
-    OUTPUT "${CMAKE_SOURCE_DIR}/rust/src/kvstore.rs"
-    COMMAND ${THRIFT_COMPILER} --gen rs -out "${CMAKE_SOURCE_DIR}/rust/src" "${THRIFT_FILE}"
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
+    COMMAND ${THRIFT_COMPILER} --gen rs -out "${CMAKE_CURRENT_SOURCE_DIR}/rust/src" "${THRIFT_FILE}"
     DEPENDS ${THRIFT_FILE}
     COMMENT "Generating Rust thrift files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Create protocol generation targets
 add_custom_target(generate_proto ALL
     DEPENDS 
-        "${CMAKE_SOURCE_DIR}/go/proto/kvstore.pb.go"
-        "${CMAKE_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
+        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore.pb.go"
+        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
 )
 
 add_custom_target(generate_thrift ALL
     DEPENDS 
         "${GO_THRIFT_OUT_DIR}/kvstore/kvstore.go"
-        "${CMAKE_SOURCE_DIR}/rust/src/kvstore.rs"
+        "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
 )
 
 #==============================================================================
@@ -120,7 +120,7 @@ add_custom_target(go_server ALL
             ${GO_BUILD_FLAGS}
             -o "${CMAKE_BINARY_DIR}/bin/rocksdbserver"
             main.go server.go
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/go"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Go server"
 )
@@ -133,7 +133,7 @@ add_custom_target(go_client ALL
             ${GO_BUILD_FLAGS}
             -o "${CMAKE_BINARY_DIR}/bin/client"
             client.go
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/go"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Go client"
 )
@@ -155,9 +155,9 @@ endif()
 add_custom_target(rust_grpc_server ALL
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin server
     COMMAND ${CMAKE_COMMAND} -E copy 
-        "${CMAKE_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
+        "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Rust gRPC server"
 )
@@ -166,9 +166,9 @@ add_custom_target(rust_grpc_server ALL
 add_custom_target(rust_thrift_server ALL
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin thrift-server
     COMMAND ${CMAKE_COMMAND} -E copy 
-        "${CMAKE_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
+        "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Rust Thrift server"
 )
@@ -177,9 +177,9 @@ add_custom_target(rust_thrift_server ALL
 add_custom_target(rust_benchmark ALL
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin benchmark
     COMMAND ${CMAKE_COMMAND} -E copy 
-        "${CMAKE_SOURCE_DIR}/benchmark-rust/target/${CARGO_TARGET_DIR}/benchmark"
+        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/benchmark-rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Rust benchmark tool"
 )
@@ -189,8 +189,8 @@ add_custom_target(rust_benchmark ALL
 #==============================================================================
 
 # Define the Rust client library paths
-set(KV_CLIENT_DIR "${CMAKE_SOURCE_DIR}/rust/client")
-set(KV_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/rust/client/include")
+set(KV_CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client")
+set(KV_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/include")
 set(KV_LIB_DIR "${KV_CLIENT_DIR}/target/${CARGO_TARGET_DIR}")
 
 # Set library name based on platform
@@ -266,26 +266,26 @@ add_custom_target(build ALL
 add_custom_target(go_deps
     COMMAND ${GO_EXECUTABLE} mod tidy
     COMMAND ${GO_EXECUTABLE} mod download
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/go"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
     COMMENT "Installing Go dependencies"
 )
 
 # Rust dependencies
 add_custom_target(rust_deps
     COMMAND ${CARGO_EXECUTABLE} fetch
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     COMMENT "Installing Rust dependencies (main)"
 )
 
 add_custom_target(rust_benchmark_deps
     COMMAND ${CARGO_EXECUTABLE} fetch
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/benchmark-rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust"
     COMMENT "Installing Rust dependencies (benchmark)"
 )
 
 add_custom_target(rust_client_deps
     COMMAND ${CARGO_EXECUTABLE} fetch
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/client"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust/client"
     COMMENT "Installing Rust dependencies (client)"
 )
 
@@ -302,14 +302,14 @@ add_custom_target(deps
 # Clean target
 add_custom_target(clean_all
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/bin"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_SOURCE_DIR}/go/thrift"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_SOURCE_DIR}/go/proto"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_SOURCE_DIR}/cpp/generated"
-    COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_SOURCE_DIR}/rust/src/kvstore.rs"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/thrift"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/proto"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/cpp/generated"
+    COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} clean || true
     COMMAND ${CARGO_EXECUTABLE} clean || true
     COMMAND ${CARGO_EXECUTABLE} clean || true
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Cleaning all build artifacts"
 )
 
