@@ -366,6 +366,51 @@ pub extern "C" fn kv_transaction_set(
     future_id as KvFutureHandle
 }
 
+/// Delete a key in a transaction
+#[no_mangle]
+pub extern "C" fn kv_transaction_delete(
+    transaction: KvTransactionHandle,
+    key: *const c_char,
+    column_family: *const c_char,
+) -> KvFutureHandle {
+    if transaction.is_null() || key.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return ptr::null_mut(),
+    };
+    
+    let key_str = unsafe {
+        match CStr::from_ptr(key).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+    
+    let cf_str = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let result = tx_arc.lock().delete(key_str, cf_str);
+    let future = KvFuture::new(async move { result });
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
 /// Commit a transaction
 #[no_mangle]
 pub extern "C" fn kv_transaction_commit(transaction: KvTransactionHandle) -> KvFutureHandle {
