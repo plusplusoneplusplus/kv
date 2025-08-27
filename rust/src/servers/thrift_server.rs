@@ -213,13 +213,42 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         ))
     }
 
-    // Range operations - not supported in simplified implementation
-    fn handle_get_range(&self, _req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
-        Ok(GetRangeResponse::new(
-            Vec::new(),
-            false,
-            Some("Range operations not supported in client-side transaction model".to_string())
-        ))
+    // Range operations
+    fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
+        if self.verbose {
+            debug!("Get range: start_key='{}', end_key={:?}, limit={}, column_family={:?}",
+                   req.start_key, req.end_key, req.limit.unwrap_or(1000), req.column_family);
+        }
+        
+        let result = self.database.get_range(
+            &req.start_key,
+            req.end_key.as_deref(),
+            req.limit,
+            req.column_family.as_deref()
+        );
+        
+        if self.verbose {
+            debug!("Get range result: success={}, key_values_count={}, error='{}'",
+                   result.success, result.key_values.len(), result.error);
+        }
+        
+        if result.success {
+            let key_values: Vec<KeyValue> = result.key_values.into_iter()
+                .map(|kv| KeyValue::new(kv.key, kv.value))
+                .collect();
+            
+            Ok(GetRangeResponse::new(
+                key_values,
+                true,
+                None
+            ))
+        } else {
+            Ok(GetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some(result.error)
+            ))
+        }
     }
 
     // Backward compatibility snapshot operations
@@ -240,12 +269,42 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         }
     }
 
-    fn handle_snapshot_get_range(&self, _req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
-        Ok(SnapshotGetRangeResponse::new(
-            Vec::new(),
-            false,
-            Some("Range operations not supported in client-side transaction model".to_string())
-        ))
+    fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
+        if self.verbose {
+            debug!("Snapshot get range: start_key='{}', end_key={:?}, read_version={}, limit={}, column_family={:?}",
+                   req.start_key, req.end_key, req.read_version, req.limit.unwrap_or(1000), req.column_family);
+        }
+        
+        let result = self.database.snapshot_get_range(
+            &req.start_key,
+            req.end_key.as_deref(),
+            req.read_version as u64,
+            req.limit,
+            req.column_family.as_deref()
+        );
+        
+        if self.verbose {
+            debug!("Snapshot get range result: success={}, key_values_count={}, error='{}'",
+                   result.success, result.key_values.len(), result.error);
+        }
+        
+        if result.success {
+            let key_values: Vec<KeyValue> = result.key_values.into_iter()
+                .map(|kv| KeyValue::new(kv.key, kv.value))
+                .collect();
+            
+            Ok(SnapshotGetRangeResponse::new(
+                key_values,
+                true,
+                None
+            ))
+        } else {
+            Ok(SnapshotGetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some(result.error)
+            ))
+        }
     }
 
     // Conflict detection stubs - handled client-side in FoundationDB model

@@ -316,6 +316,113 @@ int test_c_transaction_abort() {
     return 0;
 }
 
+// Test range operations (C-style)
+int test_c_range_operations() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // First, set up test data
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(tx_future != NULL, "Failed to begin setup transaction");
+    
+    int ready = wait_for_future_c(tx_future);
+    TEST_ASSERT(ready == 1, "Setup transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    TEST_ASSERT(tx != NULL, "Failed to get setup transaction handle");
+    
+    // Set up test data with predictable ordering
+    const char* test_keys[] = {"range_key_001", "range_key_002", "range_key_003", "range_key_004", NULL};
+    const char* test_values[] = {"value1", "value2", "value3", "value4", NULL};
+    
+    for (int i = 0; test_keys[i] != NULL; i++) {
+        KvFutureHandle set_future = kv_transaction_set(tx, test_keys[i], test_values[i], NULL);
+        TEST_ASSERT(set_future != NULL, "Failed to create set future for test data");
+        
+        ready = wait_for_future_c(set_future);
+        TEST_ASSERT(ready == 1, "Set future not ready for test data");
+        
+        KvResult set_result = kv_future_get_void_result(set_future);
+        TEST_ASSERT(set_result.success == 1, "Set operation failed for test data");
+    }
+    
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    ready = wait_for_future_c(commit_future);
+    TEST_ASSERT(ready == 1, "Setup commit future not ready");
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    TEST_ASSERT(commit_result.success == 1, "Setup commit operation failed");
+    
+    // Now test range operations using read transaction
+    KvFutureHandle read_tx_future = kv_read_transaction_begin(client, -1);
+    TEST_ASSERT(read_tx_future != NULL, "Failed to begin read transaction");
+    
+    ready = wait_for_future_c(read_tx_future);
+    TEST_ASSERT(ready == 1, "Read transaction begin future not ready");
+    
+    KvReadTransactionHandle read_tx = kv_future_get_read_transaction(read_tx_future);
+    TEST_ASSERT(read_tx != NULL, "Failed to get read transaction handle");
+    
+    // Test 1: Range query with prefix
+    KvFutureHandle range_future = kv_read_transaction_get_range(read_tx, "range_key", NULL, 10, NULL);
+    TEST_ASSERT(range_future != NULL, "Failed to create range future");
+    
+    ready = wait_for_future_c(range_future);
+    TEST_ASSERT(ready == 1, "Range future not ready");
+    
+    KvPairArray pairs = {NULL, 0};
+    KvResult range_result = kv_future_get_kv_array_result(range_future, &pairs);
+    TEST_ASSERT(range_result.success == 1, "Range operation failed");
+    TEST_ASSERT(pairs.count == 4, "Expected 4 pairs from range query");
+    TEST_ASSERT(pairs.pairs != NULL, "Pairs array should not be NULL");
+    
+    // Verify the returned data
+    for (size_t i = 0; i < pairs.count; i++) {
+        TEST_ASSERT(pairs.pairs[i].key != NULL, "Key should not be NULL");
+        TEST_ASSERT(pairs.pairs[i].value != NULL, "Value should not be NULL");
+        printf("Range result [%zu]: %s = %s\n", i, pairs.pairs[i].key, pairs.pairs[i].value);
+    }
+    
+    kv_pair_array_free(&pairs);
+    
+    // Test 2: Range query with start and end key
+    KvFutureHandle bounded_range_future = kv_read_transaction_get_range(read_tx, "range_key_001", "range_key_003", 10, NULL);
+    TEST_ASSERT(bounded_range_future != NULL, "Failed to create bounded range future");
+    
+    ready = wait_for_future_c(bounded_range_future);
+    TEST_ASSERT(ready == 1, "Bounded range future not ready");
+    
+    KvPairArray bounded_pairs = {NULL, 0};
+    KvResult bounded_result = kv_future_get_kv_array_result(bounded_range_future, &bounded_pairs);
+    TEST_ASSERT(bounded_result.success == 1, "Bounded range operation failed");
+    TEST_ASSERT(bounded_pairs.count == 2, "Expected 2 pairs from bounded range query (exclusive end)");
+    
+    kv_pair_array_free(&bounded_pairs);
+    
+    // Test 3: Limited range query
+    KvFutureHandle limited_range_future = kv_read_transaction_get_range(read_tx, "range_key", NULL, 2, NULL);
+    TEST_ASSERT(limited_range_future != NULL, "Failed to create limited range future");
+    
+    ready = wait_for_future_c(limited_range_future);
+    TEST_ASSERT(ready == 1, "Limited range future not ready");
+    
+    KvPairArray limited_pairs = {NULL, 0};
+    KvResult limited_result = kv_future_get_kv_array_result(limited_range_future, &limited_pairs);
+    TEST_ASSERT(limited_result.success == 1, "Limited range operation failed");
+    TEST_ASSERT(limited_pairs.count == 2, "Expected 2 pairs from limited range query");
+    
+    kv_pair_array_free(&limited_pairs);
+    
+    // Cleanup
+    kv_read_transaction_destroy(read_tx);
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
 //==============================================================================
 // C++ Style Tests (converted from cpp_ffi_test.cpp)
 //==============================================================================
@@ -423,6 +530,44 @@ public:
         }
         
         return str_value;
+    }
+    
+    std::vector<std::pair<std::string, std::string>> get_range(const std::string& start_key, 
+                                                                const std::string* end_key = nullptr, 
+                                                                int limit = -1,
+                                                                const std::string* column_family = nullptr) {
+        const char* end_key_c = end_key ? end_key->c_str() : nullptr;
+        const char* cf = column_family ? column_family->c_str() : nullptr;
+        
+        KvFutureHandle future = kv_transaction_get_range(handle, start_key.c_str(), end_key_c, limit, cf);
+        if (!future) {
+            throw std::runtime_error("Failed to create get_range future");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Get range operation timeout");
+        }
+        
+        KvPairArray pairs = {nullptr, 0};
+        KvResult result = kv_future_get_kv_array_result(future, &pairs);
+        if (!result.success) {
+            std::string error = "Get range operation failed";
+            if (result.error_message) {
+                error += ": " + std::string(result.error_message);
+            }
+            throw std::runtime_error(error);
+        }
+        
+        std::vector<std::pair<std::string, std::string>> kv_vec;
+        for (size_t i = 0; i < pairs.count; i++) {
+            kv_vec.emplace_back(
+                pairs.pairs[i].key ? std::string(pairs.pairs[i].key) : "",
+                pairs.pairs[i].value ? std::string(pairs.pairs[i].value) : ""
+            );
+        }
+        
+        kv_pair_array_free(&pairs);
+        return kv_vec;
     }
     
     void commit() {
@@ -631,6 +776,68 @@ void test_cpp_concurrent_operations() {
     test.pass();
 }
 
+// Test C++ range operations
+void test_cpp_range_operations() {
+    FFITest test("C++ Range Operations");
+    
+    kv_init();
+    
+    try {
+        KvClientWrapper client("localhost:9090");
+        
+        // Set up test data
+        {
+            KvTransactionWrapper tx(client);
+            
+            tx.set("cpp_range_key_001", "cpp_value1");
+            tx.set("cpp_range_key_002", "cpp_value2");
+            tx.set("cpp_range_key_003", "cpp_value3");
+            tx.set("cpp_range_key_004", "cpp_value4");
+            tx.set("other_prefix", "other_value");  // Should not appear in range
+            
+            tx.commit();
+        }
+        
+        // Test range operations
+        {
+            KvTransactionWrapper tx(client);
+            
+            // Test 1: Basic range query with prefix
+            auto range_results = tx.get_range("cpp_range_key");
+            test.assert_true(range_results.size() == 4, "Expected 4 results from prefix range");
+            
+            for (size_t i = 0; i < range_results.size(); i++) {
+                std::cout << "C++ Range result [" << i << "]: " << range_results[i].first 
+                          << " = " << range_results[i].second << std::endl;
+            }
+            
+            // Test 2: Range query with end key
+            std::string end_key = "cpp_range_key_003";
+            auto bounded_results = tx.get_range("cpp_range_key_001", &end_key);
+            test.assert_true(bounded_results.size() == 2, "Expected 2 results from bounded range (exclusive end)");
+            test.assert_true(bounded_results[0].first == "cpp_range_key_001", "First key should be cpp_range_key_001");
+            test.assert_true(bounded_results[1].first == "cpp_range_key_002", "Second key should be cpp_range_key_002");
+            
+            // Test 3: Limited range query
+            auto limited_results = tx.get_range("cpp_range_key", nullptr, 2);
+            test.assert_true(limited_results.size() == 2, "Expected 2 results from limited range");
+            
+            // Test 4: Empty range query
+            auto empty_results = tx.get_range("nonexistent_prefix");
+            test.assert_true(empty_results.size() == 0, "Expected 0 results from empty range");
+            
+            tx.commit();
+        }
+        
+    } catch (const std::exception& e) {
+        kv_shutdown();
+        test.assert_true(false, std::string("Exception: ") + e.what());
+    }
+    
+    kv_shutdown();
+    test.pass();
+}
+
 //==============================================================================
 // Main Test Runner
 //==============================================================================
@@ -653,6 +860,7 @@ int main() {
         {"C Read Transaction", test_c_read_transaction},
         {"C Client Ping", test_c_client_ping},
         {"C Transaction Abort", test_c_transaction_abort},
+        {"C Range Operations", test_c_range_operations},
         {NULL, NULL}
     };
     
@@ -661,7 +869,8 @@ int main() {
         {"C++ Basic Functionality", test_cpp_basic_functionality},
         {"C++ RAII Wrapper", test_cpp_wrapper},
         {"C++ Error Handling", test_cpp_error_handling},
-        {"C++ Concurrent Operations", test_cpp_concurrent_operations}
+        {"C++ Concurrent Operations", test_cpp_concurrent_operations},
+        {"C++ Range Operations", test_cpp_range_operations}
     };
     
     int passed = 0;

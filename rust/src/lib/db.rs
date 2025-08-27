@@ -21,6 +21,19 @@ pub struct GetResult {
     pub found: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct KeyValue {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug)]
+pub struct GetRangeResult {
+    pub key_values: Vec<KeyValue>,
+    pub success: bool,
+    pub error: String,
+}
+
 #[derive(Debug)]
 pub struct OpResult {
     pub success: bool,
@@ -416,6 +429,119 @@ impl TransactionalKvDatabase {
         Ok(keys)
     }
 
+    pub fn get_range(&self, start_key: &str, end_key: Option<&str>, limit: Option<i32>, _column_family: Option<&str>) -> GetRangeResult {
+        let mut key_values = Vec::new();
+        let limit = limit.unwrap_or(1000).max(1) as usize;
+        
+        // Create a read-only transaction for consistency
+        let txn_opts = TransactionOptions::default();
+        let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
+        
+        // Use iterator to scan the range
+        let iter = txn.iterator(rocksdb::IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward));
+        
+        for result in iter {
+            if key_values.len() >= limit {
+                break;
+            }
+            
+            match result {
+                Ok((key, value)) => {
+                    let key_str = String::from_utf8_lossy(&key).to_string();
+                    
+                    // If this is a prefix scan (no end_key), ensure the key starts with the start_key
+                    if end_key.is_none() && !key_str.starts_with(start_key) {
+                        break;
+                    }
+                    
+                    // If end_key is specified, stop when we reach it
+                    if let Some(end) = end_key {
+                        if key_str.as_str() >= end {
+                            break;
+                        }
+                    }
+                    
+                    let value_str = String::from_utf8_lossy(&value).to_string();
+                    key_values.push(KeyValue {
+                        key: key_str,
+                        value: value_str,
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to iterate range: {}", e);
+                    return GetRangeResult {
+                        key_values: Vec::new(),
+                        success: false,
+                        error: format!("Failed to iterate range: {}", e),
+                    };
+                }
+            }
+        }
+        
+        GetRangeResult {
+            key_values,
+            success: true,
+            error: String::new(),
+        }
+    }
+
+    pub fn snapshot_get_range(&self, start_key: &str, end_key: Option<&str>, _read_version: u64, limit: Option<i32>, _column_family: Option<&str>) -> GetRangeResult {
+        let mut key_values = Vec::new();
+        let limit = limit.unwrap_or(1000).max(1) as usize;
+        
+        // Create snapshot at specific version
+        let snapshot = self.db.snapshot();
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_snapshot(&snapshot);
+        
+        // Use iterator with snapshot for consistent range read
+        let iter = self.db.iterator_opt(rocksdb::IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward), read_opts);
+        
+        for result in iter {
+            if key_values.len() >= limit {
+                break;
+            }
+            
+            match result {
+                Ok((key, value)) => {
+                    let key_str = String::from_utf8_lossy(&key).to_string();
+                    
+                    // If this is a prefix scan (no end_key), ensure the key starts with the start_key
+                    if end_key.is_none() && !key_str.starts_with(start_key) {
+                        break;
+                    }
+                    
+                    // If end_key is specified, stop when we reach it
+                    if let Some(end) = end_key {
+                        if key_str.as_str() >= end {
+                            break;
+                        }
+                    }
+                    
+                    let value_str = String::from_utf8_lossy(&value).to_string();
+                    key_values.push(KeyValue {
+                        key: key_str,
+                        value: value_str,
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to iterate snapshot range: {}", e);
+                    return GetRangeResult {
+                        key_values: Vec::new(),
+                        success: false,
+                        error: format!("Failed to iterate snapshot range: {}", e),
+                    };
+                }
+            }
+        }
+        
+        GetRangeResult {
+            key_values,
+            success: true,
+            error: String::new(),
+        }
+    }
+
     // Fault injection for testing
     pub fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
         let mut fault_injection = self.fault_injection.write().unwrap();
@@ -519,5 +645,40 @@ mod tests {
         let get_result = result.unwrap();
         assert!(get_result.found);
         assert_eq!(get_result.value, "test_value");
+    }
+
+    #[test]
+    fn test_range_operations() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_range_db");
+        let config = Config::default();
+        
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        
+        // Insert some test data
+        let put_result = db.put("key001", "value1");
+        assert!(put_result.success);
+        let put_result = db.put("key002", "value2");
+        assert!(put_result.success);
+        let put_result = db.put("key003", "value3");
+        assert!(put_result.success);
+        let put_result = db.put("other_key", "other_value");
+        assert!(put_result.success);
+        
+        // Test get_range with prefix
+        let range_result = db.get_range("key", None, Some(10), None);
+        assert!(range_result.success);
+        assert_eq!(range_result.key_values.len(), 3);
+        
+        // Test get_range with start and end key
+        let range_result = db.get_range("key001", Some("key003"), Some(10), None);
+        assert!(range_result.success);
+        assert_eq!(range_result.key_values.len(), 2); // key001 and key002, but not key003 (exclusive end)
+        
+        // Test snapshot get_range
+        let read_version = db.get_read_version();
+        let snapshot_range_result = db.snapshot_get_range("key", None, read_version, Some(10), None);
+        assert!(snapshot_range_result.success);
+        assert_eq!(snapshot_range_result.key_values.len(), 3);
     }
 }

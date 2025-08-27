@@ -66,7 +66,7 @@ KvTransactionHandle kv_future_get_transaction(KvFutureHandle future);
 KvReadTransactionHandle kv_future_get_read_transaction(KvFutureHandle future);
 KvResult kv_future_get_void_result(KvFutureHandle future);
 KvResult kv_future_get_string_result(KvFutureHandle future, char** value);
-KvResult kv_future_get_range_result(KvFutureHandle future, KvPairArray* pairs);
+KvResult kv_future_get_kv_array_result(KvFutureHandle future, KvPairArray* pairs);
 
 // Transaction operations
 KvFutureHandle kv_transaction_get(KvTransactionHandle transaction, const char* key, const char* column_family);

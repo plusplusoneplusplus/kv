@@ -651,6 +651,188 @@ pub extern "C" fn kv_client_ping(
     future_id as KvFutureHandle
 }
 
+/// Get a range of key-value pairs from a transaction
+#[no_mangle]
+pub extern "C" fn kv_transaction_get_range(
+    transaction: KvTransactionHandle,
+    start_key: *const c_char,
+    end_key: *const c_char,
+    limit: c_int,
+    column_family: *const c_char,
+) -> KvFutureHandle {
+    if transaction.is_null() || start_key.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return ptr::null_mut(),
+    };
+    
+    let start_key_str = unsafe {
+        match CStr::from_ptr(start_key).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+    
+    let end_key_str = if end_key.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(end_key).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let cf_str = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        }
+    };
+    
+    let limit_val = if limit > 0 { Some(limit as u32) } else { None };
+    
+    let future = tx_arc.lock().get_range(start_key_str, end_key_str, limit_val, cf_str);
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
+/// Get the result of a key-value array future (range operations)
+#[no_mangle]
+pub extern "C" fn kv_future_get_kv_array_result(future: KvFutureHandle, pairs: *mut KvPairArray) -> KvResult {
+    if future.is_null() || pairs.is_null() {
+        return KvResult::error(&KvError::Unknown("Null pointer".to_string()));
+    }
+    
+    let future_id = future as usize;
+    let mut futures = FUTURES.lock();
+    
+    if let Some(boxed_future) = futures.remove(&future_id) {
+        if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<Vec<(String, String)>>>() {
+            if let Some(result) = future_ptr.take_result() {
+                return match result {
+                    Ok(kv_vec) => {
+                        let count = kv_vec.len();
+                        if count == 0 {
+                            unsafe {
+                                (*pairs).pairs = ptr::null_mut();
+                                (*pairs).count = 0;
+                            }
+                            return KvResult::success();
+                        }
+                        
+                        // Allocate C array
+                        let c_pairs = unsafe {
+                            std::alloc::alloc(std::alloc::Layout::array::<KvPair>(count).unwrap()) as *mut KvPair
+                        };
+                        
+                        if c_pairs.is_null() {
+                            return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                        }
+                        
+                        // Fill the array
+                        for (i, (key, value)) in kv_vec.into_iter().enumerate() {
+                            let key_c = match CString::new(key) {
+                                Ok(s) => s.into_raw(),
+                                Err(_) => {
+                                    // Clean up allocated memory on error
+                                    unsafe {
+                                        for j in 0..i {
+                                            if !(*c_pairs.add(j)).key.is_null() {
+                                                let _ = CString::from_raw((*c_pairs.add(j)).key);
+                                            }
+                                            if !(*c_pairs.add(j)).value.is_null() {
+                                                let _ = CString::from_raw((*c_pairs.add(j)).value);
+                                            }
+                                        }
+                                        std::alloc::dealloc(c_pairs as *mut u8, std::alloc::Layout::array::<KvPair>(count).unwrap());
+                                    }
+                                    return KvResult::error(&KvError::Unknown("Invalid key string".to_string()));
+                                }
+                            };
+                            
+                            let value_c = match CString::new(value) {
+                                Ok(s) => s.into_raw(),
+                                Err(_) => {
+                                    // Clean up allocated memory on error
+                                    let _ = unsafe { CString::from_raw(key_c) };
+                                    unsafe {
+                                        for j in 0..i {
+                                            if !(*c_pairs.add(j)).key.is_null() {
+                                                let _ = CString::from_raw((*c_pairs.add(j)).key);
+                                            }
+                                            if !(*c_pairs.add(j)).value.is_null() {
+                                                let _ = CString::from_raw((*c_pairs.add(j)).value);
+                                            }
+                                        }
+                                        std::alloc::dealloc(c_pairs as *mut u8, std::alloc::Layout::array::<KvPair>(count).unwrap());
+                                    }
+                                    return KvResult::error(&KvError::Unknown("Invalid value string".to_string()));
+                                }
+                            };
+                            
+                            unsafe {
+                                (*c_pairs.add(i)).key = key_c;
+                                (*c_pairs.add(i)).value = value_c;
+                            }
+                        }
+                        
+                        unsafe {
+                            (*pairs).pairs = c_pairs;
+                            (*pairs).count = count;
+                        }
+                        
+                        KvResult::success()
+                    }
+                    Err(err) => KvResult::error(&err),
+                };
+            }
+        }
+    }
+    
+    KvResult::error(&KvError::Unknown("Future not ready or invalid type".to_string()))
+}
+
+/// Free a KvPairArray returned by the library
+#[no_mangle]
+pub extern "C" fn kv_pair_array_free(pairs: *mut KvPairArray) {
+    if !pairs.is_null() {
+        unsafe {
+            let pairs_ref = &mut *pairs;
+            if !pairs_ref.pairs.is_null() && pairs_ref.count > 0 {
+                for i in 0..pairs_ref.count {
+                    let pair = pairs_ref.pairs.add(i);
+                    if !(*pair).key.is_null() {
+                        let _ = CString::from_raw((*pair).key);
+                    }
+                    if !(*pair).value.is_null() {
+                        let _ = CString::from_raw((*pair).value);
+                    }
+                }
+                std::alloc::dealloc(
+                    pairs_ref.pairs as *mut u8,
+                    std::alloc::Layout::array::<KvPair>(pairs_ref.count).unwrap()
+                );
+                pairs_ref.pairs = ptr::null_mut();
+                pairs_ref.count = 0;
+            }
+        }
+    }
+}
+
 /// Abort a transaction
 #[no_mangle]
 pub extern "C" fn kv_transaction_abort(transaction: KvTransactionHandle) -> KvFutureHandle {

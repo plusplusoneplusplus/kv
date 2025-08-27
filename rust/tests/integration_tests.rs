@@ -401,6 +401,92 @@ async fn test_error_handling_integration() {
 }
 
 #[tokio::test]
+async fn test_range_operations_integration() {
+    let mut server = ThriftTestServer::new().await;
+    let port = server.start().await.expect("Failed to start server");
+    
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    
+    let result = timeout(Duration::from_secs(30), async {
+        let mut client = create_thrift_client(port).expect("Failed to create client");
+        
+        // First, set up test data using atomic commit
+        let read_version_req = GetReadVersionRequest::new();
+        let read_version_resp = client.get_read_version(read_version_req).expect("Failed to get read version");
+        let read_version = read_version_resp.read_version;
+        
+        // Create test data with predictable key ordering
+        let test_data = vec![
+            ("key001", "value1"),
+            ("key002", "value2"), 
+            ("key003", "value3"),
+            ("key004", "value4"),
+            ("other_key", "other_value"), // Should not be included in "key" prefix search
+        ];
+        
+        let mut operations = Vec::new();
+        for (key, value) in &test_data {
+            let set_op = Operation::new("set".to_string(), key.to_string(), Some(value.to_string()), None::<String>);
+            operations.push(set_op);
+        }
+        
+        let commit_req = AtomicCommitRequest::new(read_version, operations, vec![], Some(60));
+        let commit_resp = client.atomic_commit(commit_req).expect("Failed to atomic commit test data");
+        assert!(commit_resp.success, "Setting up test data should succeed: {:?}", commit_resp.error);
+        
+        // Test 1: Basic range query with prefix
+        let range_req = GetRangeRequest::new("key".to_string(), None::<String>, Some(10), None::<String>);
+        let range_resp = client.get_range(range_req).expect("Failed to get range");
+        assert!(range_resp.success, "Range query should succeed: {:?}", range_resp.error);
+        assert_eq!(range_resp.key_values.len(), 4, "Should find 4 keys starting with 'key'");
+        
+        // Verify the keys are in order and have correct values
+        let expected_keys = vec!["key001", "key002", "key003", "key004"];
+        for (i, expected_key) in expected_keys.iter().enumerate() {
+            assert_eq!(range_resp.key_values[i].key, *expected_key, "Key at index {} should match", i);
+            assert_eq!(range_resp.key_values[i].value, format!("value{}", i + 1), "Value at index {} should match", i);
+        }
+        
+        // Test 2: Range query with start and end key (exclusive end)
+        let bounded_range_req = GetRangeRequest::new("key001".to_string(), Some("key003".to_string()), Some(10), None::<String>);
+        let bounded_range_resp = client.get_range(bounded_range_req).expect("Failed to get bounded range");
+        assert!(bounded_range_resp.success, "Bounded range query should succeed: {:?}", bounded_range_resp.error);
+        assert_eq!(bounded_range_resp.key_values.len(), 2, "Should find 2 keys between key001 and key003 (exclusive)");
+        assert_eq!(bounded_range_resp.key_values[0].key, "key001");
+        assert_eq!(bounded_range_resp.key_values[1].key, "key002");
+        
+        // Test 3: Range query with limit
+        let limited_range_req = GetRangeRequest::new("key".to_string(), None::<String>, Some(2), None::<String>);
+        let limited_range_resp = client.get_range(limited_range_req).expect("Failed to get limited range");
+        assert!(limited_range_resp.success, "Limited range query should succeed: {:?}", limited_range_resp.error);
+        assert_eq!(limited_range_resp.key_values.len(), 2, "Should respect limit of 2");
+        assert_eq!(limited_range_resp.key_values[0].key, "key001");
+        assert_eq!(limited_range_resp.key_values[1].key, "key002");
+        
+        // Test 4: Snapshot range query
+        let new_read_version_req = GetReadVersionRequest::new();
+        let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
+        let new_read_version = new_read_version_resp.read_version;
+        
+        let snapshot_range_req = SnapshotGetRangeRequest::new("key".to_string(), None::<String>, new_read_version, Some(10), None::<String>);
+        let snapshot_range_resp = client.snapshot_get_range(snapshot_range_req).expect("Failed to get snapshot range");
+        assert!(snapshot_range_resp.success, "Snapshot range query should succeed: {:?}", snapshot_range_resp.error);
+        assert_eq!(snapshot_range_resp.key_values.len(), 4, "Should find 4 keys in snapshot");
+        
+        // Test 5: Empty range query (no matching keys)
+        let empty_range_req = GetRangeRequest::new("nonexistent".to_string(), None::<String>, Some(10), None::<String>);
+        let empty_range_resp = client.get_range(empty_range_req).expect("Failed to get empty range");
+        assert!(empty_range_resp.success, "Empty range query should succeed");
+        assert_eq!(empty_range_resp.key_values.len(), 0, "Should find no keys with nonexistent prefix");
+        
+        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+    }).await;
+    
+    assert!(result.is_ok(), "Test timed out or failed: {:?}", result.err());
+    server.stop().await;
+}
+
+#[tokio::test]
 async fn test_ping_integration() {
     let mut server = ThriftTestServer::new().await;
     let port = server.start().await.expect("Failed to start server");
