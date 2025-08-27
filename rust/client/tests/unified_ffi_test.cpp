@@ -423,6 +423,77 @@ int test_c_range_operations() {
     return 0;
 }
 
+// Test deletion operations with async API
+int test_c_async_deletion() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(tx_future != NULL, "Failed to begin transaction");
+    
+    int ready = wait_for_future_c(tx_future);
+    TEST_ASSERT(ready == 1, "Transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
+    
+    // Set up test data using async operations
+    KvFutureHandle set_future = kv_transaction_set(tx, "async_delete_test_key", "async_delete_test_value", NULL);
+    TEST_ASSERT(set_future != NULL, "Failed to create set future");
+    ready = wait_for_future_c(set_future);
+    TEST_ASSERT(ready == 1, "Set future not ready");
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Async set operation failed");
+    
+    // Verify the key exists before deletion
+    KvFutureHandle get_future = kv_transaction_get(tx, "async_delete_test_key", NULL);
+    TEST_ASSERT(get_future != NULL, "Failed to create get future");
+    ready = wait_for_future_c(get_future);
+    TEST_ASSERT(ready == 1, "Get future not ready");
+    char* value = NULL;
+    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    TEST_ASSERT(get_result.success == 1, "Async get operation failed");
+    TEST_ASSERT(value != NULL, "Got NULL value");
+    TEST_ASSERT(strcmp(value, "async_delete_test_value") == 0, "Value mismatch");
+    kv_string_free(value);
+    value = NULL;
+    
+    // Delete the key using async operation
+    KvFutureHandle delete_future = kv_transaction_delete(tx, "async_delete_test_key", NULL);
+    TEST_ASSERT(delete_future != NULL, "Failed to create delete future");
+    ready = wait_for_future_c(delete_future);
+    TEST_ASSERT(ready == 1, "Delete future not ready");
+    KvResult delete_result = kv_future_get_void_result(delete_future);
+    TEST_ASSERT(delete_result.success == 1, "Async delete operation failed");
+    
+    // Verify the key no longer exists
+    KvFutureHandle get_future2 = kv_transaction_get(tx, "async_delete_test_key", NULL);
+    TEST_ASSERT(get_future2 != NULL, "Failed to create get future after delete");
+    ready = wait_for_future_c(get_future2);
+    TEST_ASSERT(ready == 1, "Get future after delete not ready");
+    KvResult get_result2 = kv_future_get_string_result(get_future2, &value);
+    TEST_ASSERT(get_result2.success == 1, "Get after delete failed");
+    TEST_ASSERT(value == NULL, "Key should be NULL after deletion");
+    
+    // Commit the transaction using async operation
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    TEST_ASSERT(commit_future != NULL, "Failed to create commit future");
+    ready = wait_for_future_c(commit_future);
+    TEST_ASSERT(ready == 1, "Commit future not ready");
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    TEST_ASSERT(commit_result.success == 1, "Async commit operation failed");
+    
+    printf("Async deletion operations test completed successfully\n");
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
 //==============================================================================
 // C++ Style Tests (converted from cpp_ffi_test.cpp)
 //==============================================================================
@@ -531,6 +602,28 @@ public:
         
         return str_value;
     }
+    
+    void delete_key(const std::string& key, const std::string* column_family = nullptr) {
+        const char* cf = column_family ? column_family->c_str() : nullptr;
+        KvFutureHandle future = kv_transaction_delete(handle, key.c_str(), cf);
+        if (!future) {
+            throw std::runtime_error("Failed to create delete future");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Delete operation timeout");
+        }
+        
+        KvResult result = kv_future_get_void_result(future);
+        if (!result.success) {
+            std::string error = "Delete operation failed";
+            if (result.error_message) {
+                error += ": " + std::string(result.error_message);
+            }
+            throw std::runtime_error(error);
+        }
+    }
+    
     
     std::vector<std::pair<std::string, std::string>> get_range(const std::string& start_key, 
                                                                 const std::string* end_key = nullptr, 
@@ -838,9 +931,84 @@ void test_cpp_range_operations() {
     test.pass();
 }
 
+// Test C++ deletion operations
+void test_cpp_deletion_operations() {
+    FFITest test("C++ Deletion Operations");
+    
+    kv_init();
+    
+    try {
+        KvClientWrapper client("localhost:9090");
+        
+        // Test 1: Basic deletion using async method
+        {
+            KvTransactionWrapper tx(client);
+            
+            tx.set("cpp_delete_test1", "cpp_delete_value1");
+            
+            // Verify key exists
+            std::string retrieved = tx.get("cpp_delete_test1");
+            test.assert_true(retrieved == "cpp_delete_value1", "Key should exist before deletion");
+            
+            // Delete the key
+            tx.delete_key("cpp_delete_test1");
+            
+            // Verify key no longer exists (should return empty string)
+            std::string after_delete = tx.get("cpp_delete_test1");
+            test.assert_true(after_delete.empty(), "Key should not exist after deletion");
+            
+            tx.commit();
+        }
+        
+        // Test 2: Multiple deletions in same transaction
+        {
+            KvTransactionWrapper tx(client);
+            
+            tx.set("cpp_multi_delete1", "value1");
+            tx.set("cpp_multi_delete2", "value2");
+            tx.set("cpp_multi_delete3", "value3");
+            
+            // Verify all keys exist
+            test.assert_true(tx.get("cpp_multi_delete1") == "value1", "Key 1 should exist");
+            test.assert_true(tx.get("cpp_multi_delete2") == "value2", "Key 2 should exist");
+            test.assert_true(tx.get("cpp_multi_delete3") == "value3", "Key 3 should exist");
+            
+            // Delete all keys using async method
+            tx.delete_key("cpp_multi_delete1");
+            tx.delete_key("cpp_multi_delete2");
+            tx.delete_key("cpp_multi_delete3");
+            
+            // Verify all keys are deleted
+            test.assert_true(tx.get("cpp_multi_delete1").empty(), "Key 1 should be deleted");
+            test.assert_true(tx.get("cpp_multi_delete2").empty(), "Key 2 should be deleted");
+            test.assert_true(tx.get("cpp_multi_delete3").empty(), "Key 3 should be deleted");
+            
+            tx.commit();
+        }
+        
+        // Test 3: Delete non-existent key (should not fail)
+        {
+            KvTransactionWrapper tx(client);
+            
+            // This should not throw an exception
+            tx.delete_key("non_existent_key");
+            tx.delete_key("another_non_existent_key");
+            
+            tx.commit();
+        }
+        
+    } catch (const std::exception& e) {
+        kv_shutdown();
+        test.assert_true(false, std::string("Exception: ") + e.what());
+    }
+    
+    kv_shutdown();
+    test.pass();
+}
+
 //==============================================================================
 // Main Test Runner
-//==============================================================================
+//===============================================================================
 
 int main() {
     std::cout << "Running KV Store Unified C/C++ FFI Tests" << std::endl;
@@ -861,6 +1029,7 @@ int main() {
         {"C Client Ping", test_c_client_ping},
         {"C Transaction Abort", test_c_transaction_abort},
         {"C Range Operations", test_c_range_operations},
+        {"C Async Deletion", test_c_async_deletion},
         {NULL, NULL}
     };
     
@@ -870,7 +1039,8 @@ int main() {
         {"C++ RAII Wrapper", test_cpp_wrapper},
         {"C++ Error Handling", test_cpp_error_handling},
         {"C++ Concurrent Operations", test_cpp_concurrent_operations},
-        {"C++ Range Operations", test_cpp_range_operations}
+        {"C++ Range Operations", test_cpp_range_operations},
+        {"C++ Deletion Operations", test_cpp_deletion_operations}
     };
     
     int passed = 0;

@@ -97,12 +97,6 @@ void kv_pair_array_free(KvPairArray* pairs);
 // Health check
 KvFutureHandle kv_client_ping(KvClientHandle client, const char* message);
 
-// Synchronous convenience functions (blocking wrappers)
-KvResult kv_transaction_get_sync(KvTransactionHandle transaction, const char* key, const char* column_family, char** value);
-KvResult kv_transaction_set_sync(KvTransactionHandle transaction, const char* key, const char* value, const char* column_family);
-KvResult kv_transaction_delete_sync(KvTransactionHandle transaction, const char* key, const char* column_family);
-KvResult kv_transaction_commit_sync(KvTransactionHandle transaction);
-
 // Connection pool support (for high-throughput applications)
 typedef void* KvClientPoolHandle;
 
