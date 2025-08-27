@@ -23,6 +23,7 @@ cpp/generated/
 # Generated Thrift files
 rust/src/kvstore.rs
 go/thrift/
+gen-nodejs/
 
 # Rust build artifacts
 target/

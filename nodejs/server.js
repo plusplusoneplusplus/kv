@@ -3,8 +3,8 @@ const thrift = require('thrift');
 const path = require('path');
 
 // Import the generated Thrift files
-const TransactionalKV = require('./TransactionalKV');
-const kvstore_types = require('./kvstore_types');
+const TransactionalKV = require('./thrift/TransactionalKV');
+const kvstore_types = require('./thrift/kvstore_types');
 
 const app = express();
 const PORT = process.env.PORT || 3000;

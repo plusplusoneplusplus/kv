@@ -77,9 +77,8 @@ pids
 *.seed
 *.pid.lock
 
-# Generated Thrift files (these are copied from parent directory)
-TransactionalKV.js
-kvstore_types.js
+# Generated Thrift files are tracked in nodejs/thrift/ since they're
+# required for the Node.js server to function
 
 # OS generated files
 .DS_Store

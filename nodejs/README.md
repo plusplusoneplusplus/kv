@@ -19,6 +19,14 @@ A simple Node.js web interface for viewing and managing key-value pairs in the T
 
 ## Installation
 
+1. Generate Thrift JavaScript files:
+```bash
+# From the project root directory
+thrift --gen js:node thrift/kvstore.thrift
+cp gen-nodejs/* nodejs/thrift/
+```
+
+2. Install Node.js dependencies:
 ```bash
 cd nodejs
 npm install
