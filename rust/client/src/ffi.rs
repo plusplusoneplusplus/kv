@@ -5,19 +5,19 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use crate::{KvStoreClient, Transaction, ReadTransaction, KvError};
+use crate::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture};
 use crate::error::KvErrorCode;
 use crate::future::KvFuturePtr;
 
 // Global runtime for async operations
 #[allow(dead_code)]
-static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     tokio::runtime::Runtime::new().expect("Failed to create tokio runtime")
 });
 
 // Global storage for objects to prevent them from being dropped
 static CLIENTS: Lazy<Mutex<HashMap<usize, Arc<KvStoreClient>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static TRANSACTIONS: Lazy<Mutex<HashMap<usize, Arc<Transaction>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static TRANSACTIONS: Lazy<Mutex<HashMap<usize, Arc<Mutex<Transaction>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static READ_TRANSACTIONS: Lazy<Mutex<HashMap<usize, Arc<ReadTransaction>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static FUTURES: Lazy<Mutex<HashMap<usize, Box<dyn std::any::Any + Send>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -229,7 +229,7 @@ pub extern "C" fn kv_future_get_transaction(future: KvFutureHandle) -> KvTransac
                 match result {
                     Ok(transaction) => {
                         let tx_id = next_id();
-                        TRANSACTIONS.lock().insert(tx_id, Arc::new(transaction));
+                        TRANSACTIONS.lock().insert(tx_id, Arc::new(Mutex::new(transaction)));
                         return tx_id as KvTransactionHandle;
                     }
                     Err(_) => return ptr::null_mut(),
@@ -304,7 +304,7 @@ pub extern "C" fn kv_transaction_get(
         }
     };
     
-    let future = tx_arc.get(key_str, cf_str);
+    let future = tx_arc.lock().get(key_str, cf_str);
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -356,7 +356,8 @@ pub extern "C" fn kv_transaction_set(
         }
     };
     
-    let future = tx_arc.set(key_str, value_str, cf_str);
+    let result = tx_arc.lock().set(key_str, value_str, cf_str);
+    let future = KvFuture::new(async move { result });
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -374,10 +375,12 @@ pub extern "C" fn kv_transaction_commit(transaction: KvTransactionHandle) -> KvF
     
     let tx_id = transaction as usize;
     let tx = match TRANSACTIONS.lock().remove(&tx_id) {
-        Some(tx) => match Arc::try_unwrap(tx) {
-            Ok(tx) => tx,
+        Some(tx_arc) => match Arc::try_unwrap(tx_arc) {
+            Ok(tx_mutex) => match tx_mutex.into_inner() {
+                tx => tx,
+            },
             Err(tx_arc) => {
-                // Put it back if we can't unwrap
+                // Put it back if we can't unwrap the Arc
                 TRANSACTIONS.lock().insert(tx_id, tx_arc);
                 return ptr::null_mut();
             }
@@ -657,10 +660,12 @@ pub extern "C" fn kv_transaction_abort(transaction: KvTransactionHandle) -> KvFu
     
     let tx_id = transaction as usize;
     let tx = match TRANSACTIONS.lock().remove(&tx_id) {
-        Some(tx) => match Arc::try_unwrap(tx) {
-            Ok(tx) => tx,
+        Some(tx_arc) => match Arc::try_unwrap(tx_arc) {
+            Ok(tx_mutex) => match tx_mutex.into_inner() {
+                tx => tx,
+            },
             Err(tx_arc) => {
-                // Put it back if we can't unwrap
+                // Put it back if we can't unwrap the Arc
                 TRANSACTIONS.lock().insert(tx_id, tx_arc);
                 return ptr::null_mut();
             }

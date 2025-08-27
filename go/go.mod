@@ -1,6 +1,8 @@
 module rocksdb_svc
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.6
 
 require (
 	github.com/apache/thrift v0.16.0

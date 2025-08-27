@@ -8,45 +8,72 @@ use crate::future::KvFuture;
 use crate::kvstore::*;
 
 pub struct Transaction {
-    transaction_id: String,
+    read_version: i64,
     client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+    operations: Vec<Operation>,
+    read_conflict_keys: Vec<String>,
     committed: bool,
     aborted: bool,
 }
 
 impl Transaction {
     pub(crate) fn new(
-        transaction_id: String,
+        read_version: i64,
         client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
     ) -> Self {
         Self {
-            transaction_id,
+            read_version,
             client,
+            operations: Vec::new(),
+            read_conflict_keys: Vec::new(),
             committed: false,
             aborted: false,
         }
     }
     
-    pub fn transaction_id(&self) -> &str {
-        &self.transaction_id
+    pub fn read_version(&self) -> i64 {
+        self.read_version
     }
     
-    /// Get a value by key
+    /// Get a value by key (checks local writes first, then reads from database)
     pub fn get(&self, key: &str, column_family: Option<&str>) -> KvFuture<Option<String>> {
         if self.committed || self.aborted {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
         }
         
+        // First check if we have a local write for this key
+        let cf_str = column_family.map(|s| s.to_string());
+        for op in self.operations.iter().rev() { // Check in reverse order to get latest write
+            if op.key == key && op.column_family == cf_str {
+                match op.type_.as_str() {
+                    "set" => {
+                        // Return the locally written value
+                        let value = op.value.clone();
+                        return KvFuture::new(async move { Ok(value) });
+                    }
+                    "delete" => {
+                        // Key was deleted locally
+                        return KvFuture::new(async { Ok(None) });
+                    }
+                    _ => {} // Continue checking other operations
+                }
+            }
+        }
+        
+        // No local write found, read from database
         let client = Arc::clone(&self.client);
         let request = GetRequest::new(
-            self.transaction_id.clone(),
             key.to_string(),
             column_family.map(|s| s.to_string()),
         );
         
         KvFuture::new(async move {
-            let response = client.lock().get(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().get(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if let Some(error) = response.error {
                 return Err(KvError::ServerError(error));
@@ -60,67 +87,38 @@ impl Transaction {
         })
     }
     
-    /// Set a key-value pair
-    pub fn set(&self, key: &str, value: &str, column_family: Option<&str>) -> KvFuture<()> {
+    /// Set a key-value pair (buffered for atomic commit)
+    pub fn set(&mut self, key: &str, value: &str, column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
-            return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
+            return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
-        let client = Arc::clone(&self.client);
-        let request = SetRequest::new(
-            self.transaction_id.clone(),
+        let operation = Operation::new(
+            "set".to_string(),
             key.to_string(),
-            value.to_string(),
+            Some(value.to_string()),
             column_family.map(|s| s.to_string()),
         );
         
-        KvFuture::new(async move {
-            let response = client.lock().set_key(request)
-                .map_err(KvError::from)?;
-            
-            if !response.success {
-                let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                if let Some(error_code) = response.error_code {
-                    if error_code == "CONFLICT" {
-                        return Err(KvError::TransactionConflict(error_msg));
-                    }
-                }
-                return Err(KvError::ServerError(error_msg));
-            }
-            
-            Ok(())
-        })
+        self.operations.push(operation);
+        Ok(())
     }
     
-    /// Delete a key
-    pub fn delete(&self, key: &str, column_family: Option<&str>) -> KvFuture<()> {
+    /// Delete a key (buffered for atomic commit)
+    pub fn delete(&mut self, key: &str, column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
-            return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
+            return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
-        let client = Arc::clone(&self.client);
-        let request = DeleteRequest::new(
-            self.transaction_id.clone(),
+        let operation = Operation::new(
+            "delete".to_string(),
             key.to_string(),
+            None,
             column_family.map(|s| s.to_string()),
         );
         
-        KvFuture::new(async move {
-            let response = client.lock().delete_key(request)
-                .map_err(KvError::from)?;
-            
-            if !response.success {
-                let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                if let Some(error_code) = response.error_code {
-                    if error_code == "CONFLICT" {
-                        return Err(KvError::TransactionConflict(error_msg));
-                    }
-                }
-                return Err(KvError::ServerError(error_msg));
-            }
-            
-            Ok(())
-        })
+        self.operations.push(operation);
+        Ok(())
     }
     
     /// Get a range of key-value pairs
@@ -131,7 +129,6 @@ impl Transaction {
         
         let client = Arc::clone(&self.client);
         let request = GetRangeRequest::new(
-            self.transaction_id.clone(),
             start_key.to_string(),
             end_key.map(|s| s.to_string()),
             limit.map(|l| l as i32),
@@ -139,8 +136,12 @@ impl Transaction {
         );
         
         KvFuture::new(async move {
-            let response = client.lock().get_range(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().get_range(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if !response.success {
                 let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
@@ -156,60 +157,36 @@ impl Transaction {
         })
     }
     
-    /// Add a read conflict for the given key
-    pub fn add_read_conflict(&self, key: &str, column_family: Option<&str>) -> KvFuture<()> {
+    /// Add a read conflict for the given key (buffered)
+    pub fn add_read_conflict(&mut self, key: &str, _column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
-            return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
+            return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
-        let client = Arc::clone(&self.client);
-        let request = AddReadConflictRequest::new(
-            self.transaction_id.clone(),
-            key.to_string(),
-            column_family.map(|s| s.to_string()),
-        );
-        
-        KvFuture::new(async move {
-            let response = client.lock().add_read_conflict(request)
-                .map_err(KvError::from)?;
-            
-            if !response.success {
-                let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                return Err(KvError::ServerError(error_msg));
-            }
-            
-            Ok(())
-        })
+        // Add to read conflict keys list
+        self.read_conflict_keys.push(key.to_string());
+        Ok(())
     }
     
-    /// Set a versionstamped key
-    pub fn set_versionstamped_key(&self, key_prefix: &str, value: &str, column_family: Option<&str>) -> KvFuture<String> {
+    /// Set a versionstamped key (buffered for atomic commit)
+    /// Note: The actual key will be generated during commit
+    pub fn set_versionstamped_key(&mut self, key_prefix: &str, value: &str, column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
-            return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
+            return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
-        let client = Arc::clone(&self.client);
-        let request = SetVersionstampedKeyRequest::new(
-            self.transaction_id.clone(),
+        let operation = Operation::new(
+            "SET_VERSIONSTAMPED_KEY".to_string(),
             key_prefix.to_string(),
-            value.to_string(),
+            Some(value.to_string()),
             column_family.map(|s| s.to_string()),
         );
         
-        KvFuture::new(async move {
-            let response = client.lock().set_versionstamped_key(request)
-                .map_err(KvError::from)?;
-            
-            if !response.success {
-                let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                return Err(KvError::ServerError(error_msg));
-            }
-            
-            Ok(response.generated_key)
-        })
+        self.operations.push(operation);
+        Ok(())
     }
     
-    /// Commit the transaction
+    /// Commit the transaction using atomic commit
     pub fn commit(mut self) -> KvFuture<()> {
         if self.committed {
             return KvFuture::new(async { Ok(()) });
@@ -220,13 +197,22 @@ impl Transaction {
         }
         
         let client = Arc::clone(&self.client);
-        let request = CommitTransactionRequest::new(self.transaction_id.clone());
+        let request = AtomicCommitRequest::new(
+            self.read_version,
+            self.operations.clone(),
+            self.read_conflict_keys.clone(),
+            None, // timeout_seconds
+        );
         
         self.committed = true;
         
         KvFuture::new(async move {
-            let response = client.lock().commit_transaction(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().atomic_commit(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if !response.success {
                 let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
@@ -242,7 +228,7 @@ impl Transaction {
         })
     }
     
-    /// Abort the transaction
+    /// Abort the transaction (no server call needed, just local cleanup)
     pub fn abort(mut self) -> KvFuture<()> {
         if self.aborted {
             return KvFuture::new(async { Ok(()) });
@@ -252,92 +238,81 @@ impl Transaction {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already committed".to_string())) });
         }
         
-        let client = Arc::clone(&self.client);
-        let request = AbortTransactionRequest::new(self.transaction_id.clone());
-        
         self.aborted = true;
         
-        KvFuture::new(async move {
-            let response = client.lock().abort_transaction(request)
-                .map_err(KvError::from)?;
-            
-            if !response.success {
-                let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                return Err(KvError::ServerError(error_msg));
-            }
-            
-            Ok(())
-        })
+        // No server call needed for abort since operations are buffered locally
+        KvFuture::new(async { Ok(()) })
     }
 }
 
 impl Drop for Transaction {
     fn drop(&mut self) {
         if !self.committed && !self.aborted {
-            // Auto-abort on drop to clean up resources
-            let client = Arc::clone(&self.client);
-            let request = AbortTransactionRequest::new(self.transaction_id.clone());
-            let _ = client.lock().abort_transaction(request);
+            // Auto-abort on drop (no server call needed since operations are buffered locally)
+            self.aborted = true;
         }
     }
 }
 
 /// Read-only transaction for snapshot operations
 pub struct ReadTransaction {
-    transaction_id: String,
+    read_version: i64,
     client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
-    read_version: Option<i64>,
 }
 
 impl ReadTransaction {
     pub(crate) fn new(
-        transaction_id: String,
+        read_version: i64,
         client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
     ) -> Self {
         Self {
-            transaction_id,
+            read_version,
             client,
-            read_version: None,
         }
     }
     
-    pub fn transaction_id(&self) -> &str {
-        &self.transaction_id
+    pub fn read_version(&self) -> i64 {
+        self.read_version
     }
     
     /// Set the read version for this transaction
     pub async fn set_read_version(&mut self, version: i64) -> KvResult<()> {
-        let request = SetReadVersionRequest::new(
-            self.transaction_id.clone(),
-            version,
-        );
+        let request = SetReadVersionRequest::new(version);
+        let client = Arc::clone(&self.client);
         
-        let response = self.client.lock().set_read_version(request)
-            .map_err(KvError::from)?;
+        let response = tokio::task::spawn_blocking(move || {
+            client.lock().set_read_version(request)
+        })
+        .await
+        .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+        .map_err(KvError::from)?;
         
         if !response.success {
             let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
             return Err(KvError::ServerError(error_msg));
         }
         
-        self.read_version = Some(version);
+        self.read_version = version;
         Ok(())
     }
     
     /// Get a value by key at the snapshot version
     pub fn snapshot_get(&self, key: &str, column_family: Option<&str>) -> KvFuture<Option<String>> {
-        let read_version = self.read_version.unwrap_or(0);
+        let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRequest::new(
-            self.transaction_id.clone(),
             key.to_string(),
             read_version,
             column_family.map(|s| s.to_string()),
         );
         
         KvFuture::new(async move {
-            let response = client.lock().snapshot_get(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().snapshot_get(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if let Some(error) = response.error {
                 return Err(KvError::ServerError(error));
@@ -353,10 +328,9 @@ impl ReadTransaction {
     
     /// Get a range of key-value pairs at the snapshot version
     pub fn snapshot_get_range(&self, start_key: &str, end_key: Option<&str>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(String, String)>> {
-        let read_version = self.read_version.unwrap_or(0);
+        let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRangeRequest::new(
-            self.transaction_id.clone(),
             start_key.to_string(),
             end_key.map(|s| s.to_string()),
             read_version,
@@ -365,8 +339,12 @@ impl ReadTransaction {
         );
         
         KvFuture::new(async move {
-            let response = client.lock().snapshot_get_range(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().snapshot_get_range(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if !response.success {
                 let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
