@@ -88,6 +88,17 @@ add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Generate Node.js thrift files
+set(NODEJS_THRIFT_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/thrift")
+add_custom_command(
+    OUTPUT "${NODEJS_THRIFT_OUT_DIR}/kvstore_types.js"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NODEJS_THRIFT_OUT_DIR}"
+    COMMAND ${THRIFT_COMPILER} --gen js:node -out "${NODEJS_THRIFT_OUT_DIR}" "${THRIFT_FILE}"
+    DEPENDS ${THRIFT_FILE}
+    COMMENT "Generating Node.js thrift files"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Create protocol generation targets
 add_custom_target(generate_proto ALL
     DEPENDS 
@@ -99,6 +110,7 @@ add_custom_target(generate_thrift ALL
     DEPENDS 
         "${GO_THRIFT_OUT_DIR}/kvstore/kvstore.go"
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
+        "${NODEJS_THRIFT_OUT_DIR}/kvstore_types.js"
 )
 
 #==============================================================================
