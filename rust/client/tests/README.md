@@ -16,24 +16,14 @@ This directory contains comprehensive test suites for the KV Store client librar
   - Delete operations
   - Ping functionality
 
-### C FFI Tests
-- **`ffi_test.c`** - C language FFI tests covering:
-  - Library initialization and cleanup
-  - Client lifecycle management
-  - Basic transaction operations
-  - Read transaction functionality
-  - Error handling and edge cases
-  - String memory management
-  - Future polling mechanisms
-  - Concurrent transaction handling
-
-### C++ FFI Tests  
-- **`cpp_ffi_test.cpp`** - C++ language FFI tests covering:
-  - All C FFI functionality
-  - RAII wrapper classes for safer C++ integration
-  - Exception-based error handling
-  - Multi-threaded concurrent operations
-  - Modern C++ best practices
+### Unified C/C++ FFI Tests
+- **`unified_ffi_test.cpp`** - Combined C and C++ language FFI tests covering:
+  - **C-style tests**: Library initialization, client lifecycle, basic transactions, 
+    read transactions, error handling, string memory management, future polling,
+    ping functionality, and transaction abort operations
+  - **C++ style tests**: RAII wrapper classes for safer C++ integration,
+    exception-based error handling, multi-threaded concurrent operations,
+    and modern C++ best practices (C++14)
 
 ## Running the Tests
 
@@ -51,18 +41,14 @@ cargo test
 ```
 
 ### Running FFI Tests
+
+#### Using the Build Script
 The FFI test script is located in `/home/yihengtao/kv/rust/scripts/`:
 
 ```bash
-# Run both C and C++ tests
+# Run unified FFI tests
 cd /home/yihengtao/kv/rust/scripts
 ./build_and_run_ffi_tests.sh
-
-# Run only C tests
-./build_and_run_ffi_tests.sh --c-only
-
-# Run only C++ tests
-./build_and_run_ffi_tests.sh --cpp-only
 
 # Verbose output
 ./build_and_run_ffi_tests.sh --verbose
@@ -71,12 +57,31 @@ cd /home/yihengtao/kv/rust/scripts
 ./build_and_run_ffi_tests.sh --help
 ```
 
+#### Using CMake Build System
+Alternatively, you can use the CMake build system from the project root:
+
+```bash
+# Build all components including the unified FFI test
+cmake -B build -S .
+cmake --build build
+
+# Run the unified FFI test
+cmake --build build --target test_ffi
+# or directly:
+./build/bin/unified_ffi_test
+```
+
 ### Running All Tests
 ```bash
 # From the client directory
 cargo test
 cd ../scripts
 ./build_and_run_ffi_tests.sh
+
+# Or using CMake from project root
+cmake -B build -S .
+cmake --build build
+cmake --build build --target test_ffi
 ```
 
 ## Test Features

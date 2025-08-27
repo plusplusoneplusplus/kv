@@ -1,23 +1,14 @@
 #!/bin/bash
 
-# Build and run FFI tests (both C and C++) for the KV store client
+# Build and run unified FFI tests (C and C++) for the KV store client
 
 set -e
 
 # Parse command line arguments
-TEST_TYPE="both"
 VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -c|--c-only)
-            TEST_TYPE="c"
-            shift
-            ;;
-        -cpp|--cpp-only)
-            TEST_TYPE="cpp"
-            shift
-            ;;
         -v|--verbose)
             VERBOSE=true
             shift
@@ -25,10 +16,11 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 [options]"
             echo "Options:"
-            echo "  -c, --c-only       Run only C tests"
-            echo "  -cpp, --cpp-only   Run only C++ tests"
             echo "  -v, --verbose      Verbose output"
             echo "  -h, --help         Show this help"
+            echo ""
+            echo "This script builds and runs the unified FFI test that includes"
+            echo "both C and C++ style tests in a single executable."
             exit 0
             ;;
         *)
@@ -38,8 +30,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "Building KV Store FFI Tests"
-echo "=========================="
+echo "Building KV Store Unified FFI Tests"
+echo "==================================="
 
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -162,14 +154,14 @@ trap cleanup_server EXIT
 
 cd "$CLIENT_DIR/tests"
 
-# Function to run C tests
-run_c_tests() {
-    echo "Building and running C FFI tests..."
-    echo "==================================="
+# Function to run unified FFI tests
+run_unified_tests() {
+    echo "Building and running unified FFI tests..."
+    echo "========================================="
     
-    # Build the C test executable
-    gcc -o ffi_test \
-        ffi_test.c \
+    # Build the unified test executable
+    g++ -std=c++14 -o unified_ffi_test \
+        unified_ffi_test.cpp \
         -I"$CLIENT_DIR/include" \
         -L"$CLIENT_DIR/target/release" \
         -lkvstore_client \
@@ -178,107 +170,44 @@ run_c_tests() {
         -lm
     
     # Check if compilation succeeded
-    if [ ! -f "ffi_test" ]; then
-        echo "Error: Failed to build C test executable"
+    if [ ! -f "unified_ffi_test" ]; then
+        echo "Error: Failed to build unified test executable"
         return 1
     fi
     
-    echo "C build successful! Running tests..."
-    ./ffi_test
-    local c_result=$?
+    echo "Build successful! Running unified tests..."
+    ./unified_ffi_test
+    local result=$?
     
     # Cleanup
-    rm -f ffi_test
+    rm -f unified_ffi_test
     
-    if [ $c_result -eq 0 ]; then
-        echo "✓ C FFI tests PASSED"
+    if [ $result -eq 0 ]; then
+        echo "✓ Unified FFI tests PASSED"
     else
-        echo "✗ C FFI tests FAILED"
+        echo "✗ Unified FFI tests FAILED"
     fi
     
-    return $c_result
+    return $result
 }
 
-# Function to run C++ tests
-run_cpp_tests() {
-    echo "Building and running C++ FFI tests..."
-    echo "====================================="
-    
-    # Build the C++ test executable
-    g++ -std=c++14 -o cpp_ffi_test \
-        cpp_ffi_test.cpp \
-        -I"$CLIENT_DIR/include" \
-        -L"$CLIENT_DIR/target/release" \
-        -lkvstore_client \
-        -lpthread \
-        -ldl \
-        -lm
-    
-    # Check if compilation succeeded
-    if [ ! -f "cpp_ffi_test" ]; then
-        echo "Error: Failed to build C++ test executable"
-        return 1
-    fi
-    
-    echo "C++ build successful! Running tests..."
-    ./cpp_ffi_test
-    local cpp_result=$?
-    
-    # Cleanup
-    rm -f cpp_ffi_test
-    
-    if [ $cpp_result -eq 0 ]; then
-        echo "✓ C++ FFI tests PASSED"
-    else
-        echo "✗ C++ FFI tests FAILED"
-    fi
-    
-    return $cpp_result
-}
-
-# Run tests based on user selection
-c_result=0
-cpp_result=0
-
-if [ "$TEST_TYPE" = "c" ] || [ "$TEST_TYPE" = "both" ]; then
-    run_c_tests
-    c_result=$?
-    echo ""
-fi
-
-if [ "$TEST_TYPE" = "cpp" ] || [ "$TEST_TYPE" = "both" ]; then
-    run_cpp_tests
-    cpp_result=$?
-    echo ""
-fi
+# Run the unified tests
+run_unified_tests
+result=$?
+echo ""
 
 # Summary
 echo "=========================================="
 echo "FFI Test Results Summary:"
 
-if [ "$TEST_TYPE" = "c" ] || [ "$TEST_TYPE" = "both" ]; then
-    if [ $c_result -eq 0 ]; then
-        echo "  C tests:   ✓ PASSED"
-    else
-        echo "  C tests:   ✗ FAILED"
-    fi
-fi
-
-if [ "$TEST_TYPE" = "cpp" ] || [ "$TEST_TYPE" = "both" ]; then
-    if [ $cpp_result -eq 0 ]; then
-        echo "  C++ tests: ✓ PASSED"
-    else
-        echo "  C++ tests: ✗ FAILED"
-    fi
-fi
-
-total_failures=$((c_result + cpp_result))
-if [ $total_failures -eq 0 ]; then
+if [ $result -eq 0 ]; then
+    echo "  Unified tests: ✓ PASSED"
     echo ""
     echo "🎉 All FFI tests completed successfully!"
     exit 0
 else
+    echo "  Unified tests: ✗ FAILED"
     echo ""
-    echo "❌ Some tests failed. Check the output above for details."
+    echo "❌ Tests failed. Check the output above for details."
     exit 1
 fi

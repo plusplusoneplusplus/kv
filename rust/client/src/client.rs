@@ -38,16 +38,18 @@ impl KvStoreClient {
     }
     
     /// Begin a new transaction
-    pub fn begin_transaction(&self, column_families: Option<Vec<String>>, timeout_seconds: Option<u64>) -> KvFuture<Transaction> {
+    pub fn begin_transaction(&self, _column_families: Option<Vec<String>>, _timeout_seconds: Option<u64>) -> KvFuture<Transaction> {
         let client = Arc::clone(&self.client);
-        let request = BeginTransactionRequest::new(
-            column_families,
-            timeout_seconds.map(|t| t as i64),
-        );
+        let request = GetReadVersionRequest::new();
         
         KvFuture::new(async move {
-            let response = client.lock().begin_transaction(request)
-                .map_err(KvError::from)?;
+            let client_for_spawn = Arc::clone(&client);
+            let response = tokio::task::spawn_blocking(move || {
+                client_for_spawn.lock().get_read_version(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if !response.success {
                 return Err(KvError::ServerError(
@@ -55,7 +57,8 @@ impl KvStoreClient {
                 ));
             }
             
-            Ok(Transaction::new(response.transaction_id, Arc::clone(&client)))
+            // Use the read version for the transaction
+            Ok(Transaction::new(response.read_version, client))
         })
     }
     
@@ -64,10 +67,14 @@ impl KvStoreClient {
         let client = Arc::clone(&self.client);
         
         KvFuture::new(async move {
-            // For read transactions, we still need to begin a transaction but set it to read-only
-            let request = BeginTransactionRequest::new(None, Some(60));
-            let response = client.lock().begin_transaction(request)
-                .map_err(KvError::from)?;
+            let request = GetReadVersionRequest::new();
+            let client_for_spawn = Arc::clone(&client);
+            let response = tokio::task::spawn_blocking(move || {
+                client_for_spawn.lock().get_read_version(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             if !response.success {
                 return Err(KvError::ServerError(
@@ -75,12 +82,8 @@ impl KvStoreClient {
                 ));
             }
             
-            let mut read_tx = ReadTransaction::new(response.transaction_id, Arc::clone(&client));
-            
-            // Set read version if provided
-            if let Some(version) = read_version {
-                read_tx.set_read_version(version).await?;
-            }
+            let version = read_version.unwrap_or(response.read_version);
+            let read_tx = ReadTransaction::new(version, client);
             
             Ok(read_tx)
         })
@@ -98,8 +101,12 @@ impl KvStoreClient {
         );
         
         KvFuture::new(async move {
-            let response = client.lock().ping(request)
-                .map_err(KvError::from)?;
+            let response = tokio::task::spawn_blocking(move || {
+                client.lock().ping(request)
+            })
+            .await
+            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(KvError::from)?;
             
             Ok(response.message)
         })

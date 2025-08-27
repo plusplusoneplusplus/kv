@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use crate::error::KvResult;
 
 /// A future that can be used from C code
@@ -36,45 +36,49 @@ impl<T> Future for KvFuture<T> {
 // Opaque pointer type for C FFI
 pub struct KvFuturePtr<T> {
     inner: Arc<Mutex<Option<KvFuture<T>>>>,
-    result: Arc<Mutex<Option<KvResult<T>>>>,
+    result: Arc<StdMutex<Option<KvResult<T>>>>,
 }
 
-impl<T> KvFuturePtr<T> {
+impl<T: Send + 'static> KvFuturePtr<T> {
     pub fn new(future: KvFuture<T>) -> Self {
+        let result_arc = Arc::new(StdMutex::new(None));
+        
+        // Spawn the future to run in the background
+        let result_arc_clone = Arc::clone(&result_arc);
+        super::ffi::RUNTIME.spawn(async move {
+            let result = future.await_result().await;
+            if let Ok(mut guard) = result_arc_clone.lock() {
+                *guard = Some(result);
+            }
+        });
+        
         Self {
-            inner: Arc::new(Mutex::new(Some(future))),
-            result: Arc::new(Mutex::new(None)),
+            inner: Arc::new(Mutex::new(None)), // No longer needed
+            result: result_arc,
         }
     }
     
     pub fn poll(&self) -> bool {
-        let mut inner_guard = self.inner.lock();
-        if let Some(mut future) = inner_guard.take() {
-            // Create a no-op waker for polling
-            let waker = futures::task::noop_waker();
-            let mut context = Context::from_waker(&waker);
-            
-            match Pin::new(&mut future).poll(&mut context) {
-                Poll::Ready(result) => {
-                    *self.result.lock() = Some(result);
-                    true
-                }
-                Poll::Pending => {
-                    *inner_guard = Some(future);
-                    false
-                }
-            }
+        if let Ok(guard) = self.result.lock() {
+            guard.is_some()
         } else {
-            // Already completed
-            true
+            false
         }
     }
     
     pub fn take_result(&self) -> Option<KvResult<T>> {
-        self.result.lock().take()
+        if let Ok(mut guard) = self.result.lock() {
+            guard.take()
+        } else {
+            None
+        }
     }
     
     pub fn is_ready(&self) -> bool {
-        self.result.lock().is_some()
+        if let Ok(guard) = self.result.lock() {
+            guard.is_some()
+        } else {
+            false
+        }
     }
 }

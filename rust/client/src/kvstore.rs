@@ -26,435 +26,18 @@ use thrift::protocol::verify_required_field_exists;
 use thrift::server::TProcessor;
 
 //
-// BeginTransactionRequest
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BeginTransactionRequest {
-  pub column_families: Option<Vec<String>>,
-  pub timeout_seconds: Option<i64>,
-}
-
-impl BeginTransactionRequest {
-  pub fn new<F1, F2>(column_families: F1, timeout_seconds: F2) -> BeginTransactionRequest where F1: Into<Option<Vec<String>>>, F2: Into<Option<i64>> {
-    BeginTransactionRequest {
-      column_families: column_families.into(),
-      timeout_seconds: timeout_seconds.into(),
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<BeginTransactionRequest> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<Vec<String>> = None;
-    let mut f_2: Option<i64> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let list_ident = i_prot.read_list_begin()?;
-          let mut val: Vec<String> = Vec::with_capacity(list_ident.size as usize);
-          for _ in 0..list_ident.size {
-            let list_elem_0 = i_prot.read_string()?;
-            val.push(list_elem_0);
-          }
-          i_prot.read_list_end()?;
-          f_1 = Some(val);
-        },
-        2 => {
-          let val = i_prot.read_i64()?;
-          f_2 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    let ret = BeginTransactionRequest {
-      column_families: f_1,
-      timeout_seconds: f_2,
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("BeginTransactionRequest");
-    o_prot.write_struct_begin(&struct_ident)?;
-    if let Some(ref fld_var) = self.column_families {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_families", TType::List, 1))?;
-      o_prot.write_list_begin(&TListIdentifier::new(TType::String, fld_var.len() as i32))?;
-      for e in fld_var {
-        o_prot.write_string(e)?;
-      }
-      o_prot.write_list_end()?;
-      o_prot.write_field_end()?
-    }
-    if let Some(fld_var) = self.timeout_seconds {
-      o_prot.write_field_begin(&TFieldIdentifier::new("timeout_seconds", TType::I64, 2))?;
-      o_prot.write_i64(fld_var)?;
-      o_prot.write_field_end()?
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-impl Default for BeginTransactionRequest {
-  fn default() -> Self {
-    BeginTransactionRequest{
-      column_families: Some(Vec::new()),
-      timeout_seconds: Some(0),
-    }
-  }
-}
-
-//
-// BeginTransactionResponse
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BeginTransactionResponse {
-  pub transaction_id: String,
-  pub success: bool,
-  pub error: Option<String>,
-}
-
-impl BeginTransactionResponse {
-  pub fn new<F3>(transaction_id: String, success: bool, error: F3) -> BeginTransactionResponse where F3: Into<Option<String>> {
-    BeginTransactionResponse {
-      transaction_id,
-      success,
-      error: error.into(),
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<BeginTransactionResponse> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<bool> = None;
-    let mut f_3: Option<String> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_string()?;
-          f_1 = Some(val);
-        },
-        2 => {
-          let val = i_prot.read_bool()?;
-          f_2 = Some(val);
-        },
-        3 => {
-          let val = i_prot.read_string()?;
-          f_3 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("BeginTransactionResponse.transaction_id", &f_1)?;
-    verify_required_field_exists("BeginTransactionResponse.success", &f_2)?;
-    let ret = BeginTransactionResponse {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      success: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      error: f_3,
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("BeginTransactionResponse");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 2))?;
-    o_prot.write_bool(self.success)?;
-    o_prot.write_field_end()?;
-    if let Some(ref fld_var) = self.error {
-      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 3))?;
-      o_prot.write_string(fld_var)?;
-      o_prot.write_field_end()?
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-//
-// CommitTransactionRequest
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct CommitTransactionRequest {
-  pub transaction_id: String,
-}
-
-impl CommitTransactionRequest {
-  pub fn new(transaction_id: String) -> CommitTransactionRequest {
-    CommitTransactionRequest {
-      transaction_id,
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<CommitTransactionRequest> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_string()?;
-          f_1 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("CommitTransactionRequest.transaction_id", &f_1)?;
-    let ret = CommitTransactionRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("CommitTransactionRequest");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-//
-// CommitTransactionResponse
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct CommitTransactionResponse {
-  pub success: bool,
-  pub error: Option<String>,
-  pub error_code: Option<String>,
-}
-
-impl CommitTransactionResponse {
-  pub fn new<F2, F3>(success: bool, error: F2, error_code: F3) -> CommitTransactionResponse where F2: Into<Option<String>>, F3: Into<Option<String>> {
-    CommitTransactionResponse {
-      success,
-      error: error.into(),
-      error_code: error_code.into(),
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<CommitTransactionResponse> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<bool> = None;
-    let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_bool()?;
-          f_1 = Some(val);
-        },
-        2 => {
-          let val = i_prot.read_string()?;
-          f_2 = Some(val);
-        },
-        3 => {
-          let val = i_prot.read_string()?;
-          f_3 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("CommitTransactionResponse.success", &f_1)?;
-    let ret = CommitTransactionResponse {
-      success: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      error: f_2,
-      error_code: f_3,
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("CommitTransactionResponse");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 1))?;
-    o_prot.write_bool(self.success)?;
-    o_prot.write_field_end()?;
-    if let Some(ref fld_var) = self.error {
-      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 2))?;
-      o_prot.write_string(fld_var)?;
-      o_prot.write_field_end()?
-    }
-    if let Some(ref fld_var) = self.error_code {
-      o_prot.write_field_begin(&TFieldIdentifier::new("error_code", TType::String, 3))?;
-      o_prot.write_string(fld_var)?;
-      o_prot.write_field_end()?
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-//
-// AbortTransactionRequest
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct AbortTransactionRequest {
-  pub transaction_id: String,
-}
-
-impl AbortTransactionRequest {
-  pub fn new(transaction_id: String) -> AbortTransactionRequest {
-    AbortTransactionRequest {
-      transaction_id,
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AbortTransactionRequest> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_string()?;
-          f_1 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("AbortTransactionRequest.transaction_id", &f_1)?;
-    let ret = AbortTransactionRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("AbortTransactionRequest");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-//
-// AbortTransactionResponse
-//
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct AbortTransactionResponse {
-  pub success: bool,
-  pub error: Option<String>,
-}
-
-impl AbortTransactionResponse {
-  pub fn new<F2>(success: bool, error: F2) -> AbortTransactionResponse where F2: Into<Option<String>> {
-    AbortTransactionResponse {
-      success,
-      error: error.into(),
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AbortTransactionResponse> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<bool> = None;
-    let mut f_2: Option<String> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_bool()?;
-          f_1 = Some(val);
-        },
-        2 => {
-          let val = i_prot.read_string()?;
-          f_2 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("AbortTransactionResponse.success", &f_1)?;
-    let ret = AbortTransactionResponse {
-      success: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      error: f_2,
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("AbortTransactionResponse");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 1))?;
-    o_prot.write_bool(self.success)?;
-    o_prot.write_field_end()?;
-    if let Some(ref fld_var) = self.error {
-      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 2))?;
-      o_prot.write_string(fld_var)?;
-      o_prot.write_field_end()?
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
-
-//
 // GetRequest
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetRequest {
-  pub transaction_id: String,
   pub key: String,
   pub column_family: Option<String>,
 }
 
 impl GetRequest {
-  pub fn new<F3>(transaction_id: String, key: String, column_family: F3) -> GetRequest where F3: Into<Option<String>> {
+  pub fn new<F2>(key: String, column_family: F2) -> GetRequest where F2: Into<Option<String>> {
     GetRequest {
-      transaction_id,
       key,
       column_family: column_family.into(),
     }
@@ -463,7 +46,6 @@ impl GetRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -479,10 +61,6 @@ impl GetRequest {
           let val = i_prot.read_string()?;
           f_2 = Some(val);
         },
-        3 => {
-          let val = i_prot.read_string()?;
-          f_3 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -490,26 +68,21 @@ impl GetRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("GetRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("GetRequest.key", &f_2)?;
+    verify_required_field_exists("GetRequest.key", &f_1)?;
     let ret = GetRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_3,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_2,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("GetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -602,16 +175,14 @@ impl GetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetRequest {
-  pub transaction_id: String,
   pub key: String,
   pub value: String,
   pub column_family: Option<String>,
 }
 
 impl SetRequest {
-  pub fn new<F4>(transaction_id: String, key: String, value: String, column_family: F4) -> SetRequest where F4: Into<Option<String>> {
+  pub fn new<F3>(key: String, value: String, column_family: F3) -> SetRequest where F3: Into<Option<String>> {
     SetRequest {
-      transaction_id,
       key,
       value,
       column_family: column_family.into(),
@@ -622,7 +193,6 @@ impl SetRequest {
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
     let mut f_3: Option<String> = None;
-    let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -642,10 +212,6 @@ impl SetRequest {
           let val = i_prot.read_string()?;
           f_3 = Some(val);
         },
-        4 => {
-          let val = i_prot.read_string()?;
-          f_4 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -653,31 +219,26 @@ impl SetRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SetRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SetRequest.key", &f_2)?;
-    verify_required_field_exists("SetRequest.value", &f_3)?;
+    verify_required_field_exists("SetRequest.key", &f_1)?;
+    verify_required_field_exists("SetRequest.value", &f_2)?;
     let ret = SetRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      value: f_3.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_4,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      value: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 3))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
     o_prot.write_string(&self.value)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -771,15 +332,13 @@ impl SetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DeleteRequest {
-  pub transaction_id: String,
   pub key: String,
   pub column_family: Option<String>,
 }
 
 impl DeleteRequest {
-  pub fn new<F3>(transaction_id: String, key: String, column_family: F3) -> DeleteRequest where F3: Into<Option<String>> {
+  pub fn new<F2>(key: String, column_family: F2) -> DeleteRequest where F2: Into<Option<String>> {
     DeleteRequest {
-      transaction_id,
       key,
       column_family: column_family.into(),
     }
@@ -788,7 +347,6 @@ impl DeleteRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -804,10 +362,6 @@ impl DeleteRequest {
           let val = i_prot.read_string()?;
           f_2 = Some(val);
         },
-        3 => {
-          let val = i_prot.read_string()?;
-          f_3 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -815,26 +369,21 @@ impl DeleteRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("DeleteRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("DeleteRequest.key", &f_2)?;
+    verify_required_field_exists("DeleteRequest.key", &f_1)?;
     let ret = DeleteRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_3,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_2,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("DeleteRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -928,7 +477,6 @@ impl DeleteResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetRangeRequest {
-  pub transaction_id: String,
   pub start_key: String,
   pub end_key: Option<String>,
   pub limit: Option<i32>,
@@ -936,9 +484,8 @@ pub struct GetRangeRequest {
 }
 
 impl GetRangeRequest {
-  pub fn new<F3, F4, F5>(transaction_id: String, start_key: String, end_key: F3, limit: F4, column_family: F5) -> GetRangeRequest where F3: Into<Option<String>>, F4: Into<Option<i32>>, F5: Into<Option<String>> {
+  pub fn new<F2, F3, F4>(start_key: String, end_key: F2, limit: F3, column_family: F4) -> GetRangeRequest where F2: Into<Option<String>>, F3: Into<Option<i32>>, F4: Into<Option<String>> {
     GetRangeRequest {
-      transaction_id,
       start_key,
       end_key: end_key.into(),
       limit: limit.into(),
@@ -949,9 +496,8 @@ impl GetRangeRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
-    let mut f_4: Option<i32> = None;
-    let mut f_5: Option<String> = None;
+    let mut f_3: Option<i32> = None;
+    let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -968,16 +514,12 @@ impl GetRangeRequest {
           f_2 = Some(val);
         },
         3 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_i32()?;
           f_3 = Some(val);
         },
         4 => {
-          let val = i_prot.read_i32()?;
-          f_4 = Some(val);
-        },
-        5 => {
           let val = i_prot.read_string()?;
-          f_5 = Some(val);
+          f_4 = Some(val);
         },
         _ => {
           i_prot.skip(field_ident.field_type)?;
@@ -986,38 +528,33 @@ impl GetRangeRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("GetRangeRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("GetRangeRequest.start_key", &f_2)?;
+    verify_required_field_exists("GetRangeRequest.start_key", &f_1)?;
     let ret = GetRangeRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      start_key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      end_key: f_3,
-      limit: f_4,
-      column_family: f_5,
+      start_key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      end_key: f_2,
+      limit: f_3,
+      column_family: f_4,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("GetRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
     o_prot.write_string(&self.start_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.end_key {
-      o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 3))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
     if let Some(fld_var) = self.limit {
-      o_prot.write_field_begin(&TFieldIdentifier::new("limit", TType::I32, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("limit", TType::I32, 3))?;
       o_prot.write_i32(fld_var)?;
       o_prot.write_field_end()?
     }
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 5))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -1126,8 +663,8 @@ impl GetRangeResponse {
           let list_ident = i_prot.read_list_begin()?;
           let mut val: Vec<KeyValue> = Vec::with_capacity(list_ident.size as usize);
           for _ in 0..list_ident.size {
-            let list_elem_1 = KeyValue::read_from_in_protocol(i_prot)?;
-            val.push(list_elem_1);
+            let list_elem_0 = KeyValue::read_from_in_protocol(i_prot)?;
+            val.push(list_elem_0);
           }
           i_prot.read_list_end()?;
           f_1 = Some(val);
@@ -1185,16 +722,14 @@ impl GetRangeResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotGetRequest {
-  pub transaction_id: String,
   pub key: String,
   pub read_version: i64,
   pub column_family: Option<String>,
 }
 
 impl SnapshotGetRequest {
-  pub fn new<F4>(transaction_id: String, key: String, read_version: i64, column_family: F4) -> SnapshotGetRequest where F4: Into<Option<String>> {
+  pub fn new<F3>(key: String, read_version: i64, column_family: F3) -> SnapshotGetRequest where F3: Into<Option<String>> {
     SnapshotGetRequest {
-      transaction_id,
       key,
       read_version,
       column_family: column_family.into(),
@@ -1203,9 +738,8 @@ impl SnapshotGetRequest {
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotGetRequest> {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
-    let mut f_3: Option<i64> = None;
-    let mut f_4: Option<String> = None;
+    let mut f_2: Option<i64> = None;
+    let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -1218,16 +752,12 @@ impl SnapshotGetRequest {
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_i64()?;
           f_2 = Some(val);
         },
         3 => {
-          let val = i_prot.read_i64()?;
-          f_3 = Some(val);
-        },
-        4 => {
           let val = i_prot.read_string()?;
-          f_4 = Some(val);
+          f_3 = Some(val);
         },
         _ => {
           i_prot.skip(field_ident.field_type)?;
@@ -1236,31 +766,26 @@ impl SnapshotGetRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SnapshotGetRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SnapshotGetRequest.key", &f_2)?;
-    verify_required_field_exists("SnapshotGetRequest.read_version", &f_3)?;
+    verify_required_field_exists("SnapshotGetRequest.key", &f_1)?;
+    verify_required_field_exists("SnapshotGetRequest.read_version", &f_2)?;
     let ret = SnapshotGetRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      read_version: f_3.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_4,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      read_version: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SnapshotGetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 3))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 2))?;
     o_prot.write_i64(self.read_version)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -1353,7 +878,6 @@ impl SnapshotGetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotGetRangeRequest {
-  pub transaction_id: String,
   pub start_key: String,
   pub end_key: Option<String>,
   pub read_version: i64,
@@ -1362,9 +886,8 @@ pub struct SnapshotGetRangeRequest {
 }
 
 impl SnapshotGetRangeRequest {
-  pub fn new<F3, F5, F6>(transaction_id: String, start_key: String, end_key: F3, read_version: i64, limit: F5, column_family: F6) -> SnapshotGetRangeRequest where F3: Into<Option<String>>, F5: Into<Option<i32>>, F6: Into<Option<String>> {
+  pub fn new<F2, F4, F5>(start_key: String, end_key: F2, read_version: i64, limit: F4, column_family: F5) -> SnapshotGetRangeRequest where F2: Into<Option<String>>, F4: Into<Option<i32>>, F5: Into<Option<String>> {
     SnapshotGetRangeRequest {
-      transaction_id,
       start_key,
       end_key: end_key.into(),
       read_version,
@@ -1376,10 +899,9 @@ impl SnapshotGetRangeRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
-    let mut f_4: Option<i64> = None;
-    let mut f_5: Option<i32> = None;
-    let mut f_6: Option<String> = None;
+    let mut f_3: Option<i64> = None;
+    let mut f_4: Option<i32> = None;
+    let mut f_5: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -1396,20 +918,16 @@ impl SnapshotGetRangeRequest {
           f_2 = Some(val);
         },
         3 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_i64()?;
           f_3 = Some(val);
         },
         4 => {
-          let val = i_prot.read_i64()?;
+          let val = i_prot.read_i32()?;
           f_4 = Some(val);
         },
         5 => {
-          let val = i_prot.read_i32()?;
-          f_5 = Some(val);
-        },
-        6 => {
           let val = i_prot.read_string()?;
-          f_6 = Some(val);
+          f_5 = Some(val);
         },
         _ => {
           i_prot.skip(field_ident.field_type)?;
@@ -1418,43 +936,38 @@ impl SnapshotGetRangeRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SnapshotGetRangeRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SnapshotGetRangeRequest.start_key", &f_2)?;
-    verify_required_field_exists("SnapshotGetRangeRequest.read_version", &f_4)?;
+    verify_required_field_exists("SnapshotGetRangeRequest.start_key", &f_1)?;
+    verify_required_field_exists("SnapshotGetRangeRequest.read_version", &f_3)?;
     let ret = SnapshotGetRangeRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      start_key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      end_key: f_3,
-      read_version: f_4.expect("auto-generated code should have checked for presence of required fields"),
-      limit: f_5,
-      column_family: f_6,
+      start_key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      end_key: f_2,
+      read_version: f_3.expect("auto-generated code should have checked for presence of required fields"),
+      limit: f_4,
+      column_family: f_5,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SnapshotGetRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
     o_prot.write_string(&self.start_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.end_key {
-      o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 3))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
-    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 4))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 3))?;
     o_prot.write_i64(self.read_version)?;
     o_prot.write_field_end()?;
     if let Some(fld_var) = self.limit {
-      o_prot.write_field_begin(&TFieldIdentifier::new("limit", TType::I32, 5))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("limit", TType::I32, 4))?;
       o_prot.write_i32(fld_var)?;
       o_prot.write_field_end()?
     }
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 6))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 5))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -1498,8 +1011,8 @@ impl SnapshotGetRangeResponse {
           let list_ident = i_prot.read_list_begin()?;
           let mut val: Vec<KeyValue> = Vec::with_capacity(list_ident.size as usize);
           for _ in 0..list_ident.size {
-            let list_elem_2 = KeyValue::read_from_in_protocol(i_prot)?;
-            val.push(list_elem_2);
+            let list_elem_1 = KeyValue::read_from_in_protocol(i_prot)?;
+            val.push(list_elem_1);
           }
           i_prot.read_list_end()?;
           f_1 = Some(val);
@@ -1557,15 +1070,13 @@ impl SnapshotGetRangeResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AddReadConflictRequest {
-  pub transaction_id: String,
   pub key: String,
   pub column_family: Option<String>,
 }
 
 impl AddReadConflictRequest {
-  pub fn new<F3>(transaction_id: String, key: String, column_family: F3) -> AddReadConflictRequest where F3: Into<Option<String>> {
+  pub fn new<F2>(key: String, column_family: F2) -> AddReadConflictRequest where F2: Into<Option<String>> {
     AddReadConflictRequest {
-      transaction_id,
       key,
       column_family: column_family.into(),
     }
@@ -1574,7 +1085,6 @@ impl AddReadConflictRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -1590,10 +1100,6 @@ impl AddReadConflictRequest {
           let val = i_prot.read_string()?;
           f_2 = Some(val);
         },
-        3 => {
-          let val = i_prot.read_string()?;
-          f_3 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -1601,26 +1107,21 @@ impl AddReadConflictRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("AddReadConflictRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("AddReadConflictRequest.key", &f_2)?;
+    verify_required_field_exists("AddReadConflictRequest.key", &f_1)?;
     let ret = AddReadConflictRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_3,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_2,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("AddReadConflictRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -1701,16 +1202,14 @@ impl AddReadConflictResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AddReadConflictRangeRequest {
-  pub transaction_id: String,
   pub start_key: String,
   pub end_key: String,
   pub column_family: Option<String>,
 }
 
 impl AddReadConflictRangeRequest {
-  pub fn new<F4>(transaction_id: String, start_key: String, end_key: String, column_family: F4) -> AddReadConflictRangeRequest where F4: Into<Option<String>> {
+  pub fn new<F3>(start_key: String, end_key: String, column_family: F3) -> AddReadConflictRangeRequest where F3: Into<Option<String>> {
     AddReadConflictRangeRequest {
-      transaction_id,
       start_key,
       end_key,
       column_family: column_family.into(),
@@ -1721,7 +1220,6 @@ impl AddReadConflictRangeRequest {
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
     let mut f_3: Option<String> = None;
-    let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -1741,10 +1239,6 @@ impl AddReadConflictRangeRequest {
           let val = i_prot.read_string()?;
           f_3 = Some(val);
         },
-        4 => {
-          let val = i_prot.read_string()?;
-          f_4 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -1752,31 +1246,26 @@ impl AddReadConflictRangeRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("AddReadConflictRangeRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("AddReadConflictRangeRequest.start_key", &f_2)?;
-    verify_required_field_exists("AddReadConflictRangeRequest.end_key", &f_3)?;
+    verify_required_field_exists("AddReadConflictRangeRequest.start_key", &f_1)?;
+    verify_required_field_exists("AddReadConflictRangeRequest.end_key", &f_2)?;
     let ret = AddReadConflictRangeRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      start_key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      end_key: f_3.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_4,
+      start_key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      end_key: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("AddReadConflictRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
     o_prot.write_string(&self.start_key)?;
     o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 3))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
     o_prot.write_string(&self.end_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -1857,21 +1346,18 @@ impl AddReadConflictRangeResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetReadVersionRequest {
-  pub transaction_id: String,
   pub version: i64,
 }
 
 impl SetReadVersionRequest {
-  pub fn new(transaction_id: String, version: i64) -> SetReadVersionRequest {
+  pub fn new(version: i64) -> SetReadVersionRequest {
     SetReadVersionRequest {
-      transaction_id,
       version,
     }
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetReadVersionRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<i64> = None;
+    let mut f_1: Option<i64> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -1880,12 +1366,8 @@ impl SetReadVersionRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
-          f_1 = Some(val);
-        },
-        2 => {
           let val = i_prot.read_i64()?;
-          f_2 = Some(val);
+          f_1 = Some(val);
         },
         _ => {
           i_prot.skip(field_ident.field_type)?;
@@ -1894,21 +1376,16 @@ impl SetReadVersionRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SetReadVersionRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SetReadVersionRequest.version", &f_2)?;
+    verify_required_field_exists("SetReadVersionRequest.version", &f_1)?;
     let ret = SetReadVersionRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      version: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      version: f_1.expect("auto-generated code should have checked for presence of required fields"),
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SetReadVersionRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("version", TType::I64, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("version", TType::I64, 1))?;
     o_prot.write_i64(self.version)?;
     o_prot.write_field_end()?;
     o_prot.write_field_stop()?;
@@ -1988,18 +1465,14 @@ impl SetReadVersionResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetCommittedVersionRequest {
-  pub transaction_id: String,
 }
 
 impl GetCommittedVersionRequest {
-  pub fn new(transaction_id: String) -> GetCommittedVersionRequest {
-    GetCommittedVersionRequest {
-      transaction_id,
-    }
+  pub fn new() -> GetCommittedVersionRequest {
+    GetCommittedVersionRequest {}
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetCommittedVersionRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -2007,10 +1480,6 @@ impl GetCommittedVersionRequest {
       }
       let field_id = field_id(&field_ident)?;
       match field_id {
-        1 => {
-          let val = i_prot.read_string()?;
-          f_1 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -2018,20 +1487,20 @@ impl GetCommittedVersionRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("GetCommittedVersionRequest.transaction_id", &f_1)?;
-    let ret = GetCommittedVersionRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-    };
+    let ret = GetCommittedVersionRequest {};
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("GetCommittedVersionRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
+  }
+}
+
+impl Default for GetCommittedVersionRequest {
+  fn default() -> Self {
+    GetCommittedVersionRequest{}
   }
 }
 
@@ -2119,16 +1588,14 @@ impl GetCommittedVersionResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedKeyRequest {
-  pub transaction_id: String,
   pub key_prefix: String,
   pub value: String,
   pub column_family: Option<String>,
 }
 
 impl SetVersionstampedKeyRequest {
-  pub fn new<F4>(transaction_id: String, key_prefix: String, value: String, column_family: F4) -> SetVersionstampedKeyRequest where F4: Into<Option<String>> {
+  pub fn new<F3>(key_prefix: String, value: String, column_family: F3) -> SetVersionstampedKeyRequest where F3: Into<Option<String>> {
     SetVersionstampedKeyRequest {
-      transaction_id,
       key_prefix,
       value,
       column_family: column_family.into(),
@@ -2139,7 +1606,6 @@ impl SetVersionstampedKeyRequest {
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
     let mut f_3: Option<String> = None;
-    let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -2159,10 +1625,6 @@ impl SetVersionstampedKeyRequest {
           let val = i_prot.read_string()?;
           f_3 = Some(val);
         },
-        4 => {
-          let val = i_prot.read_string()?;
-          f_4 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -2170,31 +1632,26 @@ impl SetVersionstampedKeyRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SetVersionstampedKeyRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SetVersionstampedKeyRequest.key_prefix", &f_2)?;
-    verify_required_field_exists("SetVersionstampedKeyRequest.value", &f_3)?;
+    verify_required_field_exists("SetVersionstampedKeyRequest.key_prefix", &f_1)?;
+    verify_required_field_exists("SetVersionstampedKeyRequest.value", &f_2)?;
     let ret = SetVersionstampedKeyRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key_prefix: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      value: f_3.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_4,
+      key_prefix: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      value: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SetVersionstampedKeyRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key_prefix", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key_prefix", TType::String, 1))?;
     o_prot.write_string(&self.key_prefix)?;
     o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 3))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
     o_prot.write_string(&self.value)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -2287,16 +1744,14 @@ impl SetVersionstampedKeyResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedValueRequest {
-  pub transaction_id: String,
   pub key: String,
   pub value_prefix: String,
   pub column_family: Option<String>,
 }
 
 impl SetVersionstampedValueRequest {
-  pub fn new<F4>(transaction_id: String, key: String, value_prefix: String, column_family: F4) -> SetVersionstampedValueRequest where F4: Into<Option<String>> {
+  pub fn new<F3>(key: String, value_prefix: String, column_family: F3) -> SetVersionstampedValueRequest where F3: Into<Option<String>> {
     SetVersionstampedValueRequest {
-      transaction_id,
       key,
       value_prefix,
       column_family: column_family.into(),
@@ -2307,7 +1762,6 @@ impl SetVersionstampedValueRequest {
     let mut f_1: Option<String> = None;
     let mut f_2: Option<String> = None;
     let mut f_3: Option<String> = None;
-    let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -2327,10 +1781,6 @@ impl SetVersionstampedValueRequest {
           let val = i_prot.read_string()?;
           f_3 = Some(val);
         },
-        4 => {
-          let val = i_prot.read_string()?;
-          f_4 = Some(val);
-        },
         _ => {
           i_prot.skip(field_ident.field_type)?;
         },
@@ -2338,31 +1788,26 @@ impl SetVersionstampedValueRequest {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("SetVersionstampedValueRequest.transaction_id", &f_1)?;
-    verify_required_field_exists("SetVersionstampedValueRequest.key", &f_2)?;
-    verify_required_field_exists("SetVersionstampedValueRequest.value_prefix", &f_3)?;
+    verify_required_field_exists("SetVersionstampedValueRequest.key", &f_1)?;
+    verify_required_field_exists("SetVersionstampedValueRequest.value_prefix", &f_2)?;
     let ret = SetVersionstampedValueRequest {
-      transaction_id: f_1.expect("auto-generated code should have checked for presence of required fields"),
-      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
-      value_prefix: f_3.expect("auto-generated code should have checked for presence of required fields"),
-      column_family: f_4,
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      value_prefix: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
     };
     Ok(ret)
   }
   pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SetVersionstampedValueRequest");
     o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("transaction_id", TType::String, 1))?;
-    o_prot.write_string(&self.transaction_id)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
     o_prot.write_string(&self.key)?;
     o_prot.write_field_end()?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("value_prefix", TType::String, 3))?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("value_prefix", TType::String, 2))?;
     o_prot.write_string(&self.value_prefix)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
-      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
       o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?
     }
@@ -2608,6 +2053,578 @@ impl FaultInjectionResponse {
 }
 
 //
+// Operation
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Operation {
+  pub type_: String,
+  pub key: String,
+  pub value: Option<String>,
+  pub column_family: Option<String>,
+}
+
+impl Operation {
+  pub fn new<F3, F4>(type_: String, key: String, value: F3, column_family: F4) -> Operation where F3: Into<Option<String>>, F4: Into<Option<String>> {
+    Operation {
+      type_,
+      key,
+      value: value.into(),
+      column_family: column_family.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<Operation> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<String> = None;
+    let mut f_2: Option<String> = None;
+    let mut f_3: Option<String> = None;
+    let mut f_4: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_string()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let val = i_prot.read_string()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let val = i_prot.read_string()?;
+          f_3 = Some(val);
+        },
+        4 => {
+          let val = i_prot.read_string()?;
+          f_4 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("Operation.type_", &f_1)?;
+    verify_required_field_exists("Operation.key", &f_2)?;
+    let ret = Operation {
+      type_: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      key: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      value: f_3,
+      column_family: f_4,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("Operation");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("type", TType::String, 1))?;
+    o_prot.write_string(&self.type_)?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
+    o_prot.write_string(&self.key)?;
+    o_prot.write_field_end()?;
+    if let Some(ref fld_var) = self.value {
+      o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 3))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    if let Some(ref fld_var) = self.column_family {
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 4))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// AtomicCommitRequest
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AtomicCommitRequest {
+  pub read_version: i64,
+  pub operations: Vec<Operation>,
+  pub read_conflict_keys: Vec<String>,
+  pub timeout_seconds: Option<i64>,
+}
+
+impl AtomicCommitRequest {
+  pub fn new<F4>(read_version: i64, operations: Vec<Operation>, read_conflict_keys: Vec<String>, timeout_seconds: F4) -> AtomicCommitRequest where F4: Into<Option<i64>> {
+    AtomicCommitRequest {
+      read_version,
+      operations,
+      read_conflict_keys,
+      timeout_seconds: timeout_seconds.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AtomicCommitRequest> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<i64> = None;
+    let mut f_2: Option<Vec<Operation>> = None;
+    let mut f_3: Option<Vec<String>> = None;
+    let mut f_4: Option<i64> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_i64()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let list_ident = i_prot.read_list_begin()?;
+          let mut val: Vec<Operation> = Vec::with_capacity(list_ident.size as usize);
+          for _ in 0..list_ident.size {
+            let list_elem_2 = Operation::read_from_in_protocol(i_prot)?;
+            val.push(list_elem_2);
+          }
+          i_prot.read_list_end()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let list_ident = i_prot.read_list_begin()?;
+          let mut val: Vec<String> = Vec::with_capacity(list_ident.size as usize);
+          for _ in 0..list_ident.size {
+            let list_elem_3 = i_prot.read_string()?;
+            val.push(list_elem_3);
+          }
+          i_prot.read_list_end()?;
+          f_3 = Some(val);
+        },
+        4 => {
+          let val = i_prot.read_i64()?;
+          f_4 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("AtomicCommitRequest.read_version", &f_1)?;
+    verify_required_field_exists("AtomicCommitRequest.operations", &f_2)?;
+    verify_required_field_exists("AtomicCommitRequest.read_conflict_keys", &f_3)?;
+    let ret = AtomicCommitRequest {
+      read_version: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      operations: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      read_conflict_keys: f_3.expect("auto-generated code should have checked for presence of required fields"),
+      timeout_seconds: f_4,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("AtomicCommitRequest");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 1))?;
+    o_prot.write_i64(self.read_version)?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("operations", TType::List, 2))?;
+    o_prot.write_list_begin(&TListIdentifier::new(TType::Struct, self.operations.len() as i32))?;
+    for e in &self.operations {
+      e.write_to_out_protocol(o_prot)?;
+    }
+    o_prot.write_list_end()?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_conflict_keys", TType::List, 3))?;
+    o_prot.write_list_begin(&TListIdentifier::new(TType::String, self.read_conflict_keys.len() as i32))?;
+    for e in &self.read_conflict_keys {
+      o_prot.write_string(e)?;
+    }
+    o_prot.write_list_end()?;
+    o_prot.write_field_end()?;
+    if let Some(fld_var) = self.timeout_seconds {
+      o_prot.write_field_begin(&TFieldIdentifier::new("timeout_seconds", TType::I64, 4))?;
+      o_prot.write_i64(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// AtomicCommitResponse
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AtomicCommitResponse {
+  pub success: bool,
+  pub error: Option<String>,
+  pub error_code: Option<String>,
+  pub committed_version: Option<i64>,
+}
+
+impl AtomicCommitResponse {
+  pub fn new<F2, F3, F4>(success: bool, error: F2, error_code: F3, committed_version: F4) -> AtomicCommitResponse where F2: Into<Option<String>>, F3: Into<Option<String>>, F4: Into<Option<i64>> {
+    AtomicCommitResponse {
+      success,
+      error: error.into(),
+      error_code: error_code.into(),
+      committed_version: committed_version.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AtomicCommitResponse> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<bool> = None;
+    let mut f_2: Option<String> = None;
+    let mut f_3: Option<String> = None;
+    let mut f_4: Option<i64> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_bool()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let val = i_prot.read_string()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let val = i_prot.read_string()?;
+          f_3 = Some(val);
+        },
+        4 => {
+          let val = i_prot.read_i64()?;
+          f_4 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("AtomicCommitResponse.success", &f_1)?;
+    let ret = AtomicCommitResponse {
+      success: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      error: f_2,
+      error_code: f_3,
+      committed_version: f_4,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("AtomicCommitResponse");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 1))?;
+    o_prot.write_bool(self.success)?;
+    o_prot.write_field_end()?;
+    if let Some(ref fld_var) = self.error {
+      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 2))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    if let Some(ref fld_var) = self.error_code {
+      o_prot.write_field_begin(&TFieldIdentifier::new("error_code", TType::String, 3))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    if let Some(fld_var) = self.committed_version {
+      o_prot.write_field_begin(&TFieldIdentifier::new("committed_version", TType::I64, 4))?;
+      o_prot.write_i64(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// GetReadVersionRequest
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct GetReadVersionRequest {
+}
+
+impl GetReadVersionRequest {
+  pub fn new() -> GetReadVersionRequest {
+    GetReadVersionRequest {}
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetReadVersionRequest> {
+    i_prot.read_struct_begin()?;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    let ret = GetReadVersionRequest {};
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("GetReadVersionRequest");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+impl Default for GetReadVersionRequest {
+  fn default() -> Self {
+    GetReadVersionRequest{}
+  }
+}
+
+//
+// GetReadVersionResponse
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct GetReadVersionResponse {
+  pub read_version: i64,
+  pub success: bool,
+  pub error: Option<String>,
+}
+
+impl GetReadVersionResponse {
+  pub fn new<F3>(read_version: i64, success: bool, error: F3) -> GetReadVersionResponse where F3: Into<Option<String>> {
+    GetReadVersionResponse {
+      read_version,
+      success,
+      error: error.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetReadVersionResponse> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<i64> = None;
+    let mut f_2: Option<bool> = None;
+    let mut f_3: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_i64()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let val = i_prot.read_bool()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let val = i_prot.read_string()?;
+          f_3 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("GetReadVersionResponse.read_version", &f_1)?;
+    verify_required_field_exists("GetReadVersionResponse.success", &f_2)?;
+    let ret = GetReadVersionResponse {
+      read_version: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      success: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      error: f_3,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("GetReadVersionResponse");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 1))?;
+    o_prot.write_i64(self.read_version)?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 2))?;
+    o_prot.write_bool(self.success)?;
+    o_prot.write_field_end()?;
+    if let Some(ref fld_var) = self.error {
+      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 3))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// SnapshotReadRequest
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SnapshotReadRequest {
+  pub key: String,
+  pub read_version: i64,
+  pub column_family: Option<String>,
+}
+
+impl SnapshotReadRequest {
+  pub fn new<F3>(key: String, read_version: i64, column_family: F3) -> SnapshotReadRequest where F3: Into<Option<String>> {
+    SnapshotReadRequest {
+      key,
+      read_version,
+      column_family: column_family.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotReadRequest> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<String> = None;
+    let mut f_2: Option<i64> = None;
+    let mut f_3: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_string()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let val = i_prot.read_i64()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let val = i_prot.read_string()?;
+          f_3 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("SnapshotReadRequest.key", &f_1)?;
+    verify_required_field_exists("SnapshotReadRequest.read_version", &f_2)?;
+    let ret = SnapshotReadRequest {
+      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      read_version: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      column_family: f_3,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SnapshotReadRequest");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
+    o_prot.write_string(&self.key)?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 2))?;
+    o_prot.write_i64(self.read_version)?;
+    o_prot.write_field_end()?;
+    if let Some(ref fld_var) = self.column_family {
+      o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// SnapshotReadResponse
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SnapshotReadResponse {
+  pub value: String,
+  pub found: bool,
+  pub error: Option<String>,
+}
+
+impl SnapshotReadResponse {
+  pub fn new<F3>(value: String, found: bool, error: F3) -> SnapshotReadResponse where F3: Into<Option<String>> {
+    SnapshotReadResponse {
+      value,
+      found,
+      error: error.into(),
+    }
+  }
+  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotReadResponse> {
+    i_prot.read_struct_begin()?;
+    let mut f_1: Option<String> = None;
+    let mut f_2: Option<bool> = None;
+    let mut f_3: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_string()?;
+          f_1 = Some(val);
+        },
+        2 => {
+          let val = i_prot.read_bool()?;
+          f_2 = Some(val);
+        },
+        3 => {
+          let val = i_prot.read_string()?;
+          f_3 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    verify_required_field_exists("SnapshotReadResponse.value", &f_1)?;
+    verify_required_field_exists("SnapshotReadResponse.found", &f_2)?;
+    let ret = SnapshotReadResponse {
+      value: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      found: f_2.expect("auto-generated code should have checked for presence of required fields"),
+      error: f_3,
+    };
+    Ok(ret)
+  }
+  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SnapshotReadResponse");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 1))?;
+    o_prot.write_string(&self.value)?;
+    o_prot.write_field_end()?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("found", TType::Bool, 2))?;
+    o_prot.write_bool(self.found)?;
+    o_prot.write_field_end()?;
+    if let Some(ref fld_var) = self.error {
+      o_prot.write_field_begin(&TFieldIdentifier::new("error", TType::String, 3))?;
+      o_prot.write_string(fld_var)?;
+      o_prot.write_field_end()?
+    }
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
 // PingRequest
 //
 
@@ -2765,9 +2782,9 @@ impl PingResponse {
 //
 
 pub trait TTransactionalKVSyncClient {
-  fn begin_transaction(&mut self, request: BeginTransactionRequest) -> thrift::Result<BeginTransactionResponse>;
-  fn commit_transaction(&mut self, request: CommitTransactionRequest) -> thrift::Result<CommitTransactionResponse>;
-  fn abort_transaction(&mut self, request: AbortTransactionRequest) -> thrift::Result<AbortTransactionResponse>;
+  fn get_read_version(&mut self, request: GetReadVersionRequest) -> thrift::Result<GetReadVersionResponse>;
+  fn snapshot_read(&mut self, request: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse>;
+  fn atomic_commit(&mut self, request: AtomicCommitRequest) -> thrift::Result<AtomicCommitResponse>;
   fn get(&mut self, request: GetRequest) -> thrift::Result<GetResponse>;
   fn set_key(&mut self, request: SetRequest) -> thrift::Result<SetResponse>;
   fn delete_key(&mut self, request: DeleteRequest) -> thrift::Result<DeleteResponse>;
@@ -2808,12 +2825,12 @@ impl <IP, OP> TThriftClient for TransactionalKVSyncClient<IP, OP> where IP: TInp
 impl <IP, OP> TTransactionalKVSyncClientMarker for TransactionalKVSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {}
 
 impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncClient for C {
-  fn begin_transaction(&mut self, request: BeginTransactionRequest) -> thrift::Result<BeginTransactionResponse> {
+  fn get_read_version(&mut self, request: GetReadVersionRequest) -> thrift::Result<GetReadVersionResponse> {
     (
       {
         self.increment_sequence_number();
-        let message_ident = TMessageIdentifier::new("beginTransaction", TMessageType::Call, self.sequence_number());
-        let call_args = TransactionalKVBeginTransactionArgs { request };
+        let message_ident = TMessageIdentifier::new("getReadVersion", TMessageType::Call, self.sequence_number());
+        let call_args = TransactionalKVGetReadVersionArgs { request };
         self.o_prot_mut().write_message_begin(&message_ident)?;
         call_args.write_to_out_protocol(self.o_prot_mut())?;
         self.o_prot_mut().write_message_end()?;
@@ -2823,24 +2840,24 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
     {
       let message_ident = self.i_prot_mut().read_message_begin()?;
       verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
-      verify_expected_service_call("beginTransaction", &message_ident.name)?;
+      verify_expected_service_call("getReadVersion", &message_ident.name)?;
       if message_ident.message_type == TMessageType::Exception {
         let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
         self.i_prot_mut().read_message_end()?;
         return Err(thrift::Error::Application(remote_error))
       }
       verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
-      let result = TransactionalKVBeginTransactionResult::read_from_in_protocol(self.i_prot_mut())?;
+      let result = TransactionalKVGetReadVersionResult::read_from_in_protocol(self.i_prot_mut())?;
       self.i_prot_mut().read_message_end()?;
       result.ok_or()
     }
   }
-  fn commit_transaction(&mut self, request: CommitTransactionRequest) -> thrift::Result<CommitTransactionResponse> {
+  fn snapshot_read(&mut self, request: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse> {
     (
       {
         self.increment_sequence_number();
-        let message_ident = TMessageIdentifier::new("commitTransaction", TMessageType::Call, self.sequence_number());
-        let call_args = TransactionalKVCommitTransactionArgs { request };
+        let message_ident = TMessageIdentifier::new("snapshotRead", TMessageType::Call, self.sequence_number());
+        let call_args = TransactionalKVSnapshotReadArgs { request };
         self.o_prot_mut().write_message_begin(&message_ident)?;
         call_args.write_to_out_protocol(self.o_prot_mut())?;
         self.o_prot_mut().write_message_end()?;
@@ -2850,24 +2867,24 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
     {
       let message_ident = self.i_prot_mut().read_message_begin()?;
       verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
-      verify_expected_service_call("commitTransaction", &message_ident.name)?;
+      verify_expected_service_call("snapshotRead", &message_ident.name)?;
       if message_ident.message_type == TMessageType::Exception {
         let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
         self.i_prot_mut().read_message_end()?;
         return Err(thrift::Error::Application(remote_error))
       }
       verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
-      let result = TransactionalKVCommitTransactionResult::read_from_in_protocol(self.i_prot_mut())?;
+      let result = TransactionalKVSnapshotReadResult::read_from_in_protocol(self.i_prot_mut())?;
       self.i_prot_mut().read_message_end()?;
       result.ok_or()
     }
   }
-  fn abort_transaction(&mut self, request: AbortTransactionRequest) -> thrift::Result<AbortTransactionResponse> {
+  fn atomic_commit(&mut self, request: AtomicCommitRequest) -> thrift::Result<AtomicCommitResponse> {
     (
       {
         self.increment_sequence_number();
-        let message_ident = TMessageIdentifier::new("abortTransaction", TMessageType::Call, self.sequence_number());
-        let call_args = TransactionalKVAbortTransactionArgs { request };
+        let message_ident = TMessageIdentifier::new("atomicCommit", TMessageType::Call, self.sequence_number());
+        let call_args = TransactionalKVAtomicCommitArgs { request };
         self.o_prot_mut().write_message_begin(&message_ident)?;
         call_args.write_to_out_protocol(self.o_prot_mut())?;
         self.o_prot_mut().write_message_end()?;
@@ -2877,14 +2894,14 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
     {
       let message_ident = self.i_prot_mut().read_message_begin()?;
       verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
-      verify_expected_service_call("abortTransaction", &message_ident.name)?;
+      verify_expected_service_call("atomicCommit", &message_ident.name)?;
       if message_ident.message_type == TMessageType::Exception {
         let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
         self.i_prot_mut().read_message_end()?;
         return Err(thrift::Error::Application(remote_error))
       }
       verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
-      let result = TransactionalKVAbortTransactionResult::read_from_in_protocol(self.i_prot_mut())?;
+      let result = TransactionalKVAtomicCommitResult::read_from_in_protocol(self.i_prot_mut())?;
       self.i_prot_mut().read_message_end()?;
       result.ok_or()
     }
@@ -2947,7 +2964,7 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
     (
       {
         self.increment_sequence_number();
-        let message_ident = TMessageIdentifier::new("delete_key", TMessageType::Call, self.sequence_number());
+        let message_ident = TMessageIdentifier::new("deleteKey", TMessageType::Call, self.sequence_number());
         let call_args = TransactionalKVDeleteKeyArgs { request };
         self.o_prot_mut().write_message_begin(&message_ident)?;
         call_args.write_to_out_protocol(self.o_prot_mut())?;
@@ -2958,7 +2975,7 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
     {
       let message_ident = self.i_prot_mut().read_message_begin()?;
       verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
-      verify_expected_service_call("delete_key", &message_ident.name)?;
+      verify_expected_service_call("deleteKey", &message_ident.name)?;
       if message_ident.message_type == TMessageType::Exception {
         let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
         self.i_prot_mut().read_message_end()?;
@@ -3274,9 +3291,9 @@ impl <C: TThriftClient + TTransactionalKVSyncClientMarker> TTransactionalKVSyncC
 //
 
 pub trait TransactionalKVSyncHandler {
-  fn handle_begin_transaction(&self, request: BeginTransactionRequest) -> thrift::Result<BeginTransactionResponse>;
-  fn handle_commit_transaction(&self, request: CommitTransactionRequest) -> thrift::Result<CommitTransactionResponse>;
-  fn handle_abort_transaction(&self, request: AbortTransactionRequest) -> thrift::Result<AbortTransactionResponse>;
+  fn handle_get_read_version(&self, request: GetReadVersionRequest) -> thrift::Result<GetReadVersionResponse>;
+  fn handle_snapshot_read(&self, request: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse>;
+  fn handle_atomic_commit(&self, request: AtomicCommitRequest) -> thrift::Result<AtomicCommitResponse>;
   fn handle_get(&self, request: GetRequest) -> thrift::Result<GetResponse>;
   fn handle_set_key(&self, request: SetRequest) -> thrift::Result<SetResponse>;
   fn handle_delete_key(&self, request: DeleteRequest) -> thrift::Result<DeleteResponse>;
@@ -3303,14 +3320,14 @@ impl <H: TransactionalKVSyncHandler> TransactionalKVSyncProcessor<H> {
       handler,
     }
   }
-  fn process_begin_transaction(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    TTransactionalKVProcessFunctions::process_begin_transaction(&self.handler, incoming_sequence_number, i_prot, o_prot)
+  fn process_get_read_version(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    TTransactionalKVProcessFunctions::process_get_read_version(&self.handler, incoming_sequence_number, i_prot, o_prot)
   }
-  fn process_commit_transaction(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    TTransactionalKVProcessFunctions::process_commit_transaction(&self.handler, incoming_sequence_number, i_prot, o_prot)
+  fn process_snapshot_read(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    TTransactionalKVProcessFunctions::process_snapshot_read(&self.handler, incoming_sequence_number, i_prot, o_prot)
   }
-  fn process_abort_transaction(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    TTransactionalKVProcessFunctions::process_abort_transaction(&self.handler, incoming_sequence_number, i_prot, o_prot)
+  fn process_atomic_commit(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    TTransactionalKVProcessFunctions::process_atomic_commit(&self.handler, incoming_sequence_number, i_prot, o_prot)
   }
   fn process_get(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     TTransactionalKVProcessFunctions::process_get(&self.handler, incoming_sequence_number, i_prot, o_prot)
@@ -3359,13 +3376,13 @@ impl <H: TransactionalKVSyncHandler> TransactionalKVSyncProcessor<H> {
 pub struct TTransactionalKVProcessFunctions;
 
 impl TTransactionalKVProcessFunctions {
-  pub fn process_begin_transaction<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let args = TransactionalKVBeginTransactionArgs::read_from_in_protocol(i_prot)?;
-    match handler.handle_begin_transaction(args.request) {
+  pub fn process_get_read_version<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let args = TransactionalKVGetReadVersionArgs::read_from_in_protocol(i_prot)?;
+    match handler.handle_get_read_version(args.request) {
       Ok(handler_return) => {
-        let message_ident = TMessageIdentifier::new("beginTransaction", TMessageType::Reply, incoming_sequence_number);
+        let message_ident = TMessageIdentifier::new("getReadVersion", TMessageType::Reply, incoming_sequence_number);
         o_prot.write_message_begin(&message_ident)?;
-        let ret = TransactionalKVBeginTransactionResult { result_value: Some(handler_return) };
+        let ret = TransactionalKVGetReadVersionResult { result_value: Some(handler_return) };
         ret.write_to_out_protocol(o_prot)?;
         o_prot.write_message_end()?;
         o_prot.flush()
@@ -3373,7 +3390,7 @@ impl TTransactionalKVProcessFunctions {
       Err(e) => {
         match e {
           thrift::Error::Application(app_err) => {
-            let message_ident = TMessageIdentifier::new("beginTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("getReadVersion", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3386,7 +3403,7 @@ impl TTransactionalKVProcessFunctions {
                 e.to_string()
               )
             };
-            let message_ident = TMessageIdentifier::new("beginTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("getReadVersion", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3396,13 +3413,13 @@ impl TTransactionalKVProcessFunctions {
       },
     }
   }
-  pub fn process_commit_transaction<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let args = TransactionalKVCommitTransactionArgs::read_from_in_protocol(i_prot)?;
-    match handler.handle_commit_transaction(args.request) {
+  pub fn process_snapshot_read<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let args = TransactionalKVSnapshotReadArgs::read_from_in_protocol(i_prot)?;
+    match handler.handle_snapshot_read(args.request) {
       Ok(handler_return) => {
-        let message_ident = TMessageIdentifier::new("commitTransaction", TMessageType::Reply, incoming_sequence_number);
+        let message_ident = TMessageIdentifier::new("snapshotRead", TMessageType::Reply, incoming_sequence_number);
         o_prot.write_message_begin(&message_ident)?;
-        let ret = TransactionalKVCommitTransactionResult { result_value: Some(handler_return) };
+        let ret = TransactionalKVSnapshotReadResult { result_value: Some(handler_return) };
         ret.write_to_out_protocol(o_prot)?;
         o_prot.write_message_end()?;
         o_prot.flush()
@@ -3410,7 +3427,7 @@ impl TTransactionalKVProcessFunctions {
       Err(e) => {
         match e {
           thrift::Error::Application(app_err) => {
-            let message_ident = TMessageIdentifier::new("commitTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("snapshotRead", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3423,7 +3440,7 @@ impl TTransactionalKVProcessFunctions {
                 e.to_string()
               )
             };
-            let message_ident = TMessageIdentifier::new("commitTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("snapshotRead", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3433,13 +3450,13 @@ impl TTransactionalKVProcessFunctions {
       },
     }
   }
-  pub fn process_abort_transaction<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let args = TransactionalKVAbortTransactionArgs::read_from_in_protocol(i_prot)?;
-    match handler.handle_abort_transaction(args.request) {
+  pub fn process_atomic_commit<H: TransactionalKVSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let args = TransactionalKVAtomicCommitArgs::read_from_in_protocol(i_prot)?;
+    match handler.handle_atomic_commit(args.request) {
       Ok(handler_return) => {
-        let message_ident = TMessageIdentifier::new("abortTransaction", TMessageType::Reply, incoming_sequence_number);
+        let message_ident = TMessageIdentifier::new("atomicCommit", TMessageType::Reply, incoming_sequence_number);
         o_prot.write_message_begin(&message_ident)?;
-        let ret = TransactionalKVAbortTransactionResult { result_value: Some(handler_return) };
+        let ret = TransactionalKVAtomicCommitResult { result_value: Some(handler_return) };
         ret.write_to_out_protocol(o_prot)?;
         o_prot.write_message_end()?;
         o_prot.flush()
@@ -3447,7 +3464,7 @@ impl TTransactionalKVProcessFunctions {
       Err(e) => {
         match e {
           thrift::Error::Application(app_err) => {
-            let message_ident = TMessageIdentifier::new("abortTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("atomicCommit", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3460,7 +3477,7 @@ impl TTransactionalKVProcessFunctions {
                 e.to_string()
               )
             };
-            let message_ident = TMessageIdentifier::new("abortTransaction", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("atomicCommit", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3548,7 +3565,7 @@ impl TTransactionalKVProcessFunctions {
     let args = TransactionalKVDeleteKeyArgs::read_from_in_protocol(i_prot)?;
     match handler.handle_delete_key(args.request) {
       Ok(handler_return) => {
-        let message_ident = TMessageIdentifier::new("delete_key", TMessageType::Reply, incoming_sequence_number);
+        let message_ident = TMessageIdentifier::new("deleteKey", TMessageType::Reply, incoming_sequence_number);
         o_prot.write_message_begin(&message_ident)?;
         let ret = TransactionalKVDeleteKeyResult { result_value: Some(handler_return) };
         ret.write_to_out_protocol(o_prot)?;
@@ -3558,7 +3575,7 @@ impl TTransactionalKVProcessFunctions {
       Err(e) => {
         match e {
           thrift::Error::Application(app_err) => {
-            let message_ident = TMessageIdentifier::new("delete_key", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("deleteKey", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3571,7 +3588,7 @@ impl TTransactionalKVProcessFunctions {
                 e.to_string()
               )
             };
-            let message_ident = TMessageIdentifier::new("delete_key", TMessageType::Exception, incoming_sequence_number);
+            let message_ident = TMessageIdentifier::new("deleteKey", TMessageType::Exception, incoming_sequence_number);
             o_prot.write_message_begin(&message_ident)?;
             thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
             o_prot.write_message_end()?;
@@ -3994,14 +4011,14 @@ impl <H: TransactionalKVSyncHandler> TProcessor for TransactionalKVSyncProcessor
   fn process(&self, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let message_ident = i_prot.read_message_begin()?;
     let res = match &*message_ident.name {
-      "beginTransaction" => {
-        self.process_begin_transaction(message_ident.sequence_number, i_prot, o_prot)
+      "getReadVersion" => {
+        self.process_get_read_version(message_ident.sequence_number, i_prot, o_prot)
       },
-      "commitTransaction" => {
-        self.process_commit_transaction(message_ident.sequence_number, i_prot, o_prot)
+      "snapshotRead" => {
+        self.process_snapshot_read(message_ident.sequence_number, i_prot, o_prot)
       },
-      "abortTransaction" => {
-        self.process_abort_transaction(message_ident.sequence_number, i_prot, o_prot)
+      "atomicCommit" => {
+        self.process_atomic_commit(message_ident.sequence_number, i_prot, o_prot)
       },
       "get" => {
         self.process_get(message_ident.sequence_number, i_prot, o_prot)
@@ -4009,7 +4026,7 @@ impl <H: TransactionalKVSyncHandler> TProcessor for TransactionalKVSyncProcessor
       "setKey" => {
         self.process_set_key(message_ident.sequence_number, i_prot, o_prot)
       },
-      "delete_key" => {
+      "deleteKey" => {
         self.process_delete_key(message_ident.sequence_number, i_prot, o_prot)
       },
       "getRange" => {
@@ -4061,18 +4078,18 @@ impl <H: TransactionalKVSyncHandler> TProcessor for TransactionalKVSyncProcessor
 }
 
 //
-// TransactionalKVBeginTransactionArgs
+// TransactionalKVGetReadVersionArgs
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVBeginTransactionArgs {
-  request: BeginTransactionRequest,
+struct TransactionalKVGetReadVersionArgs {
+  request: GetReadVersionRequest,
 }
 
-impl TransactionalKVBeginTransactionArgs {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVBeginTransactionArgs> {
+impl TransactionalKVGetReadVersionArgs {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVGetReadVersionArgs> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<BeginTransactionRequest> = None;
+    let mut f_1: Option<GetReadVersionRequest> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4081,7 +4098,7 @@ impl TransactionalKVBeginTransactionArgs {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = BeginTransactionRequest::read_from_in_protocol(i_prot)?;
+          let val = GetReadVersionRequest::read_from_in_protocol(i_prot)?;
           f_1 = Some(val);
         },
         _ => {
@@ -4091,14 +4108,14 @@ impl TransactionalKVBeginTransactionArgs {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("TransactionalKVBeginTransactionArgs.request", &f_1)?;
-    let ret = TransactionalKVBeginTransactionArgs {
+    verify_required_field_exists("TransactionalKVGetReadVersionArgs.request", &f_1)?;
+    let ret = TransactionalKVGetReadVersionArgs {
       request: f_1.expect("auto-generated code should have checked for presence of required fields"),
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("beginTransaction_args");
+    let struct_ident = TStructIdentifier::new("getReadVersion_args");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("request", TType::Struct, 1))?;
     self.request.write_to_out_protocol(o_prot)?;
@@ -4109,18 +4126,18 @@ impl TransactionalKVBeginTransactionArgs {
 }
 
 //
-// TransactionalKVBeginTransactionResult
+// TransactionalKVGetReadVersionResult
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVBeginTransactionResult {
-  result_value: Option<BeginTransactionResponse>,
+struct TransactionalKVGetReadVersionResult {
+  result_value: Option<GetReadVersionResponse>,
 }
 
-impl TransactionalKVBeginTransactionResult {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVBeginTransactionResult> {
+impl TransactionalKVGetReadVersionResult {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVGetReadVersionResult> {
     i_prot.read_struct_begin()?;
-    let mut f_0: Option<BeginTransactionResponse> = None;
+    let mut f_0: Option<GetReadVersionResponse> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4129,7 +4146,7 @@ impl TransactionalKVBeginTransactionResult {
       let field_id = field_id(&field_ident)?;
       match field_id {
         0 => {
-          let val = BeginTransactionResponse::read_from_in_protocol(i_prot)?;
+          let val = GetReadVersionResponse::read_from_in_protocol(i_prot)?;
           f_0 = Some(val);
         },
         _ => {
@@ -4139,13 +4156,13 @@ impl TransactionalKVBeginTransactionResult {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    let ret = TransactionalKVBeginTransactionResult {
+    let ret = TransactionalKVGetReadVersionResult {
       result_value: f_0,
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("TransactionalKVBeginTransactionResult");
+    let struct_ident = TStructIdentifier::new("TransactionalKVGetReadVersionResult");
     o_prot.write_struct_begin(&struct_ident)?;
     if let Some(ref fld_var) = self.result_value {
       o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::Struct, 0))?;
@@ -4155,7 +4172,7 @@ impl TransactionalKVBeginTransactionResult {
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
   }
-  fn ok_or(self) -> thrift::Result<BeginTransactionResponse> {
+  fn ok_or(self) -> thrift::Result<GetReadVersionResponse> {
     if self.result_value.is_some() {
       Ok(self.result_value.unwrap())
     } else {
@@ -4163,7 +4180,7 @@ impl TransactionalKVBeginTransactionResult {
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
-            "no result received for TransactionalKVBeginTransaction"
+            "no result received for TransactionalKVGetReadVersion"
           )
         )
       )
@@ -4172,18 +4189,18 @@ impl TransactionalKVBeginTransactionResult {
 }
 
 //
-// TransactionalKVCommitTransactionArgs
+// TransactionalKVSnapshotReadArgs
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVCommitTransactionArgs {
-  request: CommitTransactionRequest,
+struct TransactionalKVSnapshotReadArgs {
+  request: SnapshotReadRequest,
 }
 
-impl TransactionalKVCommitTransactionArgs {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVCommitTransactionArgs> {
+impl TransactionalKVSnapshotReadArgs {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVSnapshotReadArgs> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<CommitTransactionRequest> = None;
+    let mut f_1: Option<SnapshotReadRequest> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4192,7 +4209,7 @@ impl TransactionalKVCommitTransactionArgs {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = CommitTransactionRequest::read_from_in_protocol(i_prot)?;
+          let val = SnapshotReadRequest::read_from_in_protocol(i_prot)?;
           f_1 = Some(val);
         },
         _ => {
@@ -4202,14 +4219,14 @@ impl TransactionalKVCommitTransactionArgs {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("TransactionalKVCommitTransactionArgs.request", &f_1)?;
-    let ret = TransactionalKVCommitTransactionArgs {
+    verify_required_field_exists("TransactionalKVSnapshotReadArgs.request", &f_1)?;
+    let ret = TransactionalKVSnapshotReadArgs {
       request: f_1.expect("auto-generated code should have checked for presence of required fields"),
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("commitTransaction_args");
+    let struct_ident = TStructIdentifier::new("snapshotRead_args");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("request", TType::Struct, 1))?;
     self.request.write_to_out_protocol(o_prot)?;
@@ -4220,18 +4237,18 @@ impl TransactionalKVCommitTransactionArgs {
 }
 
 //
-// TransactionalKVCommitTransactionResult
+// TransactionalKVSnapshotReadResult
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVCommitTransactionResult {
-  result_value: Option<CommitTransactionResponse>,
+struct TransactionalKVSnapshotReadResult {
+  result_value: Option<SnapshotReadResponse>,
 }
 
-impl TransactionalKVCommitTransactionResult {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVCommitTransactionResult> {
+impl TransactionalKVSnapshotReadResult {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVSnapshotReadResult> {
     i_prot.read_struct_begin()?;
-    let mut f_0: Option<CommitTransactionResponse> = None;
+    let mut f_0: Option<SnapshotReadResponse> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4240,7 +4257,7 @@ impl TransactionalKVCommitTransactionResult {
       let field_id = field_id(&field_ident)?;
       match field_id {
         0 => {
-          let val = CommitTransactionResponse::read_from_in_protocol(i_prot)?;
+          let val = SnapshotReadResponse::read_from_in_protocol(i_prot)?;
           f_0 = Some(val);
         },
         _ => {
@@ -4250,13 +4267,13 @@ impl TransactionalKVCommitTransactionResult {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    let ret = TransactionalKVCommitTransactionResult {
+    let ret = TransactionalKVSnapshotReadResult {
       result_value: f_0,
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("TransactionalKVCommitTransactionResult");
+    let struct_ident = TStructIdentifier::new("TransactionalKVSnapshotReadResult");
     o_prot.write_struct_begin(&struct_ident)?;
     if let Some(ref fld_var) = self.result_value {
       o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::Struct, 0))?;
@@ -4266,7 +4283,7 @@ impl TransactionalKVCommitTransactionResult {
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
   }
-  fn ok_or(self) -> thrift::Result<CommitTransactionResponse> {
+  fn ok_or(self) -> thrift::Result<SnapshotReadResponse> {
     if self.result_value.is_some() {
       Ok(self.result_value.unwrap())
     } else {
@@ -4274,7 +4291,7 @@ impl TransactionalKVCommitTransactionResult {
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
-            "no result received for TransactionalKVCommitTransaction"
+            "no result received for TransactionalKVSnapshotRead"
           )
         )
       )
@@ -4283,18 +4300,18 @@ impl TransactionalKVCommitTransactionResult {
 }
 
 //
-// TransactionalKVAbortTransactionArgs
+// TransactionalKVAtomicCommitArgs
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVAbortTransactionArgs {
-  request: AbortTransactionRequest,
+struct TransactionalKVAtomicCommitArgs {
+  request: AtomicCommitRequest,
 }
 
-impl TransactionalKVAbortTransactionArgs {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVAbortTransactionArgs> {
+impl TransactionalKVAtomicCommitArgs {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVAtomicCommitArgs> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<AbortTransactionRequest> = None;
+    let mut f_1: Option<AtomicCommitRequest> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4303,7 +4320,7 @@ impl TransactionalKVAbortTransactionArgs {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = AbortTransactionRequest::read_from_in_protocol(i_prot)?;
+          let val = AtomicCommitRequest::read_from_in_protocol(i_prot)?;
           f_1 = Some(val);
         },
         _ => {
@@ -4313,14 +4330,14 @@ impl TransactionalKVAbortTransactionArgs {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    verify_required_field_exists("TransactionalKVAbortTransactionArgs.request", &f_1)?;
-    let ret = TransactionalKVAbortTransactionArgs {
+    verify_required_field_exists("TransactionalKVAtomicCommitArgs.request", &f_1)?;
+    let ret = TransactionalKVAtomicCommitArgs {
       request: f_1.expect("auto-generated code should have checked for presence of required fields"),
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("abortTransaction_args");
+    let struct_ident = TStructIdentifier::new("atomicCommit_args");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("request", TType::Struct, 1))?;
     self.request.write_to_out_protocol(o_prot)?;
@@ -4331,18 +4348,18 @@ impl TransactionalKVAbortTransactionArgs {
 }
 
 //
-// TransactionalKVAbortTransactionResult
+// TransactionalKVAtomicCommitResult
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct TransactionalKVAbortTransactionResult {
-  result_value: Option<AbortTransactionResponse>,
+struct TransactionalKVAtomicCommitResult {
+  result_value: Option<AtomicCommitResponse>,
 }
 
-impl TransactionalKVAbortTransactionResult {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVAbortTransactionResult> {
+impl TransactionalKVAtomicCommitResult {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<TransactionalKVAtomicCommitResult> {
     i_prot.read_struct_begin()?;
-    let mut f_0: Option<AbortTransactionResponse> = None;
+    let mut f_0: Option<AtomicCommitResponse> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -4351,7 +4368,7 @@ impl TransactionalKVAbortTransactionResult {
       let field_id = field_id(&field_ident)?;
       match field_id {
         0 => {
-          let val = AbortTransactionResponse::read_from_in_protocol(i_prot)?;
+          let val = AtomicCommitResponse::read_from_in_protocol(i_prot)?;
           f_0 = Some(val);
         },
         _ => {
@@ -4361,13 +4378,13 @@ impl TransactionalKVAbortTransactionResult {
       i_prot.read_field_end()?;
     }
     i_prot.read_struct_end()?;
-    let ret = TransactionalKVAbortTransactionResult {
+    let ret = TransactionalKVAtomicCommitResult {
       result_value: f_0,
     };
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("TransactionalKVAbortTransactionResult");
+    let struct_ident = TStructIdentifier::new("TransactionalKVAtomicCommitResult");
     o_prot.write_struct_begin(&struct_ident)?;
     if let Some(ref fld_var) = self.result_value {
       o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::Struct, 0))?;
@@ -4377,7 +4394,7 @@ impl TransactionalKVAbortTransactionResult {
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
   }
-  fn ok_or(self) -> thrift::Result<AbortTransactionResponse> {
+  fn ok_or(self) -> thrift::Result<AtomicCommitResponse> {
     if self.result_value.is_some() {
       Ok(self.result_value.unwrap())
     } else {
@@ -4385,7 +4402,7 @@ impl TransactionalKVAbortTransactionResult {
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
-            "no result received for TransactionalKVAbortTransaction"
+            "no result received for TransactionalKVAtomicCommit"
           )
         )
       )
@@ -4653,7 +4670,7 @@ impl TransactionalKVDeleteKeyArgs {
     Ok(ret)
   }
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("delete_key_args");
+    let struct_ident = TStructIdentifier::new("deleteKey_args");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("request", TType::Struct, 1))?;
     self.request.write_to_out_protocol(o_prot)?;

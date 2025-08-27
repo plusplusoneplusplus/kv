@@ -1,0 +1,709 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include <cassert>
+#include <cstring>
+#include <functional>
+#include <unistd.h>
+#include "../include/kvstore_client.h"
+
+// Test framework macros and classes
+#define TEST_ASSERT(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FAIL: %s - %s\n", __func__, message); \
+            throw std::runtime_error("Test assertion failed"); \
+        } \
+    } while(0)
+
+#define TEST_PASS() \
+    do { \
+        printf("PASS: %s\n", __func__); \
+    } while(0)
+
+class FFITest {
+private:
+    std::string test_name;
+    
+public:
+    FFITest(const std::string& name) : test_name(name) {}
+    
+    void assert_true(bool condition, const std::string& message) {
+        if (!condition) {
+            std::cerr << "FAIL: " << test_name << " - " << message << std::endl;
+            throw std::runtime_error("Test assertion failed");
+        }
+    }
+    
+    void pass() {
+        std::cout << "PASS: " << test_name << std::endl;
+    }
+};
+
+// Helper function to wait for future completion (C-style)
+int wait_for_future_c(KvFutureHandle future) {
+    int max_polls = 1000;  // Maximum number of polls
+    for (int i = 0; i < max_polls; i++) {
+        int status = kv_future_poll(future);
+        if (status == 1) {
+            return 1;  // Ready
+        } else if (status == -1) {
+            return -1;  // Error
+        }
+        usleep(1000);  // Sleep 1ms
+    }
+    return 0;  // Timeout
+}
+
+// Helper function to wait for future completion (C++-style)
+bool wait_for_future_cpp(KvFutureHandle future, int timeout_ms = 5000) {
+    auto start = std::chrono::steady_clock::now();
+    while (true) {
+        int status = kv_future_poll(future);
+        if (status == 1) {
+            return true;  // Ready
+        } else if (status == -1) {
+            return false;  // Error
+        }
+        
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        if (elapsed > timeout_ms) {
+            return false;  // Timeout
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+//==============================================================================
+// C-style Tests (converted from ffi_test.c)
+//==============================================================================
+
+// Test basic initialization and cleanup
+int test_c_init_shutdown() {
+    int result = kv_init();
+    TEST_ASSERT(result == 0, "kv_init failed");
+    
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+// Test client creation and destruction
+int test_c_client_lifecycle() {
+    kv_init();
+    
+    // Test invalid address
+    KvClientHandle client = kv_client_create(NULL);
+    TEST_ASSERT(client == NULL, "Should fail with NULL address");
+    
+    // Test valid connection (assuming server is running on localhost:9090)
+    client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+// Test basic transaction operations
+int test_c_basic_transaction() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(tx_future != NULL, "Failed to begin transaction");
+    
+    int ready = wait_for_future_c(tx_future);
+    TEST_ASSERT(ready == 1, "Transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
+    
+    // Set a key-value pair
+    KvFutureHandle set_future = kv_transaction_set(tx, "test_key", "test_value", NULL);
+    TEST_ASSERT(set_future != NULL, "Failed to create set future");
+    
+    ready = wait_for_future_c(set_future);
+    TEST_ASSERT(ready == 1, "Set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Set operation failed");
+    
+    // Get the value back
+    KvFutureHandle get_future = kv_transaction_get(tx, "test_key", NULL);
+    TEST_ASSERT(get_future != NULL, "Failed to create get future");
+    
+    ready = wait_for_future_c(get_future);
+    TEST_ASSERT(ready == 1, "Get future not ready");
+    
+    char* value = NULL;
+    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    TEST_ASSERT(get_result.success == 1, "Get operation failed");
+    TEST_ASSERT(value != NULL, "Got NULL value");
+    TEST_ASSERT(strcmp(value, "test_value") == 0, "Value mismatch");
+    
+    // Commit transaction
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    TEST_ASSERT(commit_future != NULL, "Failed to create commit future");
+    
+    ready = wait_for_future_c(commit_future);
+    TEST_ASSERT(ready == 1, "Commit future not ready");
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    TEST_ASSERT(commit_result.success == 1, "Commit operation failed");
+    
+    // Cleanup
+    kv_string_free(value);
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+// Test read transaction
+int test_c_read_transaction() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // First, set up some data with a regular transaction
+    KvFutureHandle setup_tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(setup_tx_future != NULL, "Failed to begin setup transaction");
+    
+    int ready = wait_for_future_c(setup_tx_future);
+    TEST_ASSERT(ready == 1, "Setup transaction begin future not ready");
+    
+    KvTransactionHandle setup_tx = kv_future_get_transaction(setup_tx_future);
+    TEST_ASSERT(setup_tx != NULL, "Failed to get setup transaction handle");
+    
+    KvFutureHandle set_future = kv_transaction_set(setup_tx, "read_test_key", "read_test_value", NULL);
+    ready = wait_for_future_c(set_future);
+    TEST_ASSERT(ready == 1, "Setup set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Setup set operation failed");
+    
+    KvFutureHandle commit_future = kv_transaction_commit(setup_tx);
+    ready = wait_for_future_c(commit_future);
+    TEST_ASSERT(ready == 1, "Setup commit future not ready");
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    TEST_ASSERT(commit_result.success == 1, "Setup commit operation failed");
+    
+    // Now test read transaction
+    KvFutureHandle read_tx_future = kv_read_transaction_begin(client, -1);
+    TEST_ASSERT(read_tx_future != NULL, "Failed to begin read transaction");
+    
+    ready = wait_for_future_c(read_tx_future);
+    TEST_ASSERT(ready == 1, "Read transaction begin future not ready");
+    
+    KvReadTransactionHandle read_tx = kv_future_get_read_transaction(read_tx_future);
+    TEST_ASSERT(read_tx != NULL, "Failed to get read transaction handle");
+    
+    // Read the value
+    KvFutureHandle get_future = kv_read_transaction_get(read_tx, "read_test_key", NULL);
+    TEST_ASSERT(get_future != NULL, "Failed to create read get future");
+    
+    ready = wait_for_future_c(get_future);
+    TEST_ASSERT(ready == 1, "Read get future not ready");
+    
+    char* value = NULL;
+    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    TEST_ASSERT(get_result.success == 1, "Read get operation failed");
+    TEST_ASSERT(value != NULL, "Got NULL value from read transaction");
+    TEST_ASSERT(strcmp(value, "read_test_value") == 0, "Read value mismatch");
+    
+    // Cleanup
+    kv_string_free(value);
+    kv_read_transaction_destroy(read_tx);
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+// Test client ping functionality
+int test_c_client_ping() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Test ping with NULL message
+    KvFutureHandle ping_future1 = kv_client_ping(client, NULL);
+    TEST_ASSERT(ping_future1 != NULL, "Failed to create ping future with NULL message");
+    
+    int ready = wait_for_future_c(ping_future1);
+    TEST_ASSERT(ready == 1, "Ping future not ready");
+    
+    char* response = NULL;
+    KvResult ping_result1 = kv_future_get_string_result(ping_future1, &response);
+    TEST_ASSERT(ping_result1.success == 1, "Ping operation failed");
+    TEST_ASSERT(response != NULL, "Got NULL ping response");
+    printf("Ping response: %s\n", response);
+    kv_string_free(response);
+    
+    // Test ping with custom message
+    KvFutureHandle ping_future2 = kv_client_ping(client, "Hello from C FFI test!");
+    TEST_ASSERT(ping_future2 != NULL, "Failed to create ping future with custom message");
+    
+    ready = wait_for_future_c(ping_future2);
+    TEST_ASSERT(ready == 1, "Ping future not ready");
+    
+    char* response2 = NULL;
+    KvResult ping_result2 = kv_future_get_string_result(ping_future2, &response2);
+    TEST_ASSERT(ping_result2.success == 1, "Ping operation with custom message failed");
+    TEST_ASSERT(response2 != NULL, "Got NULL ping response with custom message");
+    printf("Ping response with custom message: %s\n", response2);
+    kv_string_free(response2);
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+// Test transaction abort functionality
+int test_c_transaction_abort() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(tx_future != NULL, "Failed to begin transaction");
+    
+    int ready = wait_for_future_c(tx_future);
+    TEST_ASSERT(ready == 1, "Transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
+    
+    // Set a key-value pair in the transaction
+    KvFutureHandle set_future = kv_transaction_set(tx, "abort_test_key_c", "abort_test_value_c", NULL);
+    TEST_ASSERT(set_future != NULL, "Failed to create set future");
+    
+    ready = wait_for_future_c(set_future);
+    TEST_ASSERT(ready == 1, "Set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Set operation failed");
+    
+    // Abort the transaction instead of committing
+    KvFutureHandle abort_future = kv_transaction_abort(tx);
+    TEST_ASSERT(abort_future != NULL, "Failed to create abort future");
+    
+    ready = wait_for_future_c(abort_future);
+    TEST_ASSERT(ready == 1, "Abort future not ready");
+    
+    KvResult abort_result = kv_future_get_void_result(abort_future);
+    TEST_ASSERT(abort_result.success == 1, "Abort operation failed");
+    printf("Transaction abort FFI call succeeded\n");
+    
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
+//==============================================================================
+// C++ Style Tests (converted from cpp_ffi_test.cpp)
+//==============================================================================
+
+// RAII wrapper classes
+class KvClientWrapper {
+private:
+    KvClientHandle handle;
+    
+public:
+    explicit KvClientWrapper(const std::string& address) {
+        handle = kv_client_create(address.c_str());
+        if (!handle) {
+            throw std::runtime_error("Failed to create KV client");
+        }
+    }
+    
+    ~KvClientWrapper() {
+        if (handle) {
+            kv_client_destroy(handle);
+        }
+    }
+    
+    KvClientHandle get() const { return handle; }
+    
+    KvClientWrapper(const KvClientWrapper&) = delete;
+    KvClientWrapper& operator=(const KvClientWrapper&) = delete;
+};
+
+class KvTransactionWrapper {
+private:
+    KvTransactionHandle handle;
+    bool committed;
+    
+public:
+    explicit KvTransactionWrapper(KvClientWrapper& client, int timeout_seconds = 30) 
+        : handle(nullptr), committed(false) {
+        KvFutureHandle future = kv_transaction_begin(client.get(), timeout_seconds);
+        if (!future) {
+            throw std::runtime_error("Failed to begin transaction");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Transaction begin timeout");
+        }
+        
+        handle = kv_future_get_transaction(future);
+        if (!handle) {
+            throw std::runtime_error("Failed to get transaction handle");
+        }
+    }
+    
+    ~KvTransactionWrapper() {
+        // Auto-rollback if not committed (we don't have abort in FFI currently)
+    }
+    
+    KvTransactionHandle get() const { return handle; }
+    
+    void set(const std::string& key, const std::string& value, const std::string* column_family = nullptr) {
+        const char* cf = column_family ? column_family->c_str() : nullptr;
+        KvFutureHandle future = kv_transaction_set(handle, key.c_str(), value.c_str(), cf);
+        if (!future) {
+            throw std::runtime_error("Failed to create set future");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Set operation timeout");
+        }
+        
+        KvResult result = kv_future_get_void_result(future);
+        if (!result.success) {
+            std::string error = "Set operation failed";
+            if (result.error_message) {
+                error += ": " + std::string(result.error_message);
+            }
+            throw std::runtime_error(error);
+        }
+    }
+    
+    std::string get(const std::string& key, const std::string* column_family = nullptr) {
+        const char* cf = column_family ? column_family->c_str() : nullptr;
+        KvFutureHandle future = kv_transaction_get(handle, key.c_str(), cf);
+        if (!future) {
+            throw std::runtime_error("Failed to create get future");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Get operation timeout");
+        }
+        
+        char* value = nullptr;
+        KvResult result = kv_future_get_string_result(future, &value);
+        if (!result.success) {
+            std::string error = "Get operation failed";
+            if (result.error_message) {
+                error += ": " + std::string(result.error_message);
+            }
+            throw std::runtime_error(error);
+        }
+        
+        std::string str_value;
+        if (value) {
+            str_value = value;
+            kv_string_free(value);
+        }
+        
+        return str_value;
+    }
+    
+    void commit() {
+        KvFutureHandle future = kv_transaction_commit(handle);
+        if (!future) {
+            throw std::runtime_error("Failed to create commit future");
+        }
+        
+        if (!wait_for_future_cpp(future)) {
+            throw std::runtime_error("Commit operation timeout");
+        }
+        
+        KvResult result = kv_future_get_void_result(future);
+        if (!result.success) {
+            std::string error = "Commit operation failed";
+            if (result.error_message) {
+                error += ": " + std::string(result.error_message);
+            }
+            throw std::runtime_error(error);
+        }
+        
+        committed = true;
+    }
+    
+    KvTransactionWrapper(const KvTransactionWrapper&) = delete;
+    KvTransactionWrapper& operator=(const KvTransactionWrapper&) = delete;
+};
+
+// Test C++ basic functionality
+void test_cpp_basic_functionality() {
+    FFITest test("C++ Basic Functionality");
+    
+    int init_result = kv_init();
+    test.assert_true(init_result == 0, "kv_init failed");
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    test.assert_true(client != nullptr, "Failed to create client");
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    test.assert_true(tx_future != nullptr, "Failed to begin transaction");
+    
+    bool ready = wait_for_future_cpp(tx_future);
+    test.assert_true(ready, "Transaction begin future not ready");
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    test.assert_true(tx != nullptr, "Failed to get transaction handle");
+    
+    // Set a key-value pair
+    KvFutureHandle set_future = kv_transaction_set(tx, "cpp_test_key", "cpp_test_value", nullptr);
+    test.assert_true(set_future != nullptr, "Failed to create set future");
+    
+    ready = wait_for_future_cpp(set_future);
+    test.assert_true(ready, "Set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    test.assert_true(set_result.success == 1, "Set operation failed");
+    
+    // Get the value back
+    KvFutureHandle get_future = kv_transaction_get(tx, "cpp_test_key", nullptr);
+    test.assert_true(get_future != nullptr, "Failed to create get future");
+    
+    ready = wait_for_future_cpp(get_future);
+    test.assert_true(ready, "Get future not ready");
+    
+    char* value = nullptr;
+    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    test.assert_true(get_result.success == 1, "Get operation failed");
+    test.assert_true(value != nullptr, "Got NULL value");
+    test.assert_true(std::strcmp(value, "cpp_test_value") == 0, "Value mismatch");
+    
+    // Commit transaction
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    test.assert_true(commit_future != nullptr, "Failed to create commit future");
+    
+    ready = wait_for_future_cpp(commit_future);
+    test.assert_true(ready, "Commit future not ready");
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    test.assert_true(commit_result.success == 1, "Commit operation failed");
+    
+    // Cleanup
+    kv_string_free(value);
+    kv_client_destroy(client);
+    kv_shutdown();
+    
+    test.pass();
+}
+
+// Test C++ RAII wrapper
+void test_cpp_wrapper() {
+    FFITest test("C++ RAII Wrapper");
+    
+    kv_init();
+    
+    try {
+        KvClientWrapper client("localhost:9090");
+        
+        {
+            KvTransactionWrapper tx(client);
+            
+            // Test multiple operations
+            tx.set("wrapper_key_1", "wrapper_value_1");
+            tx.set("wrapper_key_2", "wrapper_value_2");
+            
+            std::string value1 = tx.get("wrapper_key_1");
+            std::string value2 = tx.get("wrapper_key_2");
+            
+            test.assert_true(value1 == "wrapper_value_1", "Value1 mismatch");
+            test.assert_true(value2 == "wrapper_value_2", "Value2 mismatch");
+            
+            tx.commit();
+        } // Transaction auto-destructs here
+        
+        // Verify data persisted
+        {
+            KvTransactionWrapper tx(client);
+            
+            std::string value1 = tx.get("wrapper_key_1");
+            test.assert_true(value1 == "wrapper_value_1", "Persisted value1 mismatch");
+            
+            tx.commit();
+        }
+        
+    } catch (const std::exception& e) {
+        kv_shutdown();
+        test.assert_true(false, std::string("Exception: ") + e.what());
+    }
+    
+    kv_shutdown();
+    test.pass();
+}
+
+// Test error handling
+void test_cpp_error_handling() {
+    FFITest test("C++ Error Handling");
+    
+    kv_init();
+    
+    // Test with invalid client
+    KvFutureHandle future = kv_transaction_begin(nullptr, 30);
+    test.assert_true(future == nullptr, "Should fail with NULL client");
+    
+    // Test with non-existent server
+    KvClientHandle bad_client = kv_client_create("localhost:19999");
+    test.assert_true(bad_client == nullptr, "Should fail with bad address");
+    
+    // Test polling NULL future
+    int result = kv_future_poll(nullptr);
+    test.assert_true(result == -1, "Should return -1 for NULL future");
+    
+    kv_shutdown();
+    test.pass();
+}
+
+// Test concurrent operations
+void test_cpp_concurrent_operations() {
+    FFITest test("C++ Concurrent Operations");
+    
+    kv_init();
+    
+    try {
+        KvClientWrapper client("localhost:9090");
+        
+        // Create multiple transactions in parallel
+        std::vector<std::thread> threads;
+        std::vector<bool> results(4, false);
+        
+        for (int i = 0; i < 4; i++) {
+            threads.emplace_back([&, i]() {
+                try {
+                    KvTransactionWrapper tx(client);
+                    
+                    std::string key = "concurrent_key_" + std::to_string(i);
+                    std::string value = "concurrent_value_" + std::to_string(i);
+                    
+                    tx.set(key, value);
+                    
+                    std::string retrieved = tx.get(key);
+                    if (retrieved == value) {
+                        tx.commit();
+                        results[i] = true;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Thread " << i << " error: " << e.what() << std::endl;
+                }
+            });
+        }
+        
+        // Wait for all threads
+        for (auto& thread : threads) {
+            thread.join();
+        }
+        
+        // Check results
+        for (int i = 0; i < 4; i++) {
+            test.assert_true(results[i], "Thread " + std::to_string(i) + " failed");
+        }
+        
+    } catch (const std::exception& e) {
+        kv_shutdown();
+        test.assert_true(false, std::string("Exception: ") + e.what());
+    }
+    
+    kv_shutdown();
+    test.pass();
+}
+
+//==============================================================================
+// Main Test Runner
+//==============================================================================
+
+int main() {
+    std::cout << "Running KV Store Unified C/C++ FFI Tests" << std::endl;
+    std::cout << "=========================================" << std::endl;
+    
+    // C-style test functions
+    typedef int (*c_test_func)();
+    typedef struct {
+        const char* name;
+        c_test_func func;
+    } c_test_case;
+    
+    c_test_case c_tests[] = {
+        {"C Init/Shutdown", test_c_init_shutdown},
+        {"C Client Lifecycle", test_c_client_lifecycle},
+        {"C Basic Transaction", test_c_basic_transaction},
+        {"C Read Transaction", test_c_read_transaction},
+        {"C Client Ping", test_c_client_ping},
+        {"C Transaction Abort", test_c_transaction_abort},
+        {NULL, NULL}
+    };
+    
+    // C++-style test functions
+    std::vector<std::pair<std::string, std::function<void()>>> cpp_tests = {
+        {"C++ Basic Functionality", test_cpp_basic_functionality},
+        {"C++ RAII Wrapper", test_cpp_wrapper},
+        {"C++ Error Handling", test_cpp_error_handling},
+        {"C++ Concurrent Operations", test_cpp_concurrent_operations}
+    };
+    
+    int passed = 0;
+    int failed = 0;
+    int test_counter = 1;
+    
+    // Run C-style tests
+    for (int i = 0; c_tests[i].name != NULL; i++) {
+        std::cout << "\n[" << test_counter++ << "] Running " << c_tests[i].name << "..." << std::endl;
+        try {
+            int result = c_tests[i].func();
+            if (result == 0) {
+                passed++;
+            } else {
+                failed++;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "FAIL: " << c_tests[i].name << " - " << e.what() << std::endl;
+            failed++;
+        }
+    }
+    
+    // Run C++-style tests
+    for (size_t i = 0; i < cpp_tests.size(); i++) {
+        std::cout << "\n[" << test_counter++ << "] Running " << cpp_tests[i].first << "..." << std::endl;
+        try {
+            cpp_tests[i].second();
+            passed++;
+        } catch (const std::exception& e) {
+            std::cerr << "FAIL: " << cpp_tests[i].first << " - " << e.what() << std::endl;
+            failed++;
+        }
+    }
+    
+    std::cout << "\n=========================================" << std::endl;
+    std::cout << "Test Results: " << passed << " passed, " << failed << " failed" << std::endl;
+    
+    if (failed > 0) {
+        std::cout << "\nNote: Some tests may fail if the KV server is not running on localhost:9090" << std::endl;
+        std::cout << "Start the server with: ./bin/rocksdbserver-thrift" << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}
