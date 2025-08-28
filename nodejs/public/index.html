@@ -168,6 +168,15 @@
             font-size: 12px;
         }
         
+        .binary-indicator {
+            background-color: #f39c12;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        
         .length-cell {
             color: #7f8c8d;
             text-align: right;
@@ -271,6 +280,123 @@
             resize: vertical;
             min-height: 100px;
         }
+        
+        .viewer-modal {
+            max-width: 800px;
+        }
+        
+        .view-mode-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .view-mode-tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .view-mode-tab.active {
+            border-bottom-color: #3498db;
+            color: #3498db;
+        }
+        
+        .view-content {
+            display: none;
+        }
+        
+        .view-content.active {
+            display: block;
+        }
+        
+        .hex-view {
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        
+        .raw-view {
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .admin-section {
+            background: #fff5f5;
+            border: 2px solid #fed7d7;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .admin-header {
+            color: #c53030;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .warning-icon {
+            font-size: 20px;
+            color: #e53e3e;
+        }
+        
+        .admin-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .danger-button {
+            background-color: #e53e3e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .danger-button:hover {
+            background-color: #c53030;
+        }
+        
+        .danger-button:disabled {
+            background-color: #a0a0a0;
+            cursor: not-allowed;
+        }
+        
+        .confirmation-modal .modal-content {
+            border: 3px solid #e53e3e;
+        }
+        
+        .confirmation-step {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff5f5;
+            border-left: 4px solid #e53e3e;
+        }
+        
+        .confirmation-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #e53e3e;
+            border-radius: 4px;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -294,6 +420,18 @@
                 <input type="text" id="searchKey" placeholder="Search for specific key" style="width: 300px;">
                 <button onclick="searchKey()">Search</button>
                 <button onclick="testConnection()">Test Connection</button>
+            </div>
+        </div>
+        
+        <div class="admin-section">
+            <div class="admin-header">
+                <span class="warning-icon">⚠️</span>
+                <h3>Admin Operations</h3>
+            </div>
+            <p><strong>WARNING:</strong> These operations are dangerous and cannot be undone!</p>
+            <div class="admin-controls">
+                <button class="danger-button" onclick="openClearAllModal()">Clear All Data</button>
+                <span style="color: #666; font-size: 14px;">This will delete ALL key-value pairs permanently</span>
             </div>
         </div>
         
@@ -348,6 +486,71 @@
             <div style="text-align: right;">
                 <button onclick="closeModal()" style="background-color: #95a5a6;">Cancel</button>
                 <button onclick="saveKeyValue()" class="success">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Value Viewer Modal -->
+    <div id="viewModal" class="modal">
+        <div class="modal-content viewer-modal">
+            <div class="modal-header">
+                <h3 id="viewModalTitle">View Value</h3>
+                <span class="close" onclick="closeViewModal()">&times;</span>
+            </div>
+            <div class="view-mode-tabs">
+                <button class="view-mode-tab active" onclick="switchViewMode('text')">Text</button>
+                <button class="view-mode-tab" onclick="switchViewMode('hex')">Hex</button>
+                <button class="view-mode-tab" onclick="switchViewMode('raw')">Raw Bytes</button>
+            </div>
+            <div id="textView" class="view-content active">
+                <div class="raw-view" id="textContent"></div>
+            </div>
+            <div id="hexView" class="view-content">
+                <div class="hex-view" id="hexContent"></div>
+            </div>
+            <div id="rawView" class="view-content">
+                <div class="raw-view" id="rawContent"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Clear All Confirmation Modal -->
+    <div id="clearAllModal" class="modal confirmation-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="color: #e53e3e;">⚠️ DANGER: Clear All Data</h3>
+                <span class="close" onclick="closeClearAllModal()">&times;</span>
+            </div>
+            
+            <div class="confirmation-step">
+                <h4>This action will:</h4>
+                <ul>
+                    <li>Delete ALL key-value pairs in the database</li>
+                    <li>Cannot be undone or recovered</li>
+                    <li>May take several minutes for large datasets</li>
+                </ul>
+            </div>
+            
+            <div class="confirmation-step">
+                <h4>Before proceeding:</h4>
+                <ol>
+                    <li>Ensure you have a backup if needed</li>
+                    <li>Confirm this is the correct database</li>
+                    <li>Verify no critical processes are running</li>
+                </ol>
+            </div>
+            
+            <div class="confirmation-step">
+                <p><strong>Type "DELETE ALL DATA" to confirm:</strong></p>
+                <input type="text" id="clearAllConfirmation" class="confirmation-input" placeholder="Type confirmation phrase here">
+                <p id="clearAllStatus" style="margin-top: 10px; font-weight: bold;"></p>
+            </div>
+            
+            <div style="text-align: right; margin-top: 20px;">
+                <button onclick="closeClearAllModal()" style="background-color: #95a5a6; margin-right: 10px;">Cancel</button>
+                <button id="clearAllExecute" onclick="executeClearAll()" class="danger-button" disabled>
+                    Clear All Data
+                </button>
             </div>
         </div>
     </div>
@@ -429,7 +632,10 @@
                     currentData = [{
                         key: result.key,
                         value: result.value,
-                        valueLength: result.valueLength
+                        valueLength: result.valueLength,
+                        hexValue: result.hexValue,
+                        isAscii: result.isAscii,
+                        hasBinary: result.hasBinary
                     }];
                     displayData(currentData);
                     document.getElementById('countStats').textContent = '1 item (search result)';
@@ -481,14 +687,19 @@
             } else {
                 data.forEach(item => {
                     const row = tableBody.insertRow();
+                    const binaryIndicator = item.hasBinary ? '<span class="binary-indicator">BINARY</span>' : '';
+                    const displayValue = item.hasBinary ? 
+                        `[${item.valueLength} bytes]` : 
+                        escapeHtml(truncateString(item.value, 100));
+                    
                     row.innerHTML = `
                         <td class="key-cell">${escapeHtml(item.key)}</td>
-                        <td class="value-cell">${escapeHtml(truncateString(item.value, 100))}</td>
+                        <td class="value-cell">${displayValue}${binaryIndicator}</td>
                         <td class="length-cell">${item.valueLength}</td>
                         <td class="actions-cell">
-                            <button class="btn-small" onclick="viewValue('${escapeHtml(item.key)}', '${escapeHtml(item.value)}')">View</button>
-                            <button class="btn-small" onclick="editKey('${escapeHtml(item.key)}', '${escapeHtml(item.value)}')">Edit</button>
-                            <button class="btn-small danger" onclick="deleteKey('${escapeHtml(item.key)}')">Delete</button>
+                            <button class="btn-small" onclick="viewValueAdvanced('${escapeJs(item.key)}', '${escapeJs(item.value)}', '${escapeJs(item.hexValue)}', ${item.hasBinary})">View</button>
+                            <button class="btn-small" onclick="editKey('${escapeJs(item.key)}', '${escapeJs(item.value)}')">Edit</button>
+                            <button class="btn-small danger" onclick="deleteKey('${escapeJs(item.key)}')">Delete</button>
                         </td>
                     `;
                 });
@@ -515,6 +726,186 @@
         
         function viewValue(key, value) {
             alert(`Key: ${key}\n\nValue:\n${value}`);
+        }
+        
+        function viewValueAdvanced(key, value, hexValue, hasBinary) {
+            document.getElementById('viewModalTitle').textContent = `View Value: ${key}`;
+            
+            // Text view
+            document.getElementById('textContent').textContent = value;
+            
+            // Hex view
+            document.getElementById('hexContent').textContent = formatHexDump(hexValue);
+            
+            // Raw bytes view
+            document.getElementById('rawContent').textContent = formatRawBytes(hexValue);
+            
+            // Show appropriate default tab
+            if (hasBinary) {
+                switchViewMode('hex');
+            } else {
+                switchViewMode('text');
+            }
+            
+            document.getElementById('viewModal').style.display = 'block';
+        }
+        
+        function switchViewMode(mode) {
+            // Update tabs
+            document.querySelectorAll('.view-mode-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.view-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(mode + 'View').classList.add('active');
+        }
+        
+        function formatHexDump(hexString) {
+            if (!hexString) return '';
+            
+            let result = '';
+            let ascii = '';
+            
+            for (let i = 0; i < hexString.length; i += 2) {
+                if (i > 0 && (i / 2) % 16 === 0) {
+                    result += '  |' + ascii + '|\n';
+                    ascii = '';
+                }
+                
+                if ((i / 2) % 16 === 0) {
+                    result += (i / 2).toString(16).padStart(8, '0') + '  ';
+                }
+                
+                const byte = hexString.substr(i, 2);
+                result += byte + ' ';
+                
+                const byteValue = parseInt(byte, 16);
+                ascii += (byteValue >= 32 && byteValue <= 126) ? String.fromCharCode(byteValue) : '.';
+                
+                if ((i / 2) % 8 === 7) {
+                    result += ' ';
+                }
+            }
+            
+            // Pad the last line
+            const lastLineBytes = (hexString.length / 2) % 16;
+            if (lastLineBytes > 0) {
+                const padding = ' '.repeat((16 - lastLineBytes) * 3 + (lastLineBytes <= 8 ? 1 : 0));
+                result += padding + '  |' + ascii.padEnd(16, ' ') + '|';
+            }
+            
+            return result;
+        }
+        
+        function formatRawBytes(hexString) {
+            if (!hexString) return '';
+            
+            let result = '';
+            for (let i = 0; i < hexString.length; i += 2) {
+                const byte = parseInt(hexString.substr(i, 2), 16);
+                result += byte.toString().padStart(3, ' ') + ' ';
+                
+                if ((i / 2) % 16 === 15) {
+                    result += '\n';
+                }
+            }
+            return result;
+        }
+        
+        function closeViewModal() {
+            document.getElementById('viewModal').style.display = 'none';
+        }
+        
+        function openClearAllModal() {
+            document.getElementById('clearAllConfirmation').value = '';
+            document.getElementById('clearAllStatus').textContent = '';
+            document.getElementById('clearAllExecute').disabled = true;
+            document.getElementById('clearAllModal').style.display = 'block';
+        }
+        
+        function closeClearAllModal() {
+            document.getElementById('clearAllModal').style.display = 'none';
+        }
+        
+        // Monitor confirmation input
+        document.addEventListener('DOMContentLoaded', function() {
+            const confirmationInput = document.getElementById('clearAllConfirmation');
+            if (confirmationInput) {
+                confirmationInput.addEventListener('input', function() {
+                    const executeButton = document.getElementById('clearAllExecute');
+                    const statusText = document.getElementById('clearAllStatus');
+                    
+                    if (this.value === 'DELETE ALL DATA') {
+                        executeButton.disabled = false;
+                        statusText.textContent = 'Ready to execute';
+                        statusText.style.color = '#e53e3e';
+                    } else {
+                        executeButton.disabled = true;
+                        statusText.textContent = this.value ? 'Incorrect confirmation phrase' : '';
+                        statusText.style.color = '#666';
+                    }
+                });
+            }
+        });
+        
+        async function executeClearAll() {
+            const confirmationInput = document.getElementById('clearAllConfirmation');
+            const statusText = document.getElementById('clearAllStatus');
+            const executeButton = document.getElementById('clearAllExecute');
+            
+            if (confirmationInput.value !== 'DELETE ALL DATA') {
+                statusText.textContent = 'Invalid confirmation phrase';
+                statusText.style.color = '#e53e3e';
+                return;
+            }
+            
+            // Final confirmation dialog
+            if (!confirm('FINAL WARNING: This will permanently delete ALL data. Are you absolutely sure?')) {
+                return;
+            }
+            
+            executeButton.disabled = true;
+            executeButton.textContent = 'Deleting...';
+            statusText.textContent = 'Executing deletion...';
+            statusText.style.color = '#e53e3e';
+            
+            try {
+                const response = await fetch('/api/admin/clear-all', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ confirmation: 'DELETE_ALL_DATA' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusText.textContent = `Success: ${result.message}`;
+                    statusText.style.color = '#27ae60';
+                    showSuccess(result.message);
+                    
+                    // Close modal after 2 seconds and refresh data
+                    setTimeout(() => {
+                        closeClearAllModal();
+                        loadKeys();
+                    }, 2000);
+                } else {
+                    throw new Error(result.error || 'Clear all failed');
+                }
+            } catch (error) {
+                statusText.textContent = `Error: ${error.message}`;
+                statusText.style.color = '#e53e3e';
+                showError(`Failed to clear all data: ${error.message}`);
+                console.error('Clear all error:', error);
+            } finally {
+                executeButton.disabled = false;
+                executeButton.textContent = 'Clear All Data';
+            }
         }
         
         function closeModal() {
@@ -584,15 +975,32 @@
             return div.innerHTML;
         }
         
+        function escapeJs(text) {
+            if (text === null || text === undefined) return '';
+            return text.replace(/\\/g, '\\\\')
+                      .replace(/'/g, "\\'")
+                      .replace(/"/g, '\\"')
+                      .replace(/\n/g, '\\n')
+                      .replace(/\r/g, '\\r')
+                      .replace(/\t/g, '\\t');
+        }
+        
         function truncateString(str, length) {
             return str.length > length ? str.substring(0, length) + '...' : str;
         }
         
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('addModal');
-            if (event.target === modal) {
+            const addModal = document.getElementById('addModal');
+            const viewModal = document.getElementById('viewModal');
+            const clearAllModal = document.getElementById('clearAllModal');
+            
+            if (event.target === addModal) {
                 closeModal();
+            } else if (event.target === viewModal) {
+                closeViewModal();
+            } else if (event.target === clearAllModal) {
+                closeClearAllModal();
             }
         }
     </script>

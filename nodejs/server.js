@@ -59,11 +59,19 @@ app.get('/api/keys', async (req, res) => {
                 return res.status(500).json({ error: 'Range query failed', details: result.error });
             }
             
-            const keyValues = result.key_values.map(kv => ({
-                key: kv.key,
-                value: kv.value,
-                valueLength: kv.value.length
-            }));
+            const keyValues = result.key_values.map(kv => {
+                const value = kv.value;
+                const valueBuffer = Buffer.from(value, 'utf8');
+                
+                return {
+                    key: kv.key,
+                    value: value,
+                    valueLength: value.length,
+                    hexValue: valueBuffer.toString('hex'),
+                    isAscii: /^[\x20-\x7E]*$/.test(value),
+                    hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
+                };
+            });
             
             res.json({
                 success: true,
@@ -97,12 +105,27 @@ app.get('/api/key/:key', async (req, res) => {
                 return res.status(500).json({ error: 'Get operation failed', details: result.error });
             }
             
-            res.json({
-                key: key,
-                value: result.value,
-                found: result.found,
-                valueLength: result.found ? result.value.length : 0
-            });
+            if (result.found) {
+                const value = result.value;
+                const valueBuffer = Buffer.from(value, 'utf8');
+                
+                res.json({
+                    key: key,
+                    value: value,
+                    found: result.found,
+                    valueLength: value.length,
+                    hexValue: valueBuffer.toString('hex'),
+                    isAscii: /^[\x20-\x7E]*$/.test(value),
+                    hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
+                });
+            } else {
+                res.json({
+                    key: key,
+                    value: '',
+                    found: result.found,
+                    valueLength: 0
+                });
+            }
         });
     } catch (error) {
         console.error('API error:', error);
@@ -172,6 +195,87 @@ app.delete('/api/key/:key', async (req, res) => {
                 success: true,
                 key: key,
                 deleted: result.success
+            });
+        });
+    } catch (error) {
+        console.error('API error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+// API endpoint to clear all keys (DANGEROUS - Admin only)
+app.delete('/api/admin/clear-all', async (req, res) => {
+    try {
+        const { confirmation } = req.body;
+        
+        // Require explicit confirmation
+        if (confirmation !== 'DELETE_ALL_DATA') {
+            return res.status(400).json({ 
+                error: 'Missing confirmation', 
+                details: 'You must send {"confirmation": "DELETE_ALL_DATA"} in the request body' 
+            });
+        }
+        
+        const client = createThriftClient();
+        
+        // First, get all keys using range query
+        const getRangeRequest = new kvstore_types.GetRangeRequest({
+            start_key: '',
+            end_key: null,
+            limit: 100000 // Large limit to get all keys
+        });
+        
+        client.getRange(getRangeRequest, (err, result) => {
+            if (err) {
+                console.error('Error fetching keys for deletion:', err);
+                return res.status(500).json({ error: 'Failed to fetch keys', details: err.message });
+            }
+            
+            if (!result.success) {
+                return res.status(500).json({ error: 'Range query failed', details: result.error });
+            }
+            
+            const keys = result.key_values.map(kv => kv.key);
+            let deletedCount = 0;
+            let errors = [];
+            
+            if (keys.length === 0) {
+                return res.json({
+                    success: true,
+                    message: 'No keys to delete',
+                    deletedCount: 0,
+                    totalKeys: 0
+                });
+            }
+            
+            console.log(`Admin clear-all: Deleting ${keys.length} keys...`);
+            
+            // Delete each key individually
+            const deletePromises = keys.map(key => {
+                return new Promise((resolve) => {
+                    const deleteRequest = new kvstore_types.DeleteRequest({ key: key });
+                    
+                    client.deleteKey(deleteRequest, (deleteErr, deleteResult) => {
+                        if (deleteErr || !deleteResult.success) {
+                            errors.push({ key: key, error: deleteErr?.message || deleteResult.error });
+                        } else {
+                            deletedCount++;
+                        }
+                        resolve();
+                    });
+                });
+            });
+            
+            Promise.all(deletePromises).then(() => {
+                console.log(`Admin clear-all completed: ${deletedCount}/${keys.length} keys deleted`);
+                
+                res.json({
+                    success: errors.length === 0,
+                    message: `Deleted ${deletedCount} out of ${keys.length} keys`,
+                    deletedCount: deletedCount,
+                    totalKeys: keys.length,
+                    errors: errors.length > 0 ? errors.slice(0, 10) : [] // Limit error reporting
+                });
             });
         });
     } catch (error) {
