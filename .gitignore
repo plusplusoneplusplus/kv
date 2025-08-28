@@ -18,7 +18,6 @@ benchmark_results/
 
 # Generated protobuf files
 go/proto/*.pb.go
-cpp/generated/
 
 # Generated Thrift files
 rust/src/kvstore.rs

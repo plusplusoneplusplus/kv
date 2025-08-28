@@ -46,23 +46,6 @@ add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Generate C++ protobuf files (if needed in the future)
-set(CPP_PROTO_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cpp/generated")
-add_custom_command(
-    OUTPUT 
-        "${CPP_PROTO_OUT_DIR}/kvstore.pb.cc"
-        "${CPP_PROTO_OUT_DIR}/kvstore.pb.h"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CPP_PROTO_OUT_DIR}"
-    COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-        --proto_path=${PROTO_DIR}
-        --cpp_out=${CPP_PROTO_OUT_DIR}
-        --grpc_out=${CPP_PROTO_OUT_DIR}
-        --plugin=protoc-gen-grpc=grpc_cpp_plugin
-        kvstore.proto
-    DEPENDS ${PROTO_FILE}
-    COMMENT "Generating C++ protobuf files"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
 
 # Thrift Generation
 set(THRIFT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thrift")
@@ -359,7 +342,6 @@ add_custom_target(clean_all
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/bin"
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/thrift"
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/proto"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/cpp/generated"
     COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} clean || true
     COMMAND ${CARGO_EXECUTABLE} clean || true

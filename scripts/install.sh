@@ -69,11 +69,6 @@ install_ubuntu_packages() {
         curl \
         wget
     
-    # Optional: gRPC C++ libraries (for C++ implementation)
-    if [[ "${INSTALL_CPP:-no}" == "yes" ]]; then
-        log_info "Installing C++ gRPC libraries..."
-        sudo apt install -y libgrpc++-dev libgrpc-dev protobuf-compiler-grpc
-    fi
 }
 
 # Install system packages for macOS
@@ -323,17 +318,12 @@ main() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --with-cpp)
-            INSTALL_CPP="yes"
-            shift
-            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Install all dependencies for RocksDB Key-Value Service"
             echo ""
             echo "Options:"
-            echo "  --with-cpp    Install C++ gRPC libraries (Ubuntu/Debian only)"
             echo "  --help, -h    Show this help message"
             echo ""
             echo "Supported platforms:"
