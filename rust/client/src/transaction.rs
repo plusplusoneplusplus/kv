@@ -1,11 +1,14 @@
 use std::sync::Arc;
+use std::time::Instant;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use std::net::TcpStream;
 use parking_lot::Mutex;
+use crate::config::{log_transaction_event, log_operation_timing, log_error, log_network_operation, is_debug_enabled};
 use crate::error::{KvResult, KvError};
 use crate::future::KvFuture;
 use crate::kvstore::*;
+use uuid::Uuid;
 
 pub struct Transaction {
     read_version: i64,
@@ -14,6 +17,7 @@ pub struct Transaction {
     read_conflict_keys: Vec<String>,
     committed: bool,
     aborted: bool,
+    transaction_id: String,
 }
 
 impl Transaction {
@@ -21,6 +25,10 @@ impl Transaction {
         read_version: i64,
         client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
     ) -> Self {
+        let transaction_id = Uuid::new_v4().to_string();
+        if is_debug_enabled() {
+            log_transaction_event(&format!("Transaction created with read_version: {}", read_version), Some(&transaction_id));
+        }
         Self {
             read_version,
             client,
@@ -28,6 +36,7 @@ impl Transaction {
             read_conflict_keys: Vec::new(),
             committed: false,
             aborted: false,
+            transaction_id,
         }
     }
     
@@ -39,6 +48,10 @@ impl Transaction {
     pub fn get(&self, key: &str, column_family: Option<&str>) -> KvFuture<Option<String>> {
         if self.committed || self.aborted {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
+        }
+        
+        if is_debug_enabled() {
+            log_transaction_event(&format!("get key: {} (cf: {:?})", key, column_family), Some(&self.transaction_id));
         }
         
         // First check if we have a local write for this key
@@ -67,21 +80,47 @@ impl Transaction {
             column_family.map(|s| s.to_string()),
         );
         
+        let tx_id = self.transaction_id.clone();
         KvFuture::new(async move {
+            let start_time = Instant::now();
             let response = tokio::task::spawn_blocking(move || {
                 client.lock().get(request)
             })
             .await
-            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
-            .map_err(KvError::from)?;
+            .map_err(|e| {
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} get task", tx_id), &format!("{}", e));
+                }
+                KvError::Unknown(format!("Task join error: {}", e))
+            })?
+            .map_err(|e| {
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} get thrift", tx_id), &format!("{:?}", e));
+                }
+                KvError::from(e)
+            })?;
             
             if let Some(error) = response.error {
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} get", tx_id), &error);
+                }
                 return Err(KvError::ServerError(error));
             }
             
+            let operation_time = start_time.elapsed().as_millis() as u64;
+            if is_debug_enabled() {
+                log_operation_timing(&format!("Transaction {} get", tx_id), operation_time);
+            }
+            
             if response.found {
+                if is_debug_enabled() {
+                    log_network_operation(&format!("Transaction {} get found value (length: {})", tx_id, response.value.len()), None);
+                }
                 Ok(Some(response.value))
             } else {
+                if is_debug_enabled() {
+                    log_network_operation(&format!("Transaction {} get key not found", tx_id), None);
+                }
                 Ok(None)
             }
         })
@@ -91,6 +130,10 @@ impl Transaction {
     pub fn set(&mut self, key: &str, value: &str, column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
+        }
+        
+        if is_debug_enabled() {
+            log_transaction_event(&format!("set key: {} (cf: {:?}, value_len: {})", key, column_family, value.len()), Some(&self.transaction_id));
         }
         
         let operation = Operation::new(
@@ -108,6 +151,10 @@ impl Transaction {
     pub fn delete(&mut self, key: &str, column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
+        }
+        
+        if is_debug_enabled() {
+            log_transaction_event(&format!("delete key: {} (cf: {:?})", key, column_family), Some(&self.transaction_id));
         }
         
         let operation = Operation::new(
@@ -196,6 +243,10 @@ impl Transaction {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already aborted".to_string())) });
         }
         
+        if is_debug_enabled() {
+            log_transaction_event(&format!("committing with {} operations, {} read conflicts", self.operations.len(), self.read_conflict_keys.len()), Some(&self.transaction_id));
+        }
+        
         let client = Arc::clone(&self.client);
         let request = AtomicCommitRequest::new(
             self.read_version,
@@ -205,23 +256,44 @@ impl Transaction {
         );
         
         self.committed = true;
+        let tx_id = self.transaction_id.clone();
         
         KvFuture::new(async move {
+            let start_time = Instant::now();
             let response = tokio::task::spawn_blocking(move || {
                 client.lock().atomic_commit(request)
             })
             .await
-            .map_err(|e| KvError::Unknown(format!("Task join error: {}", e)))?
-            .map_err(KvError::from)?;
+            .map_err(|e| {
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} commit task", tx_id), &format!("{}", e));
+                }
+                KvError::Unknown(format!("Task join error: {}", e))
+            })?
+            .map_err(|e| {
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} commit thrift", tx_id), &format!("{:?}", e));
+                }
+                KvError::from(e)
+            })?;
             
             if !response.success {
                 let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
+                if is_debug_enabled() {
+                    log_error(&format!("Transaction {} commit failed", tx_id), &error_msg);
+                }
                 if let Some(error_code) = response.error_code {
                     if error_code == "CONFLICT" {
                         return Err(KvError::TransactionConflict(error_msg));
                     }
                 }
                 return Err(KvError::ServerError(error_msg));
+            }
+            
+            let operation_time = start_time.elapsed().as_millis() as u64;
+            if is_debug_enabled() {
+                log_transaction_event("committed successfully", Some(&tx_id));
+                log_operation_timing(&format!("Transaction {} commit", tx_id), operation_time);
             }
             
             Ok(())
@@ -238,6 +310,9 @@ impl Transaction {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already committed".to_string())) });
         }
         
+        if is_debug_enabled() {
+            log_transaction_event("aborted", Some(&self.transaction_id));
+        }
         self.aborted = true;
         
         // No server call needed for abort since operations are buffered locally

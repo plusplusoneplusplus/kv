@@ -1,4 +1,5 @@
 pub mod client;
+pub mod config;
 pub mod error;
 pub mod transaction;
 pub mod future;
@@ -8,6 +9,7 @@ pub mod kvstore;
 pub mod ffi;
 
 pub use client::KvStoreClient;
+pub use config::ClientConfig;
 pub use error::{KvError, KvResult};
 pub use transaction::{Transaction, ReadTransaction};
 pub use future::{KvFuture, KvFuturePtr};

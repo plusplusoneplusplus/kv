@@ -6,7 +6,7 @@ use std::slice;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use crate::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture};
+use crate::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, ClientConfig};
 use crate::error::KvErrorCode;
 use crate::future::KvFuturePtr;
 
@@ -21,6 +21,7 @@ static CLIENTS: Lazy<Mutex<HashMap<usize, Arc<KvStoreClient>>>> = Lazy::new(|| M
 static TRANSACTIONS: Lazy<Mutex<HashMap<usize, Arc<Mutex<Transaction>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static READ_TRANSACTIONS: Lazy<Mutex<HashMap<usize, Arc<ReadTransaction>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static FUTURES: Lazy<Mutex<HashMap<usize, Box<dyn std::any::Any + Send>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static CONFIGS: Lazy<Mutex<HashMap<usize, ClientConfig>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
@@ -33,6 +34,7 @@ pub type KvClientHandle = *mut c_void;
 pub type KvTransactionHandle = *mut c_void;
 pub type KvReadTransactionHandle = *mut c_void;
 pub type KvFutureHandle = *mut c_void;
+pub type KvConfigHandle = *mut c_void;
 
 // Result structure for C
 #[repr(C)]
@@ -94,7 +96,7 @@ pub extern "C" fn kv_init() -> c_int {
     0  // Return 0 for success (C convention)
 }
 
-/// Create a new client connection
+/// Create a new client connection with default configuration
 #[no_mangle]
 pub extern "C" fn kv_client_create(address: *const c_char) -> KvClientHandle {
     if address.is_null() {
@@ -115,6 +117,135 @@ pub extern "C" fn kv_client_create(address: *const c_char) -> KvClientHandle {
             id as KvClientHandle
         }
         Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Create a new client configuration with default values
+#[no_mangle]
+pub extern "C" fn kv_config_create() -> KvConfigHandle {
+    let config = ClientConfig::default();
+    let id = next_id();
+    CONFIGS.lock().insert(id, config);
+    id as KvConfigHandle
+}
+
+/// Create a new client configuration with debug enabled
+#[no_mangle]
+pub extern "C" fn kv_config_create_with_debug() -> KvConfigHandle {
+    let config = ClientConfig::with_debug();
+    let id = next_id();
+    CONFIGS.lock().insert(id, config);
+    id as KvConfigHandle
+}
+
+/// Enable debug mode on a configuration
+#[no_mangle]
+pub extern "C" fn kv_config_enable_debug(config: KvConfigHandle) -> c_int {
+    if config.is_null() {
+        return -1;
+    }
+    
+    let id = config as usize;
+    let mut configs = CONFIGS.lock();
+    
+    if let Some(cfg) = configs.get_mut(&id) {
+        *cfg = cfg.clone().enable_debug();
+        0
+    } else {
+        -1
+    }
+}
+
+/// Set connection timeout on a configuration
+#[no_mangle]
+pub extern "C" fn kv_config_set_connection_timeout(config: KvConfigHandle, timeout_seconds: u64) -> c_int {
+    if config.is_null() {
+        return -1;
+    }
+    
+    let id = config as usize;
+    let mut configs = CONFIGS.lock();
+    
+    if let Some(cfg) = configs.get_mut(&id) {
+        *cfg = cfg.clone().with_connection_timeout(timeout_seconds);
+        0
+    } else {
+        -1
+    }
+}
+
+/// Set request timeout on a configuration
+#[no_mangle]
+pub extern "C" fn kv_config_set_request_timeout(config: KvConfigHandle, timeout_seconds: u64) -> c_int {
+    if config.is_null() {
+        return -1;
+    }
+    
+    let id = config as usize;
+    let mut configs = CONFIGS.lock();
+    
+    if let Some(cfg) = configs.get_mut(&id) {
+        *cfg = cfg.clone().with_request_timeout(timeout_seconds);
+        0
+    } else {
+        -1
+    }
+}
+
+/// Set maximum retries on a configuration
+#[no_mangle]
+pub extern "C" fn kv_config_set_max_retries(config: KvConfigHandle, retries: u32) -> c_int {
+    if config.is_null() {
+        return -1;
+    }
+    
+    let id = config as usize;
+    let mut configs = CONFIGS.lock();
+    
+    if let Some(cfg) = configs.get_mut(&id) {
+        *cfg = cfg.clone().with_max_retries(retries);
+        0
+    } else {
+        -1
+    }
+}
+
+/// Create a new client connection with custom configuration
+#[no_mangle]
+pub extern "C" fn kv_client_create_with_config(address: *const c_char, config: KvConfigHandle) -> KvClientHandle {
+    if address.is_null() || config.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let address_str = unsafe {
+        match CStr::from_ptr(address).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+    
+    let config_id = config as usize;
+    let client_config = match CONFIGS.lock().get(&config_id).cloned() {
+        Some(cfg) => cfg,
+        None => return ptr::null_mut(),
+    };
+    
+    match KvStoreClient::connect_with_config(address_str, client_config) {
+        Ok(client) => {
+            let id = next_id();
+            CLIENTS.lock().insert(id, Arc::new(client));
+            id as KvClientHandle
+        }
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Destroy a configuration handle
+#[no_mangle]
+pub extern "C" fn kv_config_destroy(config: KvConfigHandle) {
+    if !config.is_null() {
+        let id = config as usize;
+        CONFIGS.lock().remove(&id);
     }
 }
 
@@ -795,7 +926,8 @@ pub extern "C" fn kv_read_transaction_destroy(transaction: KvReadTransactionHand
 #[no_mangle]
 pub extern "C" fn kv_client_ping(
     client: KvClientHandle,
-    message: *const c_char,
+    message_data: *const u8,
+    message_length: c_int,
 ) -> KvFutureHandle {
     if client.is_null() {
         return ptr::null_mut();
@@ -807,11 +939,12 @@ pub extern "C" fn kv_client_ping(
         None => return ptr::null_mut(),
     };
     
-    let message_str = if message.is_null() {
+    let message_str = if message_data.is_null() || message_length <= 0 {
         None
     } else {
         unsafe {
-            match CStr::from_ptr(message).to_str() {
+            let bytes = slice::from_raw_parts(message_data, message_length as usize);
+            match std::str::from_utf8(bytes) {
                 Ok(s) => Some(s.to_string()),
                 Err(_) => return ptr::null_mut(),
             }
@@ -1097,4 +1230,5 @@ pub extern "C" fn kv_shutdown() {
     TRANSACTIONS.lock().clear();
     READ_TRANSACTIONS.lock().clear();
     FUTURES.lock().clear();
+    CONFIGS.lock().clear();
 }

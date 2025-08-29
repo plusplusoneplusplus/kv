@@ -108,6 +108,7 @@ Both servers support:
 - **Connection Pooling**: Built-in pooling for high-throughput applications
 - **Range Operations**: Efficient key iteration and range queries
 - **Error Handling**: Comprehensive error types with detailed codes
+- **Debug Mode**: Comprehensive logging for troubleshooting and performance analysis
 
 ### Usage Examples
 
@@ -126,6 +127,24 @@ async fn main() -> KvResult<()> {
     
     let commit_future = tx.commit();
     commit_future.await_result().await?;
+    Ok(())
+}
+```
+
+**Debug-Enabled Client:**
+```rust
+use kvstore_client::{KvStoreClient, ClientConfig, KvResult};
+
+#[tokio::main]
+async fn main() -> KvResult<()> {
+    let config = ClientConfig::with_debug()
+        .with_connection_timeout(30)
+        .with_request_timeout(10);
+    
+    let client = KvStoreClient::connect_with_config("localhost:9090", config)?;
+    // All operations will now generate detailed debug logs
+    let tx_future = client.begin_transaction(None, Some(60));
+    // ... debug output shows connection, transaction, and timing info
     Ok(())
 }
 ```

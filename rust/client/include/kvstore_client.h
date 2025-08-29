@@ -14,6 +14,7 @@ typedef void* KvClientHandle;
 typedef void* KvTransactionHandle;
 typedef void* KvReadTransactionHandle;
 typedef void* KvFutureHandle;
+typedef void* KvConfigHandle;
 
 // Error codes
 typedef enum {
@@ -59,8 +60,18 @@ typedef struct {
 int kv_init(void);
 void kv_shutdown(void);
 
+// Configuration management
+KvConfigHandle kv_config_create(void);
+KvConfigHandle kv_config_create_with_debug(void);
+int kv_config_enable_debug(KvConfigHandle config);
+int kv_config_set_connection_timeout(KvConfigHandle config, uint64_t timeout_seconds);
+int kv_config_set_request_timeout(KvConfigHandle config, uint64_t timeout_seconds);
+int kv_config_set_max_retries(KvConfigHandle config, uint32_t retries);
+void kv_config_destroy(KvConfigHandle config);
+
 // Client management
 KvClientHandle kv_client_create(const char* address);
+KvClientHandle kv_client_create_with_config(const char* address, KvConfigHandle config);
 void kv_client_destroy(KvClientHandle client);
 
 // Transaction management
