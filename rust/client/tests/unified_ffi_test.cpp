@@ -127,8 +127,8 @@ int test_c_basic_transaction() {
     KvTransactionHandle tx = kv_future_get_transaction(tx_future);
     TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
     
-    // Set a key-value pair
-    KvFutureHandle set_future = kv_transaction_set(tx, "test_key", "test_value", NULL);
+    // Set a key-value pair (using new binary interface with convenience macro)
+    KvFutureHandle set_future = kv_transaction_set(tx, KV_STR("test_key"), KV_STR("test_value"), NULL);
     TEST_ASSERT(set_future != NULL, "Failed to create set future");
     
     ready = wait_for_future_c(set_future);
@@ -137,18 +137,19 @@ int test_c_basic_transaction() {
     KvResult set_result = kv_future_get_void_result(set_future);
     TEST_ASSERT(set_result.success == 1, "Set operation failed");
     
-    // Get the value back
-    KvFutureHandle get_future = kv_transaction_get(tx, "test_key", NULL);
+    // Get the value back (using new binary interface)
+    KvFutureHandle get_future = kv_transaction_get(tx, KV_STR("test_key"), NULL);
     TEST_ASSERT(get_future != NULL, "Failed to create get future");
     
     ready = wait_for_future_c(get_future);
     TEST_ASSERT(ready == 1, "Get future not ready");
     
-    char* value = NULL;
-    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    KvBinaryData value;
+    KvResult get_result = kv_future_get_value_result(get_future, &value);
     TEST_ASSERT(get_result.success == 1, "Get operation failed");
-    TEST_ASSERT(value != NULL, "Got NULL value");
-    TEST_ASSERT(strcmp(value, "test_value") == 0, "Value mismatch");
+    TEST_ASSERT(value.data != NULL, "Got NULL value data");
+    TEST_ASSERT(value.length == strlen("test_value"), "Value length mismatch");
+    TEST_ASSERT(memcmp(value.data, "test_value", strlen("test_value")) == 0, "Value mismatch");
     
     // Commit transaction
     KvFutureHandle commit_future = kv_transaction_commit(tx);
@@ -160,8 +161,8 @@ int test_c_basic_transaction() {
     KvResult commit_result = kv_future_get_void_result(commit_future);
     TEST_ASSERT(commit_result.success == 1, "Commit operation failed");
     
-    // Cleanup
-    kv_string_free(value);
+    // Cleanup (using new binary cleanup)
+    kv_binary_free(&value);
     kv_client_destroy(client);
     kv_shutdown();
     TEST_PASS();
@@ -185,7 +186,7 @@ int test_c_read_transaction() {
     KvTransactionHandle setup_tx = kv_future_get_transaction(setup_tx_future);
     TEST_ASSERT(setup_tx != NULL, "Failed to get setup transaction handle");
     
-    KvFutureHandle set_future = kv_transaction_set(setup_tx, "read_test_key", "read_test_value", NULL);
+    KvFutureHandle set_future = kv_transaction_set(setup_tx, KV_STR("read_test_key"), KV_STR("read_test_value"), NULL);
     ready = wait_for_future_c(set_future);
     TEST_ASSERT(ready == 1, "Setup set future not ready");
     
@@ -210,20 +211,21 @@ int test_c_read_transaction() {
     TEST_ASSERT(read_tx != NULL, "Failed to get read transaction handle");
     
     // Read the value
-    KvFutureHandle get_future = kv_read_transaction_get(read_tx, "read_test_key", NULL);
+    KvFutureHandle get_future = kv_read_transaction_get(read_tx, KV_STR("read_test_key"), NULL);
     TEST_ASSERT(get_future != NULL, "Failed to create read get future");
     
     ready = wait_for_future_c(get_future);
     TEST_ASSERT(ready == 1, "Read get future not ready");
     
-    char* value = NULL;
-    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    KvBinaryData value;
+    KvResult get_result = kv_future_get_value_result(get_future, &value);
     TEST_ASSERT(get_result.success == 1, "Read get operation failed");
-    TEST_ASSERT(value != NULL, "Got NULL value from read transaction");
-    TEST_ASSERT(strcmp(value, "read_test_value") == 0, "Read value mismatch");
+    TEST_ASSERT(value.data != NULL, "Got NULL value from read transaction");
+    TEST_ASSERT(value.length == strlen("read_test_value"), "Read value length mismatch");
+    TEST_ASSERT(memcmp(value.data, "read_test_value", strlen("read_test_value")) == 0, "Read value mismatch");
     
     // Cleanup
-    kv_string_free(value);
+    kv_binary_free(&value);
     kv_read_transaction_destroy(read_tx);
     kv_client_destroy(client);
     kv_shutdown();
@@ -239,32 +241,33 @@ int test_c_client_ping() {
     TEST_ASSERT(client != NULL, "Failed to create client");
     
     // Test ping with NULL message
-    KvFutureHandle ping_future1 = kv_client_ping(client, NULL);
+    KvFutureHandle ping_future1 = kv_client_ping(client, NULL, 0);
     TEST_ASSERT(ping_future1 != NULL, "Failed to create ping future with NULL message");
     
     int ready = wait_for_future_c(ping_future1);
     TEST_ASSERT(ready == 1, "Ping future not ready");
     
-    char* response = NULL;
-    KvResult ping_result1 = kv_future_get_string_result(ping_future1, &response);
+    KvBinaryData response;
+    KvResult ping_result1 = kv_future_get_value_result(ping_future1, &response);
     TEST_ASSERT(ping_result1.success == 1, "Ping operation failed");
-    TEST_ASSERT(response != NULL, "Got NULL ping response");
-    printf("Ping response: %s\n", response);
-    kv_string_free(response);
+    TEST_ASSERT(response.data != NULL, "Got NULL ping response");
+    printf("Ping response: %.*s\n", response.length, (char*)response.data);
+    kv_binary_free(&response);
     
     // Test ping with custom message
-    KvFutureHandle ping_future2 = kv_client_ping(client, "Hello from C FFI test!");
+    const char* msg = "Hello from C FFI test!";
+    KvFutureHandle ping_future2 = kv_client_ping(client, (uint8_t*)msg, strlen(msg));
     TEST_ASSERT(ping_future2 != NULL, "Failed to create ping future with custom message");
     
     ready = wait_for_future_c(ping_future2);
     TEST_ASSERT(ready == 1, "Ping future not ready");
     
-    char* response2 = NULL;
-    KvResult ping_result2 = kv_future_get_string_result(ping_future2, &response2);
+    KvBinaryData response2;
+    KvResult ping_result2 = kv_future_get_value_result(ping_future2, &response2);
     TEST_ASSERT(ping_result2.success == 1, "Ping operation with custom message failed");
-    TEST_ASSERT(response2 != NULL, "Got NULL ping response with custom message");
-    printf("Ping response with custom message: %s\n", response2);
-    kv_string_free(response2);
+    TEST_ASSERT(response2.data != NULL, "Got NULL ping response with custom message");
+    printf("Ping response with custom message: %.*s\n", response2.length, (char*)response2.data);
+    kv_binary_free(&response2);
     
     kv_client_destroy(client);
     kv_shutdown();
@@ -290,7 +293,7 @@ int test_c_transaction_abort() {
     TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
     
     // Set a key-value pair in the transaction
-    KvFutureHandle set_future = kv_transaction_set(tx, "abort_test_key_c", "abort_test_value_c", NULL);
+    KvFutureHandle set_future = kv_transaction_set(tx, KV_STR("abort_test_key_c"), KV_STR("abort_test_value_c"), NULL);
     TEST_ASSERT(set_future != NULL, "Failed to create set future");
     
     ready = wait_for_future_c(set_future);
@@ -338,7 +341,10 @@ int test_c_range_operations() {
     const char* test_values[] = {"value1", "value2", "value3", "value4", NULL};
     
     for (int i = 0; test_keys[i] != NULL; i++) {
-        KvFutureHandle set_future = kv_transaction_set(tx, test_keys[i], test_values[i], NULL);
+        KvFutureHandle set_future = kv_transaction_set(tx, 
+                                                        (const uint8_t*)test_keys[i], strlen(test_keys[i]),
+                                                        (const uint8_t*)test_values[i], strlen(test_values[i]),
+                                                        NULL);
         TEST_ASSERT(set_future != NULL, "Failed to create set future for test data");
         
         ready = wait_for_future_c(set_future);
@@ -366,7 +372,10 @@ int test_c_range_operations() {
     TEST_ASSERT(read_tx != NULL, "Failed to get read transaction handle");
     
     // Test 1: Range query with prefix
-    KvFutureHandle range_future = kv_read_transaction_get_range(read_tx, "range_key", NULL, 10, NULL);
+    KvFutureHandle range_future = kv_read_transaction_get_range(read_tx, 
+                                                                 KV_STR("range_key"), 
+                                                                 NULL, 0, 
+                                                                 10, NULL);
     TEST_ASSERT(range_future != NULL, "Failed to create range future");
     
     ready = wait_for_future_c(range_future);
@@ -380,15 +389,20 @@ int test_c_range_operations() {
     
     // Verify the returned data
     for (size_t i = 0; i < pairs.count; i++) {
-        TEST_ASSERT(pairs.pairs[i].key != NULL, "Key should not be NULL");
-        TEST_ASSERT(pairs.pairs[i].value != NULL, "Value should not be NULL");
-        printf("Range result [%zu]: %s = %s\n", i, pairs.pairs[i].key, pairs.pairs[i].value);
+        TEST_ASSERT(pairs.pairs[i].key.data != NULL, "Key should not be NULL");
+        TEST_ASSERT(pairs.pairs[i].value.data != NULL, "Value should not be NULL");
+        printf("Range result [%zu]: %.*s = %.*s\n", i, 
+               pairs.pairs[i].key.length, (char*)pairs.pairs[i].key.data,
+               pairs.pairs[i].value.length, (char*)pairs.pairs[i].value.data);
     }
     
     kv_pair_array_free(&pairs);
     
     // Test 2: Range query with start and end key
-    KvFutureHandle bounded_range_future = kv_read_transaction_get_range(read_tx, "range_key_001", "range_key_003", 10, NULL);
+    KvFutureHandle bounded_range_future = kv_read_transaction_get_range(read_tx, 
+                                                                         KV_STR("range_key_001"), 
+                                                                         KV_STR("range_key_003"), 
+                                                                         10, NULL);
     TEST_ASSERT(bounded_range_future != NULL, "Failed to create bounded range future");
     
     ready = wait_for_future_c(bounded_range_future);
@@ -402,7 +416,10 @@ int test_c_range_operations() {
     kv_pair_array_free(&bounded_pairs);
     
     // Test 3: Limited range query
-    KvFutureHandle limited_range_future = kv_read_transaction_get_range(read_tx, "range_key", NULL, 2, NULL);
+    KvFutureHandle limited_range_future = kv_read_transaction_get_range(read_tx, 
+                                                                         KV_STR("range_key"), 
+                                                                         NULL, 0, 
+                                                                         2, NULL);
     TEST_ASSERT(limited_range_future != NULL, "Failed to create limited range future");
     
     ready = wait_for_future_c(limited_range_future);
@@ -441,7 +458,7 @@ int test_c_async_deletion() {
     TEST_ASSERT(tx != NULL, "Failed to get transaction handle");
     
     // Set up test data using async operations
-    KvFutureHandle set_future = kv_transaction_set(tx, "async_delete_test_key", "async_delete_test_value", NULL);
+    KvFutureHandle set_future = kv_transaction_set(tx, KV_STR("async_delete_test_key"), KV_STR("async_delete_test_value"), NULL);
     TEST_ASSERT(set_future != NULL, "Failed to create set future");
     ready = wait_for_future_c(set_future);
     TEST_ASSERT(ready == 1, "Set future not ready");
@@ -449,20 +466,20 @@ int test_c_async_deletion() {
     TEST_ASSERT(set_result.success == 1, "Async set operation failed");
     
     // Verify the key exists before deletion
-    KvFutureHandle get_future = kv_transaction_get(tx, "async_delete_test_key", NULL);
+    KvFutureHandle get_future = kv_transaction_get(tx, KV_STR("async_delete_test_key"), NULL);
     TEST_ASSERT(get_future != NULL, "Failed to create get future");
     ready = wait_for_future_c(get_future);
     TEST_ASSERT(ready == 1, "Get future not ready");
-    char* value = NULL;
-    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    KvBinaryData value;
+    KvResult get_result = kv_future_get_value_result(get_future, &value);
     TEST_ASSERT(get_result.success == 1, "Async get operation failed");
-    TEST_ASSERT(value != NULL, "Got NULL value");
-    TEST_ASSERT(strcmp(value, "async_delete_test_value") == 0, "Value mismatch");
-    kv_string_free(value);
-    value = NULL;
+    TEST_ASSERT(value.data != NULL, "Got NULL value");
+    TEST_ASSERT(value.length == strlen("async_delete_test_value"), "Value length mismatch");
+    TEST_ASSERT(memcmp(value.data, "async_delete_test_value", strlen("async_delete_test_value")) == 0, "Value mismatch");
+    kv_binary_free(&value);
     
     // Delete the key using async operation
-    KvFutureHandle delete_future = kv_transaction_delete(tx, "async_delete_test_key", NULL);
+    KvFutureHandle delete_future = kv_transaction_delete(tx, KV_STR("async_delete_test_key"), NULL);
     TEST_ASSERT(delete_future != NULL, "Failed to create delete future");
     ready = wait_for_future_c(delete_future);
     TEST_ASSERT(ready == 1, "Delete future not ready");
@@ -470,13 +487,14 @@ int test_c_async_deletion() {
     TEST_ASSERT(delete_result.success == 1, "Async delete operation failed");
     
     // Verify the key no longer exists
-    KvFutureHandle get_future2 = kv_transaction_get(tx, "async_delete_test_key", NULL);
+    KvFutureHandle get_future2 = kv_transaction_get(tx, KV_STR("async_delete_test_key"), NULL);
     TEST_ASSERT(get_future2 != NULL, "Failed to create get future after delete");
     ready = wait_for_future_c(get_future2);
     TEST_ASSERT(ready == 1, "Get future after delete not ready");
-    KvResult get_result2 = kv_future_get_string_result(get_future2, &value);
+    KvBinaryData value2;
+    KvResult get_result2 = kv_future_get_value_result(get_future2, &value2);
     TEST_ASSERT(get_result2.success == 1, "Get after delete failed");
-    TEST_ASSERT(value == NULL, "Key should be NULL after deletion");
+    TEST_ASSERT(value2.data == NULL || value2.length == 0, "Key should be empty after deletion");
     
     // Commit the transaction using async operation
     KvFutureHandle commit_future = kv_transaction_commit(tx);
@@ -554,7 +572,10 @@ public:
     
     void set(const std::string& key, const std::string& value, const std::string* column_family = nullptr) {
         const char* cf = column_family ? column_family->c_str() : nullptr;
-        KvFutureHandle future = kv_transaction_set(handle, key.c_str(), value.c_str(), cf);
+        KvFutureHandle future = kv_transaction_set(handle,
+                                                   (const uint8_t*)key.data(), key.size(),
+                                                   (const uint8_t*)value.data(), value.size(),
+                                                   cf);
         if (!future) {
             throw std::runtime_error("Failed to create set future");
         }
@@ -575,7 +596,9 @@ public:
     
     std::string get(const std::string& key, const std::string* column_family = nullptr) {
         const char* cf = column_family ? column_family->c_str() : nullptr;
-        KvFutureHandle future = kv_transaction_get(handle, key.c_str(), cf);
+        KvFutureHandle future = kv_transaction_get(handle,
+                                                   (const uint8_t*)key.data(), key.size(),
+                                                   cf);
         if (!future) {
             throw std::runtime_error("Failed to create get future");
         }
@@ -584,8 +607,8 @@ public:
             throw std::runtime_error("Get operation timeout");
         }
         
-        char* value = nullptr;
-        KvResult result = kv_future_get_string_result(future, &value);
+        KvBinaryData value;
+        KvResult result = kv_future_get_value_result(future, &value);
         if (!result.success) {
             std::string error = "Get operation failed";
             if (result.error_message) {
@@ -595,9 +618,9 @@ public:
         }
         
         std::string str_value;
-        if (value) {
-            str_value = value;
-            kv_string_free(value);
+        if (value.data && value.length > 0) {
+            str_value = std::string((char*)value.data, value.length);
+            kv_binary_free(&value);
         }
         
         return str_value;
@@ -605,7 +628,9 @@ public:
     
     void delete_key(const std::string& key, const std::string* column_family = nullptr) {
         const char* cf = column_family ? column_family->c_str() : nullptr;
-        KvFutureHandle future = kv_transaction_delete(handle, key.c_str(), cf);
+        KvFutureHandle future = kv_transaction_delete(handle,
+                                                      (const uint8_t*)key.data(), key.size(),
+                                                      cf);
         if (!future) {
             throw std::runtime_error("Failed to create delete future");
         }
@@ -629,10 +654,15 @@ public:
                                                                 const std::string* end_key = nullptr, 
                                                                 int limit = -1,
                                                                 const std::string* column_family = nullptr) {
-        const char* end_key_c = end_key ? end_key->c_str() : nullptr;
         const char* cf = column_family ? column_family->c_str() : nullptr;
         
-        KvFutureHandle future = kv_transaction_get_range(handle, start_key.c_str(), end_key_c, limit, cf);
+        const uint8_t* end_key_data = end_key ? (const uint8_t*)end_key->data() : nullptr;
+        int end_key_len = end_key ? end_key->size() : 0;
+        
+        KvFutureHandle future = kv_transaction_get_range(handle,
+                                                         (const uint8_t*)start_key.data(), start_key.size(),
+                                                         end_key_data, end_key_len,
+                                                         limit, cf);
         if (!future) {
             throw std::runtime_error("Failed to create get_range future");
         }
@@ -653,10 +683,11 @@ public:
         
         std::vector<std::pair<std::string, std::string>> kv_vec;
         for (size_t i = 0; i < pairs.count; i++) {
-            kv_vec.emplace_back(
-                pairs.pairs[i].key ? std::string(pairs.pairs[i].key) : "",
-                pairs.pairs[i].value ? std::string(pairs.pairs[i].value) : ""
-            );
+            std::string key_str = pairs.pairs[i].key.data && pairs.pairs[i].key.length > 0 ?
+                std::string((char*)pairs.pairs[i].key.data, pairs.pairs[i].key.length) : "";
+            std::string value_str = pairs.pairs[i].value.data && pairs.pairs[i].value.length > 0 ?
+                std::string((char*)pairs.pairs[i].value.data, pairs.pairs[i].value.length) : "";
+            kv_vec.emplace_back(key_str, value_str);
         }
         
         kv_pair_array_free(&pairs);
@@ -710,7 +741,7 @@ void test_cpp_basic_functionality() {
     test.assert_true(tx != nullptr, "Failed to get transaction handle");
     
     // Set a key-value pair
-    KvFutureHandle set_future = kv_transaction_set(tx, "cpp_test_key", "cpp_test_value", nullptr);
+    KvFutureHandle set_future = kv_transaction_set(tx, KV_STR("cpp_test_key"), KV_STR("cpp_test_value"), nullptr);
     test.assert_true(set_future != nullptr, "Failed to create set future");
     
     ready = wait_for_future_cpp(set_future);
@@ -720,17 +751,18 @@ void test_cpp_basic_functionality() {
     test.assert_true(set_result.success == 1, "Set operation failed");
     
     // Get the value back
-    KvFutureHandle get_future = kv_transaction_get(tx, "cpp_test_key", nullptr);
+    KvFutureHandle get_future = kv_transaction_get(tx, KV_STR("cpp_test_key"), nullptr);
     test.assert_true(get_future != nullptr, "Failed to create get future");
     
     ready = wait_for_future_cpp(get_future);
     test.assert_true(ready, "Get future not ready");
     
-    char* value = nullptr;
-    KvResult get_result = kv_future_get_string_result(get_future, &value);
+    KvBinaryData value;
+    KvResult get_result = kv_future_get_value_result(get_future, &value);
     test.assert_true(get_result.success == 1, "Get operation failed");
-    test.assert_true(value != nullptr, "Got NULL value");
-    test.assert_true(std::strcmp(value, "cpp_test_value") == 0, "Value mismatch");
+    test.assert_true(value.data != nullptr, "Got NULL value");
+    test.assert_true(value.length == strlen("cpp_test_value"), "Value length mismatch");
+    test.assert_true(memcmp(value.data, "cpp_test_value", strlen("cpp_test_value")) == 0, "Value mismatch");
     
     // Commit transaction
     KvFutureHandle commit_future = kv_transaction_commit(tx);
@@ -743,7 +775,7 @@ void test_cpp_basic_functionality() {
     test.assert_true(commit_result.success == 1, "Commit operation failed");
     
     // Cleanup
-    kv_string_free(value);
+    kv_binary_free(&value);
     kv_client_destroy(client);
     kv_shutdown();
     

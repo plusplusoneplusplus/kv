@@ -2,6 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::Arc;
+use std::slice;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -64,11 +65,18 @@ impl KvResult {
     }
 }
 
-// Key-value pair for C
+// Binary data structure (following FoundationDB pattern)
+#[repr(C)]
+pub struct KvBinaryData {
+    pub data: *mut u8,
+    pub length: c_int,
+}
+
+// Key-value pair with binary support
 #[repr(C)]
 pub struct KvPair {
-    pub key: *mut c_char,
-    pub value: *mut c_char,
+    pub key: KvBinaryData,
+    pub value: KvBinaryData,
 }
 
 // Array of key-value pairs for range operations
@@ -269,14 +277,15 @@ pub extern "C" fn kv_future_get_read_transaction(future: KvFutureHandle) -> KvRe
     ptr::null_mut()
 }
 
-/// Get a value from a transaction
+/// Get a value from a transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_transaction_get(
     transaction: KvTransactionHandle,
-    key: *const c_char,
+    key_data: *const u8,
+    key_length: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || key.is_null() {
+    if transaction.is_null() || key_data.is_null() || key_length < 0 {
         return ptr::null_mut();
     }
     
@@ -286,11 +295,14 @@ pub extern "C" fn kv_transaction_get(
         None => return ptr::null_mut(),
     };
     
-    let key_str = unsafe {
-        match CStr::from_ptr(key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let key_bytes = unsafe {
+        slice::from_raw_parts(key_data, key_length as usize)
+    };
+    
+    // Convert binary key to string (assuming UTF-8 for now)
+    let key_str = match std::str::from_utf8(key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
     };
     
     let cf_str = if column_family.is_null() {
@@ -313,15 +325,18 @@ pub extern "C" fn kv_transaction_get(
     future_id as KvFutureHandle
 }
 
-/// Set a key-value pair in a transaction
+/// Set a key-value pair in a transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_transaction_set(
     transaction: KvTransactionHandle,
-    key: *const c_char,
-    value: *const c_char,
+    key_data: *const u8,
+    key_length: c_int,
+    value_data: *const u8,
+    value_length: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || key.is_null() || value.is_null() {
+    if transaction.is_null() || key_data.is_null() || value_data.is_null() 
+       || key_length < 0 || value_length < 0 {
         return ptr::null_mut();
     }
     
@@ -331,18 +346,23 @@ pub extern "C" fn kv_transaction_set(
         None => return ptr::null_mut(),
     };
     
-    let key_str = unsafe {
-        match CStr::from_ptr(key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let key_bytes = unsafe {
+        slice::from_raw_parts(key_data, key_length as usize)
     };
     
-    let value_str = unsafe {
-        match CStr::from_ptr(value).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let value_bytes = unsafe {
+        slice::from_raw_parts(value_data, value_length as usize)
+    };
+    
+    // Convert binary key and value to strings (assuming UTF-8 for now)
+    let key_str = match std::str::from_utf8(key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
+    };
+    
+    let value_str = match std::str::from_utf8(value_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary values
     };
     
     let cf_str = if column_family.is_null() {
@@ -366,14 +386,15 @@ pub extern "C" fn kv_transaction_set(
     future_id as KvFutureHandle
 }
 
-/// Delete a key in a transaction
+/// Delete a key in a transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_transaction_delete(
     transaction: KvTransactionHandle,
-    key: *const c_char,
+    key_data: *const u8,
+    key_length: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || key.is_null() {
+    if transaction.is_null() || key_data.is_null() || key_length < 0 {
         return ptr::null_mut();
     }
     
@@ -383,11 +404,14 @@ pub extern "C" fn kv_transaction_delete(
         None => return ptr::null_mut(),
     };
     
-    let key_str = unsafe {
-        match CStr::from_ptr(key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let key_bytes = unsafe {
+        slice::from_raw_parts(key_data, key_length as usize)
+    };
+    
+    // Convert binary key to string (assuming UTF-8 for now)
+    let key_str = match std::str::from_utf8(key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
     };
     
     let cf_str = if column_family.is_null() {
@@ -466,9 +490,9 @@ pub extern "C" fn kv_future_get_void_result(future: KvFutureHandle) -> KvResult 
     KvResult::error(&KvError::Unknown("Future not ready or invalid type".to_string()))
 }
 
-/// Get the result of a string future (get operation)
+/// Get the result of a value future (get operation) - returns binary data
 #[no_mangle]
-pub extern "C" fn kv_future_get_string_result(future: KvFutureHandle, value: *mut *mut c_char) -> KvResult {
+pub extern "C" fn kv_future_get_value_result(future: KvFutureHandle, value: *mut KvBinaryData) -> KvResult {
     if future.is_null() || value.is_null() {
         return KvResult::error(&KvError::Unknown("Null pointer".to_string()));
     }
@@ -483,16 +507,28 @@ pub extern "C" fn kv_future_get_string_result(future: KvFutureHandle, value: *mu
                 if let Some(result) = future_ptr.take_result() {
                     return match result {
                         Ok(Some(val)) => {
-                            match CString::new(val) {
-                                Ok(c_string) => {
-                                    unsafe { *value = c_string.into_raw(); }
-                                    KvResult::success()
+                            let bytes = val.into_bytes();
+                            let len = bytes.len() as c_int;
+                            let data = unsafe {
+                                let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
+                                if ptr.is_null() {
+                                    return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
                                 }
-                                Err(_) => KvResult::error(&KvError::Unknown("Invalid string value".to_string())),
+                                std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+                                ptr
+                            };
+                            
+                            unsafe {
+                                (*value).data = data;
+                                (*value).length = len;
                             }
+                            KvResult::success()
                         }
                         Ok(None) => {
-                            unsafe { *value = ptr::null_mut(); }
+                            unsafe {
+                                (*value).data = ptr::null_mut();
+                                (*value).length = 0;
+                            }
                             KvResult::success()
                         }
                         Err(err) => KvResult::error(&err),
@@ -505,13 +541,22 @@ pub extern "C" fn kv_future_get_string_result(future: KvFutureHandle, value: *mu
                     if let Some(result) = future_ptr.take_result() {
                         return match result {
                             Ok(val) => {
-                                match CString::new(val) {
-                                    Ok(c_string) => {
-                                        unsafe { *value = c_string.into_raw(); }
-                                        KvResult::success()
+                                let bytes = val.into_bytes();
+                                let len = bytes.len() as c_int;
+                                let data = unsafe {
+                                    let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
+                                    if ptr.is_null() {
+                                        return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
                                     }
-                                    Err(_) => KvResult::error(&KvError::Unknown("Invalid string value".to_string())),
+                                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+                                    ptr
+                                };
+                                
+                                unsafe {
+                                    (*value).data = data;
+                                    (*value).length = len;
                                 }
+                                KvResult::success()
                             }
                             Err(err) => KvResult::error(&err),
                         };
@@ -524,12 +569,87 @@ pub extern "C" fn kv_future_get_string_result(future: KvFutureHandle, value: *mu
     KvResult::error(&KvError::Unknown("Future not ready or invalid type".to_string()))
 }
 
-/// Free a string returned by the library
+/// Free binary data allocated by the library
 #[no_mangle]
-pub extern "C" fn kv_string_free(s: *mut c_char) {
-    if !s.is_null() {
+pub extern "C" fn kv_binary_free(data: *mut KvBinaryData) {
+    if !data.is_null() {
         unsafe {
-            let _ = CString::from_raw(s);
+            let data_ref = &mut *data;
+            if !data_ref.data.is_null() && data_ref.length > 0 {
+                std::alloc::dealloc(
+                    data_ref.data,
+                    std::alloc::Layout::array::<u8>(data_ref.length as usize).unwrap()
+                );
+                data_ref.data = ptr::null_mut();
+                data_ref.length = 0;
+            }
+        }
+    }
+}
+
+/// Create binary data from null-terminated string
+#[no_mangle]
+pub extern "C" fn kv_binary_from_string(s: *const c_char) -> KvBinaryData {
+    if s.is_null() {
+        return KvBinaryData {
+            data: ptr::null_mut(),
+            length: 0,
+        };
+    }
+    
+    unsafe {
+        let c_str = CStr::from_ptr(s);
+        let bytes = c_str.to_bytes();
+        let len = bytes.len() as c_int;
+        
+        if len == 0 {
+            return KvBinaryData {
+                data: ptr::null_mut(),
+                length: 0,
+            };
+        }
+        
+        let data = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
+        if data.is_null() {
+            return KvBinaryData {
+                data: ptr::null_mut(),
+                length: 0,
+            };
+        }
+        
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data, bytes.len());
+        
+        KvBinaryData {
+            data,
+            length: len,
+        }
+    }
+}
+
+/// Create copy of binary data
+#[no_mangle]
+pub extern "C" fn kv_binary_copy(data: *const u8, length: c_int) -> KvBinaryData {
+    if data.is_null() || length <= 0 {
+        return KvBinaryData {
+            data: ptr::null_mut(),
+            length: 0,
+        };
+    }
+    
+    unsafe {
+        let new_data = std::alloc::alloc(std::alloc::Layout::array::<u8>(length as usize).unwrap());
+        if new_data.is_null() {
+            return KvBinaryData {
+                data: ptr::null_mut(),
+                length: 0,
+            };
+        }
+        
+        std::ptr::copy_nonoverlapping(data, new_data, length as usize);
+        
+        KvBinaryData {
+            data: new_data,
+            length,
         }
     }
 }
@@ -548,14 +668,15 @@ pub extern "C" fn kv_result_free(result: *mut KvResult) {
     }
 }
 
-/// Get a value from a read transaction
+/// Get a value from a read transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_read_transaction_get(
     transaction: KvReadTransactionHandle,
-    key: *const c_char,
+    key_data: *const u8,
+    key_length: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || key.is_null() {
+    if transaction.is_null() || key_data.is_null() || key_length < 0 {
         return ptr::null_mut();
     }
     
@@ -565,11 +686,14 @@ pub extern "C" fn kv_read_transaction_get(
         None => return ptr::null_mut(),
     };
     
-    let key_str = unsafe {
-        match CStr::from_ptr(key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let key_bytes = unsafe {
+        slice::from_raw_parts(key_data, key_length as usize)
+    };
+    
+    // Convert binary key to string (assuming UTF-8 for now)
+    let key_str = match std::str::from_utf8(key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
     };
     
     let cf_str = if column_family.is_null() {
@@ -592,16 +716,18 @@ pub extern "C" fn kv_read_transaction_get(
     future_id as KvFutureHandle
 }
 
-/// Get a range of key-value pairs from a read transaction
+/// Get a range of key-value pairs from a read transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_read_transaction_get_range(
     transaction: KvReadTransactionHandle,
-    start_key: *const c_char,
-    end_key: *const c_char,
+    start_key_data: *const u8,
+    start_key_length: c_int,
+    end_key_data: *const u8,
+    end_key_length: c_int,
     limit: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || start_key.is_null() {
+    if transaction.is_null() || start_key_data.is_null() || start_key_length < 0 {
         return ptr::null_mut();
     }
     
@@ -611,21 +737,26 @@ pub extern "C" fn kv_read_transaction_get_range(
         None => return ptr::null_mut(),
     };
     
-    let start_key_str = unsafe {
-        match CStr::from_ptr(start_key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let start_key_bytes = unsafe {
+        slice::from_raw_parts(start_key_data, start_key_length as usize)
     };
     
-    let end_key_str = if end_key.is_null() {
+    // Convert binary start key to string (assuming UTF-8 for now)
+    let start_key_str = match std::str::from_utf8(start_key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
+    };
+    
+    let end_key_str = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
-        unsafe {
-            match CStr::from_ptr(end_key).to_str() {
-                Ok(s) => Some(s),
-                Err(_) => return ptr::null_mut(),
-            }
+        let end_key_bytes = unsafe {
+            slice::from_raw_parts(end_key_data, end_key_length as usize)
+        };
+        // Convert binary end key to string (assuming UTF-8 for now)
+        match std::str::from_utf8(end_key_bytes) {
+            Ok(s) => Some(s),
+            Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
         }
     };
     
@@ -696,16 +827,18 @@ pub extern "C" fn kv_client_ping(
     future_id as KvFutureHandle
 }
 
-/// Get a range of key-value pairs from a transaction
+/// Get a range of key-value pairs from a transaction (FoundationDB-style binary interface)
 #[no_mangle]
 pub extern "C" fn kv_transaction_get_range(
     transaction: KvTransactionHandle,
-    start_key: *const c_char,
-    end_key: *const c_char,
+    start_key_data: *const u8,
+    start_key_length: c_int,
+    end_key_data: *const u8,
+    end_key_length: c_int,
     limit: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || start_key.is_null() {
+    if transaction.is_null() || start_key_data.is_null() || start_key_length < 0 {
         return ptr::null_mut();
     }
     
@@ -715,21 +848,26 @@ pub extern "C" fn kv_transaction_get_range(
         None => return ptr::null_mut(),
     };
     
-    let start_key_str = unsafe {
-        match CStr::from_ptr(start_key).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        }
+    let start_key_bytes = unsafe {
+        slice::from_raw_parts(start_key_data, start_key_length as usize)
     };
     
-    let end_key_str = if end_key.is_null() {
+    // Convert binary start key to string (assuming UTF-8 for now)
+    let start_key_str = match std::str::from_utf8(start_key_bytes) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
+    };
+    
+    let end_key_str = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
-        unsafe {
-            match CStr::from_ptr(end_key).to_str() {
-                Ok(s) => Some(s),
-                Err(_) => return ptr::null_mut(),
-            }
+        let end_key_bytes = unsafe {
+            slice::from_raw_parts(end_key_data, end_key_length as usize)
+        };
+        // Convert binary end key to string (assuming UTF-8 for now)
+        match std::str::from_utf8(end_key_bytes) {
+            Ok(s) => Some(s),
+            Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
         }
     };
     
@@ -788,50 +926,85 @@ pub extern "C" fn kv_future_get_kv_array_result(future: KvFutureHandle, pairs: *
                             return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
                         }
                         
-                        // Fill the array
+                        // Fill the array with binary data
                         for (i, (key, value)) in kv_vec.into_iter().enumerate() {
-                            let key_c = match CString::new(key) {
-                                Ok(s) => s.into_raw(),
-                                Err(_) => {
-                                    // Clean up allocated memory on error
-                                    unsafe {
+                            // Allocate and copy key data
+                            let key_bytes = key.into_bytes();
+                            let key_len = key_bytes.len() as c_int;
+                            let key_data = if key_len > 0 {
+                                unsafe {
+                                    let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(key_bytes.len()).unwrap());
+                                    if ptr.is_null() {
+                                        // Clean up previously allocated pairs
                                         for j in 0..i {
-                                            if !(*c_pairs.add(j)).key.is_null() {
-                                                let _ = CString::from_raw((*c_pairs.add(j)).key);
+                                            if !(*c_pairs.add(j)).key.data.is_null() && (*c_pairs.add(j)).key.length > 0 {
+                                                std::alloc::dealloc(
+                                                    (*c_pairs.add(j)).key.data,
+                                                    std::alloc::Layout::array::<u8>((*c_pairs.add(j)).key.length as usize).unwrap()
+                                                );
                                             }
-                                            if !(*c_pairs.add(j)).value.is_null() {
-                                                let _ = CString::from_raw((*c_pairs.add(j)).value);
+                                            if !(*c_pairs.add(j)).value.data.is_null() && (*c_pairs.add(j)).value.length > 0 {
+                                                std::alloc::dealloc(
+                                                    (*c_pairs.add(j)).value.data,
+                                                    std::alloc::Layout::array::<u8>((*c_pairs.add(j)).value.length as usize).unwrap()
+                                                );
                                             }
                                         }
                                         std::alloc::dealloc(c_pairs as *mut u8, std::alloc::Layout::array::<KvPair>(count).unwrap());
+                                        return KvResult::error(&KvError::Unknown("Memory allocation failed for key".to_string()));
                                     }
-                                    return KvResult::error(&KvError::Unknown("Invalid key string".to_string()));
+                                    std::ptr::copy_nonoverlapping(key_bytes.as_ptr(), ptr, key_bytes.len());
+                                    ptr
                                 }
+                            } else {
+                                ptr::null_mut()
                             };
                             
-                            let value_c = match CString::new(value) {
-                                Ok(s) => s.into_raw(),
-                                Err(_) => {
-                                    // Clean up allocated memory on error
-                                    let _ = unsafe { CString::from_raw(key_c) };
-                                    unsafe {
+                            // Allocate and copy value data
+                            let value_bytes = value.into_bytes();
+                            let value_len = value_bytes.len() as c_int;
+                            let value_data = if value_len > 0 {
+                                unsafe {
+                                    let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(value_bytes.len()).unwrap());
+                                    if ptr.is_null() {
+                                        // Clean up key data we just allocated
+                                        if !key_data.is_null() {
+                                            std::alloc::dealloc(key_data, std::alloc::Layout::array::<u8>(key_bytes.len()).unwrap());
+                                        }
+                                        // Clean up previously allocated pairs
                                         for j in 0..i {
-                                            if !(*c_pairs.add(j)).key.is_null() {
-                                                let _ = CString::from_raw((*c_pairs.add(j)).key);
+                                            if !(*c_pairs.add(j)).key.data.is_null() && (*c_pairs.add(j)).key.length > 0 {
+                                                std::alloc::dealloc(
+                                                    (*c_pairs.add(j)).key.data,
+                                                    std::alloc::Layout::array::<u8>((*c_pairs.add(j)).key.length as usize).unwrap()
+                                                );
                                             }
-                                            if !(*c_pairs.add(j)).value.is_null() {
-                                                let _ = CString::from_raw((*c_pairs.add(j)).value);
+                                            if !(*c_pairs.add(j)).value.data.is_null() && (*c_pairs.add(j)).value.length > 0 {
+                                                std::alloc::dealloc(
+                                                    (*c_pairs.add(j)).value.data,
+                                                    std::alloc::Layout::array::<u8>((*c_pairs.add(j)).value.length as usize).unwrap()
+                                                );
                                             }
                                         }
                                         std::alloc::dealloc(c_pairs as *mut u8, std::alloc::Layout::array::<KvPair>(count).unwrap());
+                                        return KvResult::error(&KvError::Unknown("Memory allocation failed for value".to_string()));
                                     }
-                                    return KvResult::error(&KvError::Unknown("Invalid value string".to_string()));
+                                    std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), ptr, value_bytes.len());
+                                    ptr
                                 }
+                            } else {
+                                ptr::null_mut()
                             };
                             
                             unsafe {
-                                (*c_pairs.add(i)).key = key_c;
-                                (*c_pairs.add(i)).value = value_c;
+                                (*c_pairs.add(i)).key = KvBinaryData {
+                                    data: key_data,
+                                    length: key_len,
+                                };
+                                (*c_pairs.add(i)).value = KvBinaryData {
+                                    data: value_data,
+                                    length: value_len,
+                                };
                             }
                         }
                         
@@ -860,11 +1033,19 @@ pub extern "C" fn kv_pair_array_free(pairs: *mut KvPairArray) {
             if !pairs_ref.pairs.is_null() && pairs_ref.count > 0 {
                 for i in 0..pairs_ref.count {
                     let pair = pairs_ref.pairs.add(i);
-                    if !(*pair).key.is_null() {
-                        let _ = CString::from_raw((*pair).key);
+                    // Free key data
+                    if !(*pair).key.data.is_null() && (*pair).key.length > 0 {
+                        std::alloc::dealloc(
+                            (*pair).key.data,
+                            std::alloc::Layout::array::<u8>((*pair).key.length as usize).unwrap()
+                        );
                     }
-                    if !(*pair).value.is_null() {
-                        let _ = CString::from_raw((*pair).value);
+                    // Free value data
+                    if !(*pair).value.data.is_null() && (*pair).value.length > 0 {
+                        std::alloc::dealloc(
+                            (*pair).value.data,
+                            std::alloc::Layout::array::<u8>((*pair).value.length as usize).unwrap()
+                        );
                     }
                 }
                 std::alloc::dealloc(

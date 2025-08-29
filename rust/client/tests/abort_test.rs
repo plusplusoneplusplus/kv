@@ -1,4 +1,4 @@
-use kvstore_client::{KvStoreClient, KvError};
+use kvstore_client::KvStoreClient;
 
 #[tokio::test]
 async fn test_transaction_abort() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,8 +13,8 @@ async fn test_transaction_abort() -> Result<(), Box<dyn std::error::Error>> {
     
     // If key exists, delete it first
     if pre_value.is_some() {
-        let delete_future = pre_tx.delete("abort_test_key", None);
-        delete_future.await_result().await?;
+        let mut pre_tx = pre_tx; // Make mutable for delete
+        pre_tx.delete("abort_test_key", None)?; // delete returns KvResult<()>
         let pre_commit_future = pre_tx.commit();
         pre_commit_future.await_result().await?;
         println!("Cleaned up existing key");
@@ -27,11 +27,11 @@ async fn test_transaction_abort() -> Result<(), Box<dyn std::error::Error>> {
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    println!("Transaction ID: {}", tx.transaction_id());
+    println!("Started transaction");
     
     // Set a value in the transaction
-    let set_future = tx.set("abort_test_key", "abort_test_value", None);
-    set_future.await_result().await?;
+    let mut tx = tx; // Make mutable for set
+    tx.set("abort_test_key", "abort_test_value", None)?; // set returns KvResult<()>
     println!("Set value in transaction");
     
     // Verify we can read it within the transaction
