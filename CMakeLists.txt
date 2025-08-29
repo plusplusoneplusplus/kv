@@ -21,7 +21,6 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Find required packages
 find_package(Protobuf REQUIRED)
 find_program(THRIFT_COMPILER thrift REQUIRED)
-find_program(GO_EXECUTABLE go REQUIRED)
 find_program(CARGO_EXECUTABLE cargo REQUIRED)
 
 # Include utilities
@@ -35,32 +34,12 @@ include(ExternalProject)
 set(PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 set(PROTO_FILE "${PROTO_DIR}/kvstore.proto")
 
-# Generate Go protobuf files using generate.sh
-add_custom_command(
-    OUTPUT 
-        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore.pb.go"
-        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate.sh
-    DEPENDS ${PROTO_FILE}
-    COMMENT "Generating Go protobuf files"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
 
 
 # Thrift Generation
 set(THRIFT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thrift")
 set(THRIFT_FILE "${THRIFT_DIR}/kvstore.thrift")
 
-# Generate Go thrift files
-set(GO_THRIFT_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/go/thrift")
-add_custom_command(
-    OUTPUT "${GO_THRIFT_OUT_DIR}/kvstore/kvstore.go"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${GO_THRIFT_OUT_DIR}"
-    COMMAND ${THRIFT_COMPILER} --gen go -out "${GO_THRIFT_OUT_DIR}" "${THRIFT_FILE}"
-    DEPENDS ${THRIFT_FILE}
-    COMMENT "Generating Go thrift files"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
 
 # Generate Rust thrift files
 add_custom_command(
@@ -83,55 +62,14 @@ add_custom_command(
 )
 
 # Create protocol generation targets
-add_custom_target(generate_proto ALL
-    DEPENDS 
-        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore.pb.go"
-        "${CMAKE_CURRENT_SOURCE_DIR}/go/proto/kvstore_grpc.pb.go"
-)
+add_custom_target(generate_proto ALL)
 
 add_custom_target(generate_thrift ALL
     DEPENDS 
-        "${GO_THRIFT_OUT_DIR}/kvstore/kvstore.go"
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
         "${NODEJS_THRIFT_OUT_DIR}/kvstore_types.js"
 )
 
-#==============================================================================
-# Go Builds
-#==============================================================================
-
-# Determine Go build flags based on CMAKE_BUILD_TYPE
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(GO_BUILD_FLAGS "-ldflags=-s -w" "-gcflags=all=-l -B")
-else()
-    set(GO_BUILD_FLAGS "-gcflags=all=-N -l")
-endif()
-
-# Go server
-add_custom_target(go_server ALL
-    COMMAND ${GO_EXECUTABLE} mod tidy
-    COMMAND ${GO_EXECUTABLE} mod download
-    COMMAND ${GO_EXECUTABLE} build 
-            ${GO_BUILD_FLAGS}
-            -o "${CMAKE_BINARY_DIR}/bin/rocksdbserver"
-            main.go server.go
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
-    DEPENDS generate_proto generate_thrift
-    COMMENT "Building Go server"
-)
-
-# Go client
-add_custom_target(go_client ALL
-    COMMAND ${GO_EXECUTABLE} mod tidy
-    COMMAND ${GO_EXECUTABLE} mod download
-    COMMAND ${GO_EXECUTABLE} build
-            ${GO_BUILD_FLAGS}
-            -o "${CMAKE_BINARY_DIR}/bin/client"
-            client.go
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
-    DEPENDS generate_proto generate_thrift
-    COMMENT "Building Go client"
-)
 
 #==============================================================================
 # Rust Builds
@@ -287,8 +225,6 @@ add_custom_target(build ALL
     DEPENDS 
         generate_proto
         generate_thrift
-        go_server
-        go_client
         rust_grpc_server
         rust_thrift_server
         rust_benchmark
@@ -300,13 +236,6 @@ add_custom_target(build ALL
 # Dependency Management Targets
 #==============================================================================
 
-# Go dependencies
-add_custom_target(go_deps
-    COMMAND ${GO_EXECUTABLE} mod tidy
-    COMMAND ${GO_EXECUTABLE} mod download
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/go"
-    COMMENT "Installing Go dependencies"
-)
 
 # Rust dependencies
 add_custom_target(rust_deps
@@ -329,7 +258,7 @@ add_custom_target(rust_client_deps
 
 # All dependencies target
 add_custom_target(deps
-    DEPENDS go_deps rust_deps rust_benchmark_deps rust_client_deps
+    DEPENDS rust_deps rust_benchmark_deps rust_client_deps
     COMMENT "Installing all dependencies"
 )
 
@@ -340,8 +269,6 @@ add_custom_target(deps
 # Clean target
 add_custom_target(clean_all
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/bin"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/thrift"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/go/proto"
     COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} clean || true
     COMMAND ${CARGO_EXECUTABLE} clean || true
@@ -358,12 +285,9 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "Available targets:"
     COMMAND ${CMAKE_COMMAND} -E echo "  build          - Build all components (default)"
     COMMAND ${CMAKE_COMMAND} -E echo "  deps           - Install all dependencies"
-    COMMAND ${CMAKE_COMMAND} -E echo "  go_deps        - Install Go dependencies"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_deps      - Install Rust dependencies"
     COMMAND ${CMAKE_COMMAND} -E echo "  generate_proto - Generate protobuf files"
     COMMAND ${CMAKE_COMMAND} -E echo "  generate_thrift- Generate thrift files"
-    COMMAND ${CMAKE_COMMAND} -E echo "  go_server      - Build Go gRPC server"
-    COMMAND ${CMAKE_COMMAND} -E echo "  go_client      - Build Go client"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_grpc_server   - Build Rust gRPC server"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_thrift_server - Build Rust Thrift server"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_benchmark - Build Rust benchmark tool"

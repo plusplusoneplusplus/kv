@@ -1,19 +1,11 @@
 # RocksDB Key-Value Service
 
-A high-performance key-value service supporting both gRPC and Thrift protocols, with RocksDB as the storage engine. Features implementations in Go, Rust, and C++ with comprehensive benchmarking capabilities and configurable database settings.
+A high-performance key-value service supporting both gRPC and Thrift protocols, implemented in Rust with RocksDB as the storage engine. Features comprehensive benchmarking capabilities and configurable database settings.
 
 ## Project Structure
 
 ```
 .
-├── go/                     # Go implementation
-│   ├── main.go            # Go gRPC server implementation
-│   ├── server.go          # Server logic
-│   ├── client.go          # Go client (works with both protocols)
-│   ├── ping_client.go     # Ping client for testing
-│   ├── go.mod            # Go module definition
-│   ├── proto/            # Generated gRPC/protobuf files for Go
-│   └── thrift/           # Generated Thrift files for Go
 ├── rust/                  # Rust implementation  
 │   ├── src/
 │   │   ├── main.rs       # Rust gRPC server implementation
@@ -23,13 +15,11 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   │   └── kvstore.rs    # Generated Thrift definitions (auto-generated)
 │   ├── Cargo.toml       # Rust dependencies
 │   └── build.rs         # Protobuf build script
-├── cpp/                   # C++ implementation (optional)
+├── rust/client/           # Rust client library with C FFI bindings
 │   ├── src/
-│   │   ├── main.cpp      # C++ server implementation
-│   │   ├── kvstore_service.cpp # Service implementation
-│   │   └── kvstore_service.h   # Service header
-│   ├── CMakeLists.txt    # CMake build configuration
-│   └── README.md         # C++ specific instructions
+│   ├── include/          # C header files
+│   ├── tests/            # C++ FFI tests
+│   └── Cargo.toml
 ├── benchmark-rust/        # Rust benchmarking tools
 │   ├── src/              # Rust benchmark implementation
 │   │   ├── main.rs       # Main benchmark entry point
@@ -49,29 +39,28 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │       └── warm_large_cache.toml # Large cache configuration
 ├── benchmark_results/     # Benchmark output and reports
 ├── scripts/               # Development and testing scripts
-├── generate.sh           # Protobuf code generation script
-├── Makefile             # Build automation for all targets
+├── CMakeLists.txt        # CMake build configuration
 └── README.md            # This file
 ```
 
 ## Features
 
 - **Multiple Protocols**: Support for both gRPC and Thrift protocols
-- **Multi-language**: Go and Rust server implementations
+- **Rust Implementation**: High-performance async server implementation
+- **C FFI Bindings**: Client library with C/C++ FFI support
 - **Key Operations**:
   - **Get**: Retrieve a value by key
   - **Put**: Store a key-value pair
   - **Delete**: Remove a key-value pair
   - **ListKeys**: List all keys with optional prefix filtering
   - **Ping**: Health check and latency testing
-- **Benchmarking**: Multi-threaded performance testing with detailed metrics and HTML reports (Rust implementation)
+- **Benchmarking**: Multi-threaded performance testing with detailed metrics and HTML reports
 - **Configuration Management**: Configurable RocksDB settings for different workloads
 - **High Performance**: Built on RocksDB for efficient storage and retrieval
 
 ## Prerequisites
 
 ### System Requirements
-- **Go**: 1.18 or later
 - **Rust**: 1.70 or later (with Cargo)
 - **Ubuntu/Debian**: 20.04 or later (for package installations below)
 
@@ -88,16 +77,13 @@ sudo apt update && sudo apt install -y \
     libprotobuf-dev \
     thrift-compiler \
     git
-
-# Optional: gRPC C++ libraries (only needed if building C++ implementation)
-sudo apt install -y libgrpc++-dev libgrpc-dev protobuf-compiler-grpc
 ```
 
 #### Alternative Package Managers
 
 **macOS (Homebrew):**
 ```bash
-brew install rocksdb protobuf thrift go rust
+brew install rocksdb protobuf thrift rust
 ```
 
 **CentOS/RHEL/Fedora:**
@@ -111,18 +97,7 @@ sudo yum install rocksdb-devel protobuf-compiler protobuf-devel thrift
 sudo dnf install rocksdb-devel protobuf-compiler protobuf-devel thrift
 ```
 
-### Language-Specific Setup
-
-#### Go Installation (if not already installed)
-```bash
-# Download and install Go 1.21+
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-source ~/.bashrc
-```
-
-#### Rust Installation (if not already installed)
+### Rust Installation (if not already installed)
 ```bash
 # Install Rust via rustup
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -138,51 +113,27 @@ source ~/.cargo/env
 git clone <repository-url>
 cd kv
 
-# Generate protocol definitions (gRPC + Thrift)
-make proto
-make thrift
+# Build all servers and tools using CMake
+cmake -B build -S .
+cmake --build build
 
-# Build all servers and tools
-make build          # Debug builds
-# OR
-make build-release  # Optimized release builds
+# For release builds:
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 
 # Verify build
-ls bin/             # Should show: benchmark-rust, client, rocksdbserver, rocksdbserver-rust, rocksdbserver-thrift
+ls bin/             # Should show: rocksdbserver-rust, rocksdbserver-thrift, benchmark-rust, etc.
 ```
 
-### Step-by-Step Build Process
+### Manual Rust Build
 
-#### 1. Generate Protocol Code
+#### Generate Protocol Code
 ```bash
-# Generate gRPC protobuf files
-make proto
-# Equivalent to: ./generate.sh
-
 # Generate Thrift definitions
-make thrift
-# Equivalent to: thrift --gen rs -out rust/src thrift/kvstore.thrift
+thrift --gen rs -out rust/src thrift/kvstore.thrift
 ```
 
-#### 2. Install Dependencies
-```bash
-# Go dependencies
-make go-deps
-# Equivalent to: go mod tidy && go mod download
-
-# Rust dependencies
-make rust-deps  
-# Equivalent to: cd rust && cargo fetch
-
-# Rust benchmark dependencies handled by cargo
-```
-
-#### 3. Build Individual Components
-
-**Go gRPC Server:**
-```bash
-go build -o bin/rocksdbserver go/main.go go/server.go
-```
+#### Build Individual Components
 
 **Rust gRPC Server:**
 ```bash
@@ -198,27 +149,27 @@ cp target/debug/thrift-server ../bin/rocksdbserver-thrift
 # For release: cargo build --release --bin thrift-server
 ```
 
-**Client Tool:**
-```bash
-go build -o bin/client go/client.go
-```
-
 **Rust Benchmark Tool:**
 ```bash
 cd benchmark-rust && cargo build --release
 cp target/release/benchmark ../bin/benchmark-rust
 ```
 
-### Makefile Targets
+**Rust Client Library with FFI:**
+```bash
+cd rust/client && cargo build --release --features ffi
+```
+
+### CMake Build Targets
 
 ```bash
-make build          # Build all (debug mode)
-make build-release  # Build all (release mode) 
-make proto          # Generate gRPC/protobuf files
-make thrift         # Generate Thrift files
-make clean          # Clean all build artifacts
-make go-deps        # Install Go dependencies
-make rust-deps      # Install Rust dependencies
+cmake --build build --target build_help    # Show available targets
+cmake --build build --target rust_grpc_server     # Build Rust gRPC server
+cmake --build build --target rust_thrift_server   # Build Rust Thrift server
+cmake --build build --target rust_benchmark       # Build benchmark tool
+cmake --build build --target rust_client_lib      # Build client library
+cmake --build build --target unified_ffi_test     # Build FFI tests
+cmake --build build --target test_ffi             # Run FFI tests
 ```
 
 ### Troubleshooting Build Issues
@@ -240,13 +191,7 @@ make rust-deps      # Install Rust dependencies
    sudo apt install librocksdb-dev pkg-config
    ```
 
-4. **Go module issues**
-   ```bash
-   go clean -modcache
-   go mod download
-   ```
-
-5. **Rust compilation errors**
+4. **Rust compilation errors**
    ```bash
    cd rust && cargo clean && cargo build
    ```
@@ -256,7 +201,6 @@ make rust-deps      # Install Rust dependencies
 # Check tools are available
 protoc --version
 thrift --version
-go version
 rustc --version
 
 # Check libraries
@@ -270,12 +214,6 @@ ldconfig -p | grep rocksdb
 
 All servers use port 50051 by default. Start one server at a time:
 
-**Go gRPC Server:**
-```bash
-./bin/rocksdbserver
-# Database: ./data/rocksdb/
-```
-
 **Rust gRPC Server:**
 ```bash
 ./bin/rocksdbserver-rust
@@ -288,44 +226,44 @@ All servers use port 50051 by default. Start one server at a time:
 # Database: ./data/rocksdb-thrift/
 ```
 
-**C++ gRPC Server:**
-```bash
-./bin/rocksdbserver-cpp
-# Database: ./data/rocksdb-cpp/
+### Using the Rust Client Library
+
+The client library can be used from Rust, C, or C++:
+
+**Rust Usage:**
+```rust
+use kvstore_client::{KVClient, Config};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::default();
+    let mut client = KVClient::new(config).await?;
+    
+    client.put("key1", "value1").await?;
+    let value = client.get("key1").await?;
+    println!("Retrieved: {:?}", value);
+    
+    Ok(())
+}
 ```
 
-### Using the Client
+**C/C++ Usage (via FFI):**
+```cpp
+#include "kvstore_client.h"
 
-The client automatically detects and works with both gRPC and Thrift protocols:
-
-**Basic Operations:**
-```bash
-# Put a key-value pair
-./bin/client -op put -key "hello" -value "world"
-
-# Get a value by key
-./bin/client -op get -key "hello"
-
-# Delete a key
-./bin/client -op delete -key "hello"
-
-# List all keys
-./bin/client -op list
-
-# List keys with prefix
-./bin/client -op list -prefix "user:" -limit 20
-
-# Health check / ping
-./bin/client -op ping
+int main() {
+    KVConfig config = kv_config_default();
+    KVClient* client = kv_client_new(config);
+    
+    kv_put(client, "key1", "value1");
+    
+    const char* value = kv_get(client, "key1");
+    printf("Retrieved: %s\n", value);
+    
+    kv_client_free(client);
+    return 0;
+}
 ```
-
-**Client Configuration:**
-- `-addr`: Server address (default: localhost:50051)
-- `-op`: Operation (get, put, delete, list, ping)
-- `-key`: Key for operation
-- `-value`: Value for put operation
-- `-prefix`: Prefix for list operation
-- `-limit`: Limit for list operation (default: 10)
 
 ### Protocol-Specific Usage
 
@@ -351,12 +289,11 @@ The Rust benchmark tool supports multiple protocols (gRPC, Thrift, and raw Rocks
 ### Quick Start
 
 ```bash
-# Build everything first
-make build-release
+# Build everything first (release mode for accurate benchmarks)
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 
 # Start a server (choose one)
-./bin/rocksdbserver &          # Go gRPC server
-# OR
 ./bin/rocksdbserver-rust &     # Rust gRPC server  
 # OR
 ./bin/rocksdbserver-thrift &   # Rust Thrift server
@@ -434,27 +371,13 @@ Per-Operation Stats:
   Writes - Avg: 2.4ms, P99: 11.1ms
 ```
 
-### Performance Comparison
+### Performance Characteristics
 
 **Typical Results (example hardware):**
 - **Thrift Protocol**: ~20,000-25,000 ops/sec, lower latency
 - **gRPC Protocol**: ~15,000-20,000 ops/sec, better tooling ecosystem
 - **Read Performance**: Generally 2-3x faster than writes
-- **Rust vs Go**: Rust typically 10-20% higher throughput
-
-### Advanced Benchmarking
-
-**Server Comparison:**
-```bash
-# Test server implementations
-./bin/rocksdbserver & PID1=$!
-./bin/benchmark-rust > go_grpc.txt
-kill $PID1
-
-./bin/rocksdbserver-rust & PID2=$!  
-./bin/benchmark-rust > rust_grpc.txt
-kill $PID2
-```
+- **Raw RocksDB**: Highest throughput for comparison baseline
 
 ## API Reference
 
@@ -501,7 +424,7 @@ kill $PID2
 
 ### Project Structure Notes
 
-- **Generated Files**: Files like `rust/src/kvstore.rs` and `go/proto/*.pb.go` are auto-generated and should not be edited directly
+- **Generated Files**: Files like `rust/src/kvstore.rs` are auto-generated and should not be edited directly
 - **Protocol Definitions**: Edit `proto/kvstore.proto` for gRPC or `thrift/kvstore.thrift` for Thrift changes
 - **Database Storage**: Each server uses its own RocksDB database directory in `./data/`
 
@@ -509,50 +432,46 @@ kill $PID2
 
 **To modify the service:**
 1. Edit `proto/kvstore.proto` (for gRPC) or `thrift/kvstore.thrift` (for Thrift)
-2. Regenerate code: `make proto` and/or `make thrift`
-3. Update server implementations in Go and Rust
-4. Rebuild: `make build-release`
+2. Regenerate code: `thrift --gen rs -out rust/src thrift/kvstore.thrift`
+3. Update server implementation in Rust
+4. Rebuild: `cmake --build build`
 
 **To add new operations:**
 1. Add to protocol definition files
 2. Regenerate protocol code
-3. Implement in both server implementations
-4. Update client and benchmark tools
+3. Implement in server implementation
+4. Update client library and benchmark tools
 5. Test with both protocols
 
 ### Code Generation
 
 ```bash
-# Regenerate all protocol code
-make proto thrift
-
-# Individual generation
-./generate.sh                                          # gRPC only
-thrift --gen rs -out rust/src thrift/kvstore.thrift   # Thrift only
+# Regenerate Thrift code
+thrift --gen rs -out rust/src thrift/kvstore.thrift
 ```
 
 ### Testing
 
 ```bash
 # Quick functionality test
-make build-release
-./bin/rocksdbserver &
-./bin/client -op put -key "test" -value "hello"
-./bin/client -op get -key "test"
-./bin/client -op delete -key "test"
-killall rocksdbserver
+cmake --build build
+./bin/rocksdbserver-rust &
+# Use Rust client library or grpcurl to test operations
+killall rocksdbserver-rust
 
 # Performance test
 ./bin/rocksdbserver-rust &
 ./bin/benchmark-rust -n 1000
 killall rocksdbserver-rust
+
+# FFI tests
+cmake --build build --target test_ffi
 ```
 
 ### Performance Notes
 
 - **Database Persistence**: Data persists between server restarts in `./data/` directories
 - **Graceful Shutdown**: All servers handle SIGTERM/SIGINT gracefully
-- **Connection Timeout**: Client timeout is set to 10 seconds
 - **Concurrency**: All servers are designed for high-concurrency workloads
 - **Memory Usage**: RocksDB manages its own memory and disk caching
 
@@ -561,7 +480,7 @@ killall rocksdbserver-rust
 **Port Already in Use:**
 ```bash
 lsof -i :50051          # Check what's using the port
-killall rocksdbserver rocksdbserver-rust rocksdbserver-thrift
+killall rocksdbserver-rust rocksdbserver-thrift
 ```
 
 **Database Issues:**
@@ -571,7 +490,6 @@ rm -rf data/            # Clear all databases (will lose data!)
 
 **Build Cache Issues:**
 ```bash
-make clean              # Clean all build artifacts
-go clean -modcache      # Clear Go module cache
 cd rust && cargo clean  # Clear Rust build cache
+rm -rf build/           # Clear CMake build cache
 ```

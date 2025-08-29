@@ -16,12 +16,8 @@ Makefile
 # Benchmark results
 benchmark_results/
 
-# Generated protobuf files
-go/proto/*.pb.go
-
 # Generated Thrift files
 rust/src/kvstore.rs
-go/thrift/
 gen-nodejs/
 
 # Rust build artifacts
