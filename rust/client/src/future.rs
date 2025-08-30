@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use parking_lot::Mutex;
 use std::sync::{Arc, Mutex as StdMutex};
 use crate::error::KvResult;
 
@@ -35,7 +34,6 @@ impl<T> Future for KvFuture<T> {
 
 // Opaque pointer type for C FFI
 pub struct KvFuturePtr<T> {
-    inner: Arc<Mutex<Option<KvFuture<T>>>>,
     result: Arc<StdMutex<Option<KvResult<T>>>>,
 }
 
@@ -53,7 +51,6 @@ impl<T: Send + 'static> KvFuturePtr<T> {
         });
         
         Self {
-            inner: Arc::new(Mutex::new(None)), // No longer needed
             result: result_arc,
         }
     }
