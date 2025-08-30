@@ -59,11 +59,12 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
     
     fn handle_snapshot_read(&self, req: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse> {
+        let key_str = String::from_utf8_lossy(&req.key);
         if self.verbose {
             debug!("Snapshot read: key='{}', read_version={}, column_family={:?}", 
-                   req.key, req.read_version, req.column_family);
+                   key_str, req.read_version, req.column_family);
         }
-        let result = self.database.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
+        let result = self.database.snapshot_read(&key_str, req.read_version as u64, req.column_family.as_deref());
         
         match result {
             Ok(get_result) => {
@@ -72,7 +73,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
                            get_result.found, get_result.value.len());
                 }
                 Ok(SnapshotReadResponse::new(
-                    get_result.value,
+                    get_result.value.into_bytes(),
                     get_result.found,
                     None
                 ))
@@ -82,7 +83,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
                     warn!("Snapshot read error: {}", e);
                 }
                 Ok(SnapshotReadResponse::new(
-                    String::new(),
+                    Vec::new(),
                     false,
                     Some(e)
                 ))
@@ -96,8 +97,9 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
                    req.read_version, req.operations.len(), req.read_conflict_keys.len(), 
                    req.timeout_seconds.unwrap_or(60));
             for (i, op) in req.operations.iter().enumerate() {
+                let key_str = String::from_utf8_lossy(&op.key);
                 trace!("Operation {}: type={}, key='{}', value_len={}, column_family={:?}", 
-                       i, op.type_, op.key, 
+                       i, op.type_, key_str, 
                        op.value.as_ref().map(|v| v.len()).unwrap_or(0), 
                        op.column_family);
             }
@@ -107,16 +109,20 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         let operations: Vec<rocksdb_server::lib::db::AtomicOperation> = req.operations.into_iter()
             .map(|op| rocksdb_server::lib::db::AtomicOperation {
                 op_type: op.type_,
-                key: op.key,
-                value: op.value,
+                key: String::from_utf8_lossy(&op.key).to_string(),
+                value: op.value.map(|v| String::from_utf8_lossy(&v).to_string()),
                 column_family: op.column_family,
             })
+            .collect();
+        
+        let read_conflict_keys: Vec<String> = req.read_conflict_keys.into_iter()
+            .map(|k| String::from_utf8_lossy(&k).to_string())
             .collect();
         
         let atomic_request = rocksdb_server::lib::db::AtomicCommitRequest {
             read_version: req.read_version as u64,
             operations,
-            read_conflict_keys: req.read_conflict_keys,
+            read_conflict_keys,
             timeout_seconds: req.timeout_seconds.unwrap_or(60) as u64,
         };
         
@@ -141,29 +147,30 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     // Non-transactional operations for backward compatibility
     fn handle_get(&self, req: GetRequest) -> thrift::Result<GetResponse> {
+        let key_str = String::from_utf8_lossy(&req.key);
         if self.verbose {
-            debug!("Get: key='{}'", req.key);
+            debug!("Get: key='{}'", key_str);
         }
-        let result = self.database.get(&req.key);
+        let result = self.database.get(&key_str);
         
         match result {
             Ok(get_result) => {
                 if self.verbose {
                     debug!("Get result: key='{}', found={}, value_len={}", 
-                           req.key, get_result.found, get_result.value.len());
+                           key_str, get_result.found, get_result.value.len());
                 }
                 Ok(GetResponse::new(
-                    get_result.value,
+                    get_result.value.into_bytes(),
                     get_result.found,
                     None
                 ))
             },
             Err(e) => {
                 if self.verbose {
-                    warn!("Get error for key '{}': {}", req.key, e);
+                    warn!("Get error for key '{}': {}", key_str, e);
                 }
                 Ok(GetResponse::new(
-                    String::new(),
+                    Vec::new(),
                     false,
                     Some(e)
                 ))
@@ -172,16 +179,18 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_set_key(&self, req: SetRequest) -> thrift::Result<SetResponse> {
+        let key_str = String::from_utf8_lossy(&req.key);
+        let value_str = String::from_utf8_lossy(&req.value);
         if self.verbose {
-            debug!("Set: key='{}', value_len={}", req.key, req.value.len());
+            debug!("Set: key='{}', value_len={}", key_str, req.value.len());
         }
-        let result = self.database.put(&req.key, &req.value);
+        let result = self.database.put(&key_str, &value_str);
         
         if self.verbose {
             debug!("Set result: key='{}', success={}, error_code={:?}", 
-                   req.key, result.success, result.error_code);
+                   key_str, result.success, result.error_code);
             if !result.error.is_empty() {
-                warn!("Set error for key '{}': {}", req.key, result.error);
+                warn!("Set error for key '{}': {}", key_str, result.error);
             }
         }
         
@@ -193,16 +202,17 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_delete_key(&self, req: DeleteRequest) -> thrift::Result<DeleteResponse> {
+        let key_str = String::from_utf8_lossy(&req.key);
         if self.verbose {
-            debug!("Delete: key='{}'", req.key);
+            debug!("Delete: key='{}'", key_str);
         }
-        let result = self.database.delete(&req.key);
+        let result = self.database.delete(&key_str);
         
         if self.verbose {
             debug!("Delete result: key='{}', success={}, error_code={:?}", 
-                   req.key, result.success, result.error_code);
+                   key_str, result.success, result.error_code);
             if !result.error.is_empty() {
-                warn!("Delete error for key '{}': {}", req.key, result.error);
+                warn!("Delete error for key '{}': {}", key_str, result.error);
             }
         }
         
@@ -215,14 +225,16 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     // Range operations
     fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
+        let start_key_str = String::from_utf8_lossy(&req.start_key);
+        let end_key_str = req.end_key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
         if self.verbose {
             debug!("Get range: start_key='{}', end_key={:?}, limit={}, column_family={:?}",
-                   req.start_key, req.end_key, req.limit.unwrap_or(1000), req.column_family);
+                   start_key_str, end_key_str, req.limit.unwrap_or(1000), req.column_family);
         }
         
         let result = self.database.get_range(
-            &req.start_key,
-            req.end_key.as_deref(),
+            &start_key_str,
+            end_key_str.as_deref(),
             req.limit,
             req.column_family.as_deref()
         );
@@ -234,7 +246,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         
         if result.success {
             let key_values: Vec<KeyValue> = result.key_values.into_iter()
-                .map(|kv| KeyValue::new(kv.key, kv.value))
+                .map(|kv| KeyValue::new(kv.key.into_bytes(), kv.value.into_bytes()))
                 .collect();
             
             Ok(GetRangeResponse::new(
@@ -253,16 +265,17 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     // Backward compatibility snapshot operations
     fn handle_snapshot_get(&self, req: SnapshotGetRequest) -> thrift::Result<SnapshotGetResponse> {
-        let result = self.database.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
+        let key_str = String::from_utf8_lossy(&req.key);
+        let result = self.database.snapshot_read(&key_str, req.read_version as u64, req.column_family.as_deref());
         
         match result {
             Ok(get_result) => Ok(SnapshotGetResponse::new(
-                get_result.value,
+                get_result.value.into_bytes(),
                 get_result.found,
                 None
             )),
             Err(e) => Ok(SnapshotGetResponse::new(
-                String::new(),
+                Vec::new(),
                 false,
                 Some(e)
             )),
@@ -270,14 +283,16 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
+        let start_key_str = String::from_utf8_lossy(&req.start_key);
+        let end_key_str = req.end_key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
         if self.verbose {
             debug!("Snapshot get range: start_key='{}', end_key={:?}, read_version={}, limit={}, column_family={:?}",
-                   req.start_key, req.end_key, req.read_version, req.limit.unwrap_or(1000), req.column_family);
+                   start_key_str, end_key_str, req.read_version, req.limit.unwrap_or(1000), req.column_family);
         }
         
         let result = self.database.snapshot_get_range(
-            &req.start_key,
-            req.end_key.as_deref(),
+            &start_key_str,
+            end_key_str.as_deref(),
             req.read_version as u64,
             req.limit,
             req.column_family.as_deref()
@@ -290,7 +305,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         
         if result.success {
             let key_values: Vec<KeyValue> = result.key_values.into_iter()
-                .map(|kv| KeyValue::new(kv.key, kv.value))
+                .map(|kv| KeyValue::new(kv.key.into_bytes(), kv.value.into_bytes()))
                 .collect();
             
             Ok(SnapshotGetRangeResponse::new(
@@ -341,7 +356,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     // Versionstamped operation stubs - not supported in simplified model
     fn handle_set_versionstamped_key(&self, _req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
         Ok(SetVersionstampedKeyResponse::new(
-            String::new(),
+            Vec::new(),
             false,
             Some("Versionstamped operations not supported in simplified model".to_string())
         ))
@@ -349,7 +364,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     fn handle_set_versionstamped_value(&self, _req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
         Ok(SetVersionstampedValueResponse::new(
-            String::new(),
+            Vec::new(),
             false,
             Some("Versionstamped operations not supported in simplified model".to_string())
         ))

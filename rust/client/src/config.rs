@@ -69,16 +69,20 @@ pub fn init_debug_logging() {
     }
 
     // Initialize tracing subscriber for debug output
-    tracing_subscriber::fmt()
+    if tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_thread_ids(true)
         .with_thread_names(true)
         .with_file(true)
         .with_line_number(true)
-        .init();
-
-    DEBUG_ENABLED.store(true, Ordering::Relaxed);
-    info!("KV Store client debug logging initialized");
+        .try_init()
+        .is_ok() {
+        DEBUG_ENABLED.store(true, Ordering::Relaxed);
+        info!("KV Store client debug logging initialized");
+    } else {
+        // Tracing was already initialized, just mark debug as enabled
+        DEBUG_ENABLED.store(true, Ordering::Relaxed);
+    }
 }
 
 /// Check if debug mode is enabled

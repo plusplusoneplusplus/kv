@@ -2,19 +2,19 @@ namespace rs kvstore
 
 // Core non-transactional operations (for backward compatibility)
 struct GetRequest {
-    1: required string key,
+    1: required binary key,
     2: optional string column_family
 }
 
 struct GetResponse {
-    1: required string value,
+    1: required binary value,
     2: required bool found,
     3: optional string error
 }
 
 struct SetRequest {
-    1: required string key,
-    2: required string value,
+    1: required binary key,
+    2: required binary value,
     3: optional string column_family
 }
 
@@ -25,7 +25,7 @@ struct SetResponse {
 }
 
 struct DeleteRequest {
-    1: required string key,
+    1: required binary key,
     2: optional string column_family
 }
 
@@ -37,15 +37,15 @@ struct DeleteResponse {
 
 // Range operations (simplified)
 struct GetRangeRequest {
-    1: required string start_key,
-    2: optional string end_key,
+    1: required binary start_key,
+    2: optional binary end_key,
     3: optional i32 limit = 1000,
     4: optional string column_family
 }
 
 struct KeyValue {
-    1: required string key,
-    2: required string value
+    1: required binary key,
+    2: required binary value
 }
 
 struct GetRangeResponse {
@@ -56,20 +56,20 @@ struct GetRangeResponse {
 
 // Legacy snapshot operations (for backward compatibility)
 struct SnapshotGetRequest {
-    1: required string key,
+    1: required binary key,
     2: required i64 read_version,
     3: optional string column_family
 }
 
 struct SnapshotGetResponse {
-    1: required string value,
+    1: required binary value,
     2: required bool found,
     3: optional string error
 }
 
 struct SnapshotGetRangeRequest {
-    1: required string start_key,
-    2: optional string end_key,
+    1: required binary start_key,
+    2: optional binary end_key,
     3: required i64 read_version,
     4: optional i32 limit = 1000,
     5: optional string column_family
@@ -83,7 +83,7 @@ struct SnapshotGetRangeResponse {
 
 // Legacy stub structures (for backward compatibility - return errors)
 struct AddReadConflictRequest {
-    1: required string key,
+    1: required binary key,
     2: optional string column_family
 }
 
@@ -93,8 +93,8 @@ struct AddReadConflictResponse {
 }
 
 struct AddReadConflictRangeRequest {
-    1: required string start_key,
-    2: required string end_key,
+    1: required binary start_key,
+    2: required binary end_key,
     3: optional string column_family
 }
 
@@ -123,25 +123,25 @@ struct GetCommittedVersionResponse {
 }
 
 struct SetVersionstampedKeyRequest {
-    1: required string key_prefix,
-    2: required string value,
+    1: required binary key_prefix,
+    2: required binary value,
     3: optional string column_family
 }
 
 struct SetVersionstampedKeyResponse {
-    1: required string generated_key,
+    1: required binary generated_key,
     2: required bool success,
     3: optional string error
 }
 
 struct SetVersionstampedValueRequest {
-    1: required string key,
-    2: required string value_prefix,
+    1: required binary key,
+    2: required binary value_prefix,
     3: optional string column_family
 }
 
 struct SetVersionstampedValueResponse {
-    1: required string generated_value,
+    1: required binary generated_value,
     2: required bool success,
     3: optional string error
 }
@@ -162,15 +162,15 @@ struct FaultInjectionResponse {
 // Client-side atomic operations (FoundationDB style)
 struct Operation {
     1: required string type,  // "set", "delete" 
-    2: required string key,
-    3: optional string value,  // Only for "set" operations
+    2: required binary key,
+    3: optional binary value,  // Only for "set" operations
     4: optional string column_family
 }
 
 struct AtomicCommitRequest {
     1: required i64 read_version,  // Client's read version for conflict detection
     2: required list<Operation> operations,  // All buffered operations
-    3: required list<string> read_conflict_keys,  // Keys read during transaction
+    3: required list<binary> read_conflict_keys,  // Keys read during transaction
     4: optional i64 timeout_seconds = 60
 }
 
@@ -192,13 +192,13 @@ struct GetReadVersionResponse {
 }
 
 struct SnapshotReadRequest {
-    1: required string key,
+    1: required binary key,
     2: required i64 read_version,
     3: optional string column_family
 }
 
 struct SnapshotReadResponse {
-    1: required string value,
+    1: required binary value,
     2: required bool found,
     3: optional string error
 }

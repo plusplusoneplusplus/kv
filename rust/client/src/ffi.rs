@@ -338,7 +338,11 @@ pub extern "C" fn kv_future_poll(future: KvFutureHandle) -> c_int {
             if future_ptr.poll() { 1 } else { 0 }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<()>>() {
             if future_ptr.poll() { 1 } else { 0 }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<Vec<u8>>>>() {
+            if future_ptr.poll() { 1 } else { 0 }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<String>>>() {
+            if future_ptr.poll() { 1 } else { 0 }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(Vec<u8>, Vec<u8>)>>>() {
             if future_ptr.poll() { 1 } else { 0 }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(String, String)>>>() {
             if future_ptr.poll() { 1 } else { 0 }
@@ -427,13 +431,7 @@ pub extern "C" fn kv_transaction_get(
     };
     
     let key_bytes = unsafe {
-        slice::from_raw_parts(key_data, key_length as usize)
-    };
-    
-    // Convert binary key to string (assuming UTF-8 for now)
-    let key_str = match std::str::from_utf8(key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
+        slice::from_raw_parts(key_data, key_length as usize).to_vec() // Copy the data
     };
     
     let cf_str = if column_family.is_null() {
@@ -441,13 +439,17 @@ pub extern "C" fn kv_transaction_get(
     } else {
         unsafe {
             match CStr::from_ptr(column_family).to_str() {
-                Ok(s) => Some(s),
+                Ok(s) => Some(s.to_string()), // Copy the string
                 Err(_) => return ptr::null_mut(),
             }
         }
     };
     
-    let future = tx_arc.lock().get(key_str, cf_str);
+    // Create the future outside of any locks
+    let future = {
+        let tx_guard = tx_arc.lock();
+        tx_guard.get(&key_bytes, cf_str.as_deref())
+    }; // Lock is released here
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -478,22 +480,11 @@ pub extern "C" fn kv_transaction_set(
     };
     
     let key_bytes = unsafe {
-        slice::from_raw_parts(key_data, key_length as usize)
+        slice::from_raw_parts(key_data, key_length as usize).to_vec() // Copy the data
     };
     
     let value_bytes = unsafe {
-        slice::from_raw_parts(value_data, value_length as usize)
-    };
-    
-    // Convert binary key and value to strings (assuming UTF-8 for now)
-    let key_str = match std::str::from_utf8(key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-    };
-    
-    let value_str = match std::str::from_utf8(value_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary values
+        slice::from_raw_parts(value_data, value_length as usize).to_vec() // Copy the data
     };
     
     let cf_str = if column_family.is_null() {
@@ -501,13 +492,17 @@ pub extern "C" fn kv_transaction_set(
     } else {
         unsafe {
             match CStr::from_ptr(column_family).to_str() {
-                Ok(s) => Some(s),
+                Ok(s) => Some(s.to_string()), // Copy the string
                 Err(_) => return ptr::null_mut(),
             }
         }
     };
     
-    let result = tx_arc.lock().set(key_str, value_str, cf_str);
+    // Use the binary set method
+    let result = {
+        let mut tx_guard = tx_arc.lock();
+        tx_guard.set(&key_bytes, &value_bytes, cf_str.as_deref())
+    }; // Lock is released here
     let future = KvFuture::new(async move { result });
     let future_ptr = KvFuturePtr::new(future);
     
@@ -536,13 +531,7 @@ pub extern "C" fn kv_transaction_delete(
     };
     
     let key_bytes = unsafe {
-        slice::from_raw_parts(key_data, key_length as usize)
-    };
-    
-    // Convert binary key to string (assuming UTF-8 for now)
-    let key_str = match std::str::from_utf8(key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
+        slice::from_raw_parts(key_data, key_length as usize).to_vec() // Copy the data
     };
     
     let cf_str = if column_family.is_null() {
@@ -550,13 +539,17 @@ pub extern "C" fn kv_transaction_delete(
     } else {
         unsafe {
             match CStr::from_ptr(column_family).to_str() {
-                Ok(s) => Some(s),
+                Ok(s) => Some(s.to_string()), // Copy the string
                 Err(_) => return ptr::null_mut(),
             }
         }
     };
     
-    let result = tx_arc.lock().delete(key_str, cf_str);
+    // Use the binary delete method
+    let result = {
+        let mut tx_guard = tx_arc.lock();
+        tx_guard.delete(&key_bytes, cf_str.as_deref())
+    }; // Lock is released here
     let future = KvFuture::new(async move { result });
     let future_ptr = KvFuturePtr::new(future);
     
@@ -632,13 +625,12 @@ pub extern "C" fn kv_future_get_value_result(future: KvFutureHandle, value: *mut
     let mut futures = FUTURES.lock();
     
     if let Some(boxed_future) = futures.remove(&future_id) {
-        // Try Option<String> first
-        match boxed_future.downcast::<KvFuturePtr<Option<String>>>() {
+        // Try Option<Vec<u8>> first (for binary operations)
+        match boxed_future.downcast::<KvFuturePtr<Option<Vec<u8>>>>() {
             Ok(future_ptr) => {
                 if let Some(result) = future_ptr.take_result() {
                     return match result {
-                        Ok(Some(val)) => {
-                            let bytes = val.into_bytes();
+                        Ok(Some(bytes)) => {
                             let len = bytes.len() as c_int;
                             let data = unsafe {
                                 let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
@@ -667,30 +659,67 @@ pub extern "C" fn kv_future_get_value_result(future: KvFutureHandle, value: *mut
                 }
             }
             Err(boxed_future) => {
-                // Try String type
-                if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<String>>() {
-                    if let Some(result) = future_ptr.take_result() {
-                        return match result {
-                            Ok(val) => {
-                                let bytes = val.into_bytes();
-                                let len = bytes.len() as c_int;
-                                let data = unsafe {
-                                    let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
-                                    if ptr.is_null() {
-                                        return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                // Try Option<String> next
+                match boxed_future.downcast::<KvFuturePtr<Option<String>>>() {
+                    Ok(future_ptr) => {
+                        if let Some(result) = future_ptr.take_result() {
+                            return match result {
+                                Ok(Some(val)) => {
+                                    let bytes = val.into_bytes();
+                                    let len = bytes.len() as c_int;
+                                    let data = unsafe {
+                                        let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
+                                        if ptr.is_null() {
+                                            return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                                        }
+                                        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+                                        ptr
+                                    };
+                                    
+                                    unsafe {
+                                        (*value).data = data;
+                                        (*value).length = len;
                                     }
-                                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-                                    ptr
-                                };
-                                
-                                unsafe {
-                                    (*value).data = data;
-                                    (*value).length = len;
+                                    KvResult::success()
                                 }
-                                KvResult::success()
+                                Ok(None) => {
+                                    unsafe {
+                                        (*value).data = ptr::null_mut();
+                                        (*value).length = 0;
+                                    }
+                                    KvResult::success()
+                                }
+                                Err(err) => KvResult::error(&err),
+                            };
+                        }
+                    }
+                    Err(boxed_future) => {
+                        // Try String type
+                        if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<String>>() {
+                            if let Some(result) = future_ptr.take_result() {
+                                return match result {
+                                    Ok(val) => {
+                                        let bytes = val.into_bytes();
+                                        let len = bytes.len() as c_int;
+                                        let data = unsafe {
+                                            let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(bytes.len()).unwrap());
+                                            if ptr.is_null() {
+                                                return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                                            }
+                                            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+                                            ptr
+                                        };
+                                        
+                                        unsafe {
+                                            (*value).data = data;
+                                            (*value).length = len;
+                                        }
+                                        KvResult::success()
+                                    }
+                                    Err(err) => KvResult::error(&err),
+                                };
                             }
-                            Err(err) => KvResult::error(&err),
-                        };
+                        }
                     }
                 }
             }
@@ -872,23 +901,12 @@ pub extern "C" fn kv_read_transaction_get_range(
         slice::from_raw_parts(start_key_data, start_key_length as usize)
     };
     
-    // Convert binary start key to string (assuming UTF-8 for now)
-    let start_key_str = match std::str::from_utf8(start_key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-    };
-    
-    let end_key_str = if end_key_data.is_null() || end_key_length <= 0 {
+    let end_key_bytes = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
-        let end_key_bytes = unsafe {
+        Some(unsafe {
             slice::from_raw_parts(end_key_data, end_key_length as usize)
-        };
-        // Convert binary end key to string (assuming UTF-8 for now)
-        match std::str::from_utf8(end_key_bytes) {
-            Ok(s) => Some(s),
-            Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-        }
+        })
     };
     
     let cf_str = if column_family.is_null() {
@@ -904,7 +922,7 @@ pub extern "C" fn kv_read_transaction_get_range(
     
     let limit_val = if limit > 0 { Some(limit as usize) } else { None };
     
-    let future = tx_arc.snapshot_get_range(start_key_str, end_key_str, limit_val.map(|l| l as u32), cf_str);
+    let future = tx_arc.snapshot_get_range(start_key_bytes, end_key_bytes, limit_val.map(|l| l as u32), cf_str);
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -985,23 +1003,12 @@ pub extern "C" fn kv_transaction_get_range(
         slice::from_raw_parts(start_key_data, start_key_length as usize)
     };
     
-    // Convert binary start key to string (assuming UTF-8 for now)
-    let start_key_str = match std::str::from_utf8(start_key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-    };
-    
-    let end_key_str = if end_key_data.is_null() || end_key_length <= 0 {
+    let end_key_bytes = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
-        let end_key_bytes = unsafe {
+        Some(unsafe {
             slice::from_raw_parts(end_key_data, end_key_length as usize)
-        };
-        // Convert binary end key to string (assuming UTF-8 for now)
-        match std::str::from_utf8(end_key_bytes) {
-            Ok(s) => Some(s),
-            Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-        }
+        })
     };
     
     let cf_str = if column_family.is_null() {
@@ -1017,7 +1024,7 @@ pub extern "C" fn kv_transaction_get_range(
     
     let limit_val = if limit > 0 { Some(limit as u32) } else { None };
     
-    let future = tx_arc.lock().get_range(start_key_str, end_key_str, limit_val, cf_str);
+    let future = tx_arc.lock().get_range(start_key_bytes, end_key_bytes, limit_val, cf_str);
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -1037,7 +1044,79 @@ pub extern "C" fn kv_future_get_kv_array_result(future: KvFutureHandle, pairs: *
     let mut futures = FUTURES.lock();
     
     if let Some(boxed_future) = futures.remove(&future_id) {
-        if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<Vec<(String, String)>>>() {
+        // Try binary format first
+        match boxed_future.downcast::<KvFuturePtr<Vec<(Vec<u8>, Vec<u8>)>>>() {
+            Ok(future_ptr) => {
+            if let Some(result) = future_ptr.take_result() {
+                return match result {
+                    Ok(kv_vec) => {
+                        let count = kv_vec.len();
+                        if count == 0 {
+                            unsafe {
+                                (*pairs).pairs = ptr::null_mut();
+                                (*pairs).count = 0;
+                            }
+                            return KvResult::success();
+                        }
+                        
+                        // Allocate C array
+                        let c_pairs = unsafe {
+                            std::alloc::alloc(std::alloc::Layout::array::<KvPair>(count).unwrap()) as *mut KvPair
+                        };
+                        
+                        if c_pairs.is_null() {
+                            return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                        }
+                        
+                        // Fill the array with binary data
+                        for (i, (key_bytes, value_bytes)) in kv_vec.into_iter().enumerate() {
+                            // Allocate and copy key data
+                            let key_len = key_bytes.len();
+                            let key_ptr = unsafe {
+                                let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(key_len).unwrap());
+                                if ptr.is_null() {
+                                    return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                                }
+                                std::ptr::copy_nonoverlapping(key_bytes.as_ptr(), ptr, key_len);
+                                ptr
+                            };
+                            
+                            // Allocate and copy value data
+                            let value_len = value_bytes.len();
+                            let value_ptr = unsafe {
+                                let ptr = std::alloc::alloc(std::alloc::Layout::array::<u8>(value_len).unwrap());
+                                if ptr.is_null() {
+                                    return KvResult::error(&KvError::Unknown("Memory allocation failed".to_string()));
+                                }
+                                std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), ptr, value_len);
+                                ptr
+                            };
+                            
+                            unsafe {
+                                (*c_pairs.add(i)).key = KvBinaryData {
+                                    data: key_ptr,
+                                    length: key_len as c_int,
+                                };
+                                (*c_pairs.add(i)).value = KvBinaryData {
+                                    data: value_ptr,
+                                    length: value_len as c_int,
+                                };
+                            }
+                        }
+                        
+                        unsafe {
+                            (*pairs).pairs = c_pairs;
+                            (*pairs).count = count;
+                        }
+                        KvResult::success()
+                    }
+                    Err(err) => KvResult::error(&err),
+                };
+            }
+            }
+            Err(boxed_future) => {
+                // Try string format for backward compatibility
+                if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<Vec<(String, String)>>>() {
             if let Some(result) = future_ptr.take_result() {
                 return match result {
                     Ok(kv_vec) => {
@@ -1150,6 +1229,8 @@ pub extern "C" fn kv_future_get_kv_array_result(future: KvFutureHandle, pairs: *
                     }
                     Err(err) => KvResult::error(&err),
                 };
+                }
+            }
             }
         }
     }

@@ -32,12 +32,12 @@ async fn test_transactional_lifecycle_integration() {
         let read_version = read_version_resp.read_version;
         
         // 2. Do snapshot reads (if needed)
-        let snapshot_req = SnapshotReadRequest::new("test_key".to_string(), read_version, None::<String>);
+        let snapshot_req = SnapshotReadRequest::new("test_key".as_bytes().to_vec(), read_version, None::<String>);
         let snapshot_resp = client.snapshot_read(snapshot_req).expect("Failed to snapshot read");
         assert!(!snapshot_resp.found, "Key should not exist initially");
         
         // 3. Prepare operations for atomic commit
-        let set_op = Operation::new("set".to_string(), "test_key".to_string(), Some("test_value".to_string()), None::<String>);
+        let set_op = Operation::new("set".to_string(), "test_key".as_bytes().to_vec(), Some("test_value".as_bytes().to_vec()), None::<String>);
         let operations = vec![set_op];
         
         // 4. Atomic commit
@@ -50,10 +50,10 @@ async fn test_transactional_lifecycle_integration() {
         let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
         let new_read_version = new_read_version_resp.read_version;
         
-        let verify_req = SnapshotReadRequest::new("test_key".to_string(), new_read_version, None::<String>);
+        let verify_req = SnapshotReadRequest::new("test_key".as_bytes().to_vec(), new_read_version, None::<String>);
         let verify_resp = client.snapshot_read(verify_req).expect("Failed to verify read");
         assert!(verify_resp.found, "Key should be found after commit");
-        assert_eq!(verify_resp.value, "test_value", "Value should match");
+        assert_eq!(verify_resp.value, "test_value".as_bytes().to_vec(), "Value should match");
         
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     }).await;
@@ -87,7 +87,7 @@ async fn test_transactional_operations_integration() {
         // Prepare operations for atomic commit
         let mut operations = Vec::new();
         for (key, value) in &keys_values {
-            let set_op = Operation::new("set".to_string(), key.to_string(), Some(value.to_string()), None::<String>);
+            let set_op = Operation::new("set".to_string(), key.as_bytes().to_vec(), Some(value.as_bytes().to_vec()), None::<String>);
             operations.push(set_op);
         }
         
@@ -102,10 +102,10 @@ async fn test_transactional_operations_integration() {
         let new_read_version = new_read_version_resp.read_version;
         
         for (key, expected_value) in &keys_values {
-            let verify_req = SnapshotReadRequest::new(key.to_string(), new_read_version, None::<String>);
+            let verify_req = SnapshotReadRequest::new(key.as_bytes().to_vec(), new_read_version, None::<String>);
             let verify_resp = client.snapshot_read(verify_req).expect("Failed to verify read");
             assert!(verify_resp.found, "Key {} should be found", key);
-            assert_eq!(verify_resp.value, *expected_value, "Value should match for key {}", key);
+            assert_eq!(verify_resp.value, expected_value.as_bytes().to_vec(), "Value should match for key {}", key);
         }
         
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
@@ -143,7 +143,7 @@ async fn test_fault_injection_integration() {
         let read_version = read_version_resp.read_version;
         
         // Prepare operation for atomic commit  
-        let set_op = Operation::new("set".to_string(), "fault_test_key".to_string(), Some("fault_test_value".to_string()), None::<String>);
+        let set_op = Operation::new("set".to_string(), "fault_test_key".as_bytes().to_vec(), Some("fault_test_value".as_bytes().to_vec()), None::<String>);
         let operations = vec![set_op];
         
         // Atomic commit should fail due to fault injection
@@ -168,7 +168,7 @@ async fn test_fault_injection_integration() {
         let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
         let new_read_version = new_read_version_resp.read_version;
         
-        let set_op2 = Operation::new("set".to_string(), "fault_test_key2".to_string(), Some("fault_test_value2".to_string()), None::<String>);
+        let set_op2 = Operation::new("set".to_string(), "fault_test_key2".as_bytes().to_vec(), Some("fault_test_value2".as_bytes().to_vec()), None::<String>);
         let operations2 = vec![set_op2];
         
         let commit_req2 = AtomicCommitRequest::new(new_read_version, operations2, vec![], Some(60));
@@ -201,7 +201,7 @@ async fn test_conflict_detection_integration() {
         let read_version1 = read_version_resp1.read_version;
         
         // Transaction 1 reads the key (simulating read conflict detection)
-        let snapshot_req1 = SnapshotReadRequest::new("conflict_key".to_string(), read_version1, None::<String>);
+        let snapshot_req1 = SnapshotReadRequest::new("conflict_key".as_bytes().to_vec(), read_version1, None::<String>);
         let _snapshot_resp1 = client1.snapshot_read(snapshot_req1).expect("Failed to snapshot read 1");
         
         // Transaction 2: Get same read version (simulating concurrent transaction)
@@ -210,21 +210,21 @@ async fn test_conflict_detection_integration() {
         let read_version2 = read_version_resp2.read_version;
         
         // Transaction 2 also reads the same key
-        let snapshot_req2 = SnapshotReadRequest::new("conflict_key".to_string(), read_version2, None::<String>);
+        let snapshot_req2 = SnapshotReadRequest::new("conflict_key".as_bytes().to_vec(), read_version2, None::<String>);
         let _snapshot_resp2 = client2.snapshot_read(snapshot_req2).expect("Failed to snapshot read 2");
         
         // Transaction 1 commits first with a write to the conflicting key
-        let set_op1 = Operation::new("set".to_string(), "conflict_key".to_string(), Some("value1".to_string()), None::<String>);
+        let set_op1 = Operation::new("set".to_string(), "conflict_key".as_bytes().to_vec(), Some("value1".as_bytes().to_vec()), None::<String>);
         let operations1 = vec![set_op1];
-        let commit_req1 = AtomicCommitRequest::new(read_version1, operations1, vec!["conflict_key".to_string()], Some(60));
+        let commit_req1 = AtomicCommitRequest::new(read_version1, operations1, vec!["conflict_key".as_bytes().to_vec()], Some(60));
         let commit_resp1 = client1.atomic_commit(commit_req1).expect("Failed to atomic commit 1");
         assert!(commit_resp1.success, "First transaction should succeed: {:?}", commit_resp1.error);
         
         // Transaction 2 tries to commit with same read version but different value
         // This should detect the conflict since read_version2 is older than the committed version
-        let set_op2 = Operation::new("set".to_string(), "conflict_key".to_string(), Some("value2".to_string()), None::<String>);
+        let set_op2 = Operation::new("set".to_string(), "conflict_key".as_bytes().to_vec(), Some("value2".as_bytes().to_vec()), None::<String>);
         let operations2 = vec![set_op2];
-        let commit_req2 = AtomicCommitRequest::new(read_version2, operations2, vec!["conflict_key".to_string()], Some(60));
+        let commit_req2 = AtomicCommitRequest::new(read_version2, operations2, vec!["conflict_key".as_bytes().to_vec()], Some(60));
         let commit_resp2 = client2.atomic_commit(commit_req2).expect("Failed to atomic commit 2");
         
         // In our simplified implementation, the second transaction should still succeed
@@ -260,7 +260,7 @@ async fn test_version_management_integration() {
         assert!(read_version1 > 0, "Read version should be positive");
         
         // Perform a transaction that increments the version
-        let set_op = Operation::new("set".to_string(), "version_test_key".to_string(), Some("version_test_value".to_string()), None::<String>);
+        let set_op = Operation::new("set".to_string(), "version_test_key".as_bytes().to_vec(), Some("version_test_value".as_bytes().to_vec()), None::<String>);
         let operations = vec![set_op];
         let commit_req = AtomicCommitRequest::new(read_version1, operations, vec![], Some(60));
         let commit_resp = client.atomic_commit(commit_req).expect("Failed to atomic commit");
@@ -276,10 +276,10 @@ async fn test_version_management_integration() {
         assert!(read_version2 >= committed_version, "New read version should be >= committed version");
         
         // Test that we can read the committed data with the new version
-        let snapshot_req = SnapshotReadRequest::new("version_test_key".to_string(), read_version2, None::<String>);
+        let snapshot_req = SnapshotReadRequest::new("version_test_key".as_bytes().to_vec(), read_version2, None::<String>);
         let snapshot_resp = client.snapshot_read(snapshot_req).expect("Failed to snapshot read");
         assert!(snapshot_resp.found, "Key should be found after commit");
-        assert_eq!(snapshot_resp.value, "version_test_value", "Value should match");
+        assert_eq!(snapshot_resp.value, "version_test_value".as_bytes().to_vec(), "Value should match");
         
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     }).await;
@@ -301,14 +301,14 @@ async fn test_versionstamped_operations_integration() {
         // Test that versionstamped operations return appropriate errors in simplified model
         
         // Test versionstamped key - should return error indicating not supported
-        let vs_key_req = SetVersionstampedKeyRequest::new("prefix_".to_string(), "test_value".to_string(), None::<String>);
+        let vs_key_req = SetVersionstampedKeyRequest::new("prefix_".as_bytes().to_vec(), "test_value".as_bytes().to_vec(), None::<String>);
         let vs_key_resp = client.set_versionstamped_key(vs_key_req).expect("Failed to call set versionstamped key");
         assert!(!vs_key_resp.success, "Versionstamped key should not be supported");
         assert!(vs_key_resp.error.is_some(), "Should have error message explaining not supported");
         assert!(vs_key_resp.error.as_ref().unwrap().contains("not supported"), "Error should mention not supported");
         
         // Test versionstamped value - should return error indicating not supported
-        let vs_value_req = SetVersionstampedValueRequest::new("test_key".to_string(), "value_prefix_".to_string(), None::<String>);
+        let vs_value_req = SetVersionstampedValueRequest::new("test_key".as_bytes().to_vec(), "value_prefix_".as_bytes().to_vec(), None::<String>);
         let vs_value_resp = client.set_versionstamped_value(vs_value_req).expect("Failed to call set versionstamped value");
         assert!(!vs_value_resp.success, "Versionstamped value should not be supported");
         assert!(vs_value_resp.error.is_some(), "Should have error message explaining not supported");
@@ -319,7 +319,7 @@ async fn test_versionstamped_operations_integration() {
         let read_version_resp = client.get_read_version(read_version_req).expect("Failed to get read version");
         assert!(read_version_resp.success, "Get read version should work");
         
-        let set_op = Operation::new("set".to_string(), "regular_key".to_string(), Some("regular_value".to_string()), None::<String>);
+        let set_op = Operation::new("set".to_string(), "regular_key".as_bytes().to_vec(), Some("regular_value".as_bytes().to_vec()), None::<String>);
         let operations = vec![set_op];
         let commit_req = AtomicCommitRequest::new(read_version_resp.read_version, operations, vec![], Some(60));
         let commit_resp = client.atomic_commit(commit_req).expect("Failed to atomic commit");
@@ -349,19 +349,19 @@ async fn test_error_handling_integration() {
         let read_version_resp = client.get_read_version(read_version_req).expect("Failed to get read version");
         let read_version = read_version_resp.read_version;
         
-        let empty_key_req = SnapshotReadRequest::new("".to_string(), read_version, None::<String>);
+        let empty_key_req = SnapshotReadRequest::new("".as_bytes().to_vec(), read_version, None::<String>);
         let empty_key_resp = client.snapshot_read(empty_key_req).expect("Failed to snapshot read empty key");
         assert!(!empty_key_resp.found, "Empty key should not be found");
         assert!(empty_key_resp.error.is_some(), "Should have error for empty key");
         
         // Test 2: Invalid column family in snapshot read
-        let invalid_cf_req = SnapshotReadRequest::new("test_key".to_string(), read_version, Some("nonexistent_cf".to_string()));
+        let invalid_cf_req = SnapshotReadRequest::new("test_key".as_bytes().to_vec(), read_version, Some("nonexistent_cf".to_string()));
         let invalid_cf_resp = client.snapshot_read(invalid_cf_req).expect("Failed to snapshot read with invalid CF");
         assert!(!invalid_cf_resp.found, "Should not find key with invalid CF");
         assert!(invalid_cf_resp.error.is_some(), "Should have error for invalid CF");
         
         // Test 3: Invalid operation type in atomic commit
-        let invalid_op = Operation::new("invalid_op".to_string(), "test_key".to_string(), Some("test_value".to_string()), None::<String>);
+        let invalid_op = Operation::new("invalid_op".to_string(), "test_key".as_bytes().to_vec(), Some("test_value".as_bytes().to_vec()), None::<String>);
         let invalid_operations = vec![invalid_op];
         let invalid_commit_req = AtomicCommitRequest::new(read_version, invalid_operations, vec![], Some(60));
         let invalid_commit_resp = client.atomic_commit(invalid_commit_req).expect("Failed to atomic commit with invalid op");
@@ -369,7 +369,7 @@ async fn test_error_handling_integration() {
         assert_eq!(invalid_commit_resp.error_code, Some("INVALID_OPERATION".to_string()), "Should have INVALID_OPERATION error code");
         
         // Test 4: Set operation without value should fail
-        let set_no_value = Operation::new("set".to_string(), "test_key".to_string(), None, None::<String>);
+        let set_no_value = Operation::new("set".to_string(), "test_key".as_bytes().to_vec(), None, None::<String>);
         let no_value_operations = vec![set_no_value];
         let no_value_commit_req = AtomicCommitRequest::new(read_version, no_value_operations, vec![], Some(60));
         let no_value_commit_resp = client.atomic_commit(no_value_commit_req).expect("Failed to atomic commit without value");
@@ -377,7 +377,7 @@ async fn test_error_handling_integration() {
         assert_eq!(no_value_commit_resp.error_code, Some("INVALID_OPERATION".to_string()), "Should have INVALID_OPERATION error code");
         
         // Test 5: Valid operations should succeed
-        let valid_op = Operation::new("set".to_string(), "valid_key".to_string(), Some("valid_value".to_string()), None::<String>);
+        let valid_op = Operation::new("set".to_string(), "valid_key".as_bytes().to_vec(), Some("valid_value".as_bytes().to_vec()), None::<String>);
         let valid_operations = vec![valid_op];
         let valid_commit_req = AtomicCommitRequest::new(read_version, valid_operations, vec![], Some(60));
         let valid_commit_resp = client.atomic_commit(valid_commit_req).expect("Failed to atomic commit valid operations");
@@ -388,7 +388,7 @@ async fn test_error_handling_integration() {
         let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
         let new_read_version = new_read_version_resp.read_version;
         
-        let missing_key_req = SnapshotReadRequest::new("missing_key".to_string(), new_read_version, None::<String>);
+        let missing_key_req = SnapshotReadRequest::new("missing_key".as_bytes().to_vec(), new_read_version, None::<String>);
         let missing_key_resp = client.snapshot_read(missing_key_req).expect("Failed to read missing key");
         assert!(!missing_key_resp.found, "Missing key should not be found");
         assert!(missing_key_resp.error.is_none() || missing_key_resp.error == Some("".to_string()), "Should not have error for missing key");
@@ -426,7 +426,7 @@ async fn test_range_operations_integration() {
         
         let mut operations = Vec::new();
         for (key, value) in &test_data {
-            let set_op = Operation::new("set".to_string(), key.to_string(), Some(value.to_string()), None::<String>);
+            let set_op = Operation::new("set".to_string(), key.as_bytes().to_vec(), Some(value.as_bytes().to_vec()), None::<String>);
             operations.push(set_op);
         }
         
@@ -435,7 +435,7 @@ async fn test_range_operations_integration() {
         assert!(commit_resp.success, "Setting up test data should succeed: {:?}", commit_resp.error);
         
         // Test 1: Basic range query with prefix
-        let range_req = GetRangeRequest::new("key".to_string(), None::<String>, Some(10), None::<String>);
+        let range_req = GetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, Some(10), None::<String>);
         let range_resp = client.get_range(range_req).expect("Failed to get range");
         assert!(range_resp.success, "Range query should succeed: {:?}", range_resp.error);
         assert_eq!(range_resp.key_values.len(), 4, "Should find 4 keys starting with 'key'");
@@ -443,38 +443,38 @@ async fn test_range_operations_integration() {
         // Verify the keys are in order and have correct values
         let expected_keys = vec!["key001", "key002", "key003", "key004"];
         for (i, expected_key) in expected_keys.iter().enumerate() {
-            assert_eq!(range_resp.key_values[i].key, *expected_key, "Key at index {} should match", i);
-            assert_eq!(range_resp.key_values[i].value, format!("value{}", i + 1), "Value at index {} should match", i);
+            assert_eq!(range_resp.key_values[i].key, expected_key.as_bytes().to_vec(), "Key at index {} should match", i);
+            assert_eq!(range_resp.key_values[i].value, format!("value{}", i + 1).as_bytes().to_vec(), "Value at index {} should match", i);
         }
         
         // Test 2: Range query with start and end key (exclusive end)
-        let bounded_range_req = GetRangeRequest::new("key001".to_string(), Some("key003".to_string()), Some(10), None::<String>);
+        let bounded_range_req = GetRangeRequest::new("key001".as_bytes().to_vec(), Some("key003".as_bytes().to_vec()), Some(10), None::<String>);
         let bounded_range_resp = client.get_range(bounded_range_req).expect("Failed to get bounded range");
         assert!(bounded_range_resp.success, "Bounded range query should succeed: {:?}", bounded_range_resp.error);
         assert_eq!(bounded_range_resp.key_values.len(), 2, "Should find 2 keys between key001 and key003 (exclusive)");
-        assert_eq!(bounded_range_resp.key_values[0].key, "key001");
-        assert_eq!(bounded_range_resp.key_values[1].key, "key002");
+        assert_eq!(bounded_range_resp.key_values[0].key, "key001".as_bytes().to_vec());
+        assert_eq!(bounded_range_resp.key_values[1].key, "key002".as_bytes().to_vec());
         
         // Test 3: Range query with limit
-        let limited_range_req = GetRangeRequest::new("key".to_string(), None::<String>, Some(2), None::<String>);
+        let limited_range_req = GetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, Some(2), None::<String>);
         let limited_range_resp = client.get_range(limited_range_req).expect("Failed to get limited range");
         assert!(limited_range_resp.success, "Limited range query should succeed: {:?}", limited_range_resp.error);
         assert_eq!(limited_range_resp.key_values.len(), 2, "Should respect limit of 2");
-        assert_eq!(limited_range_resp.key_values[0].key, "key001");
-        assert_eq!(limited_range_resp.key_values[1].key, "key002");
+        assert_eq!(limited_range_resp.key_values[0].key, "key001".as_bytes().to_vec());
+        assert_eq!(limited_range_resp.key_values[1].key, "key002".as_bytes().to_vec());
         
         // Test 4: Snapshot range query
         let new_read_version_req = GetReadVersionRequest::new();
         let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
         let new_read_version = new_read_version_resp.read_version;
         
-        let snapshot_range_req = SnapshotGetRangeRequest::new("key".to_string(), None::<String>, new_read_version, Some(10), None::<String>);
+        let snapshot_range_req = SnapshotGetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, new_read_version, Some(10), None::<String>);
         let snapshot_range_resp = client.snapshot_get_range(snapshot_range_req).expect("Failed to get snapshot range");
         assert!(snapshot_range_resp.success, "Snapshot range query should succeed: {:?}", snapshot_range_resp.error);
         assert_eq!(snapshot_range_resp.key_values.len(), 4, "Should find 4 keys in snapshot");
         
         // Test 5: Empty range query (no matching keys)
-        let empty_range_req = GetRangeRequest::new("nonexistent".to_string(), None::<String>, Some(10), None::<String>);
+        let empty_range_req = GetRangeRequest::new("nonexistent".as_bytes().to_vec(), None::<Vec<u8>>, Some(10), None::<String>);
         let empty_range_resp = client.get_range(empty_range_req).expect("Failed to get empty range");
         assert!(empty_range_resp.success, "Empty range query should succeed");
         assert_eq!(empty_range_resp.key_values.len(), 0, "Should find no keys with nonexistent prefix");

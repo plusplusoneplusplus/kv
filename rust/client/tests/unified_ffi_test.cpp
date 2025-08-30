@@ -1344,6 +1344,176 @@ void test_cpp_deletion_operations() {
     test.pass();
 }
 
+// Test binary data with null bytes
+int test_c_binary_nulls() {
+    if (kv_init() != 0) {
+        printf("FAIL: test_c_binary_nulls - kv_init failed\n");
+        return 1;
+    }
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    if (client == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to create client\n");
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    if (tx_future == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to begin transaction\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (wait_for_future_c(tx_future) != 1) {
+        printf("FAIL: test_c_binary_nulls - Transaction begin timeout\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
+    if (tx == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to get transaction handle\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Test binary data with null bytes
+    const char test_key[] = "key\x00with\x00nulls\x00bytes";
+    int key_len = 23; // Length including null bytes
+    
+    const char test_value[] = "value\x00has\x00null\x00bytes\x00inside";
+    int value_len = 31; // Length including null bytes
+    
+    // Set the key-value pair with binary data containing null bytes
+    KvFutureHandle set_future = kv_transaction_set(tx, 
+        (const uint8_t*)test_key, key_len,
+        (const uint8_t*)test_value, value_len,
+        NULL);
+    
+    if (set_future == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to create set future\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (wait_for_future_c(set_future) != 1) {
+        printf("FAIL: test_c_binary_nulls - Set operation timeout\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    if (set_result.success != 1) {
+        printf("FAIL: test_c_binary_nulls - Set operation failed\n");
+        if (set_result.error_message) {
+            printf("Error: %s\n", set_result.error_message);
+        }
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Get the value back
+    KvFutureHandle get_future = kv_transaction_get(tx, 
+        (const uint8_t*)test_key, key_len, NULL);
+    
+    if (get_future == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to create get future\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (wait_for_future_c(get_future) != 1) {
+        printf("FAIL: test_c_binary_nulls - Get operation timeout\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    KvBinaryData retrieved_value;
+    KvResult get_result = kv_future_get_value_result(get_future, &retrieved_value);
+    if (get_result.success != 1) {
+        printf("FAIL: test_c_binary_nulls - Get operation failed\n");
+        if (get_result.error_message) {
+            printf("Error: %s\n", get_result.error_message);
+        }
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Verify the retrieved value
+    if (retrieved_value.data == NULL) {
+        printf("FAIL: test_c_binary_nulls - Retrieved value is null\n");
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (retrieved_value.length != value_len) {
+        printf("FAIL: test_c_binary_nulls - Value length mismatch - expected %d, got %d\n", 
+               value_len, (int)retrieved_value.length);
+        kv_binary_free(&retrieved_value);
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (memcmp(retrieved_value.data, test_value, value_len) != 0) {
+        printf("FAIL: test_c_binary_nulls - Value content mismatch\n");
+        kv_binary_free(&retrieved_value);
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Commit transaction
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    if (commit_future == NULL) {
+        printf("FAIL: test_c_binary_nulls - Failed to create commit future\n");
+        kv_binary_free(&retrieved_value);
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    if (wait_for_future_c(commit_future) != 1) {
+        printf("FAIL: test_c_binary_nulls - Commit timeout\n");
+        kv_binary_free(&retrieved_value);
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    if (commit_result.success != 1) {
+        printf("FAIL: test_c_binary_nulls - Commit failed\n");
+        if (commit_result.error_message) {
+            printf("Error: %s\n", commit_result.error_message);
+        }
+        kv_binary_free(&retrieved_value);
+        kv_client_destroy(client);
+        kv_shutdown();
+        return 1;
+    }
+    
+    // Clean up
+    kv_binary_free(&retrieved_value);
+    kv_client_destroy(client);
+    kv_shutdown();
+    
+    printf("PASS: test_c_binary_nulls\n");
+    return 0;
+}
+
 //==============================================================================
 // Main Test Runner
 //===============================================================================
@@ -1371,6 +1541,7 @@ int main() {
         {"C Transaction Abort", test_c_transaction_abort},
         {"C Range Operations", test_c_range_operations},
         {"C Async Deletion", test_c_async_deletion},
+        {"C Binary Nulls", test_c_binary_nulls},
         {NULL, NULL}
     };
     

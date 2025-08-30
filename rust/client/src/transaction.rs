@@ -44,28 +44,51 @@ impl Transaction {
         self.read_version
     }
     
-    /// Get a value by key (checks local writes first, then reads from database)
-    pub fn get(&self, key: &str, column_family: Option<&str>) -> KvFuture<Option<String>> {
+    /// Get a value by key as binary data (checks local writes first, then reads from database)
+    pub fn get(&self, key: &[u8], column_family: Option<&str>) -> KvFuture<Option<Vec<u8>>> {
         if self.committed || self.aborted {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
         }
         
         if is_debug_enabled() {
-            log_transaction_event(&format!("get key: {} (cf: {:?})", key, column_family), Some(&self.transaction_id));
+            // Use debug representation for binary data that might contain null bytes
+            let key_debug = format!("{:?}", key);
+            log_transaction_event(&format!("get key: {} (cf: {:?})", key_debug, column_family), Some(&self.transaction_id));
         }
         
         // First check if we have a local write for this key
         let cf_str = column_family.map(|s| s.to_string());
-        for op in self.operations.iter().rev() { // Check in reverse order to get latest write
-            if op.key == key && op.column_family == cf_str {
+        
+        if is_debug_enabled() {
+            log_transaction_event(&format!("checking {} local operations for key {:?}", self.operations.len(), key), Some(&self.transaction_id));
+        }
+        
+        for (i, op) in self.operations.iter().rev().enumerate() {
+            if is_debug_enabled() {
+                log_transaction_event(&format!("op {}: type={}, key={:?}, cf={:?}, key_matches={}, cf_matches={}", 
+                    i, op.type_, op.key, op.column_family, 
+                    op.key.as_slice() == key, 
+                    op.column_family == cf_str), Some(&self.transaction_id));
+            }
+            
+            if op.key.as_slice() == key && op.column_family == cf_str {
                 match op.type_.as_str() {
                     "set" => {
-                        // Return the locally written value
+                        if is_debug_enabled() {
+                            log_transaction_event(&format!("found local set operation with value len {}", op.value.as_ref().map(|v| v.len()).unwrap_or(0)), Some(&self.transaction_id));
+                        }
                         let value = op.value.clone();
-                        return KvFuture::new(async move { Ok(value) });
+                        return KvFuture::new(async move { 
+                            if is_debug_enabled() {
+                                println!("Returning local value immediately");
+                            }
+                            Ok(value) 
+                        });
                     }
                     "delete" => {
-                        // Key was deleted locally
+                        if is_debug_enabled() {
+                            log_transaction_event("found local delete operation", Some(&self.transaction_id));
+                        }
                         return KvFuture::new(async { Ok(None) });
                     }
                     _ => {} // Continue checking other operations
@@ -73,10 +96,14 @@ impl Transaction {
             }
         }
         
+        if is_debug_enabled() {
+            log_transaction_event("no local operation found, reading from database", Some(&self.transaction_id));
+        }
+        
         // No local write found, read from database
         let client = Arc::clone(&self.client);
         let request = GetRequest::new(
-            key.to_string(),
+            key.to_vec(),
             column_family.map(|s| s.to_string()),
         );
         
@@ -116,6 +143,7 @@ impl Transaction {
                 if is_debug_enabled() {
                     log_network_operation(&format!("Transaction {} get found value (length: {})", tx_id, response.value.len()), None);
                 }
+                // Return raw bytes instead of converting to string
                 Ok(Some(response.value))
             } else {
                 if is_debug_enabled() {
@@ -126,20 +154,23 @@ impl Transaction {
         })
     }
     
-    /// Set a key-value pair (buffered for atomic commit)
-    pub fn set(&mut self, key: &str, value: &str, column_family: Option<&str>) -> KvResult<()> {
+    /// Set a key-value pair as binary data (buffered for atomic commit)
+    pub fn set(&mut self, key: &[u8], value: &[u8], column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
         if is_debug_enabled() {
-            log_transaction_event(&format!("set key: {} (cf: {:?}, value_len: {})", key, column_family, value.len()), Some(&self.transaction_id));
+            // Use debug representation for binary data that might contain null bytes
+            let key_debug = format!("{:?}", key);
+            let value_len = value.len();
+            log_transaction_event(&format!("set key: {} (cf: {:?}, value_len: {})", key_debug, column_family, value_len), Some(&self.transaction_id));
         }
         
         let operation = Operation::new(
             "set".to_string(),
-            key.to_string(),
-            Some(value.to_string()),
+            key.to_vec(),
+            Some(value.to_vec()),
             column_family.map(|s| s.to_string()),
         );
         
@@ -147,19 +178,21 @@ impl Transaction {
         Ok(())
     }
     
-    /// Delete a key (buffered for atomic commit)
-    pub fn delete(&mut self, key: &str, column_family: Option<&str>) -> KvResult<()> {
+    /// Delete a key using binary data (buffered for atomic commit)
+    pub fn delete(&mut self, key: &[u8], column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
         if is_debug_enabled() {
-            log_transaction_event(&format!("delete key: {} (cf: {:?})", key, column_family), Some(&self.transaction_id));
+            // Use debug representation for binary data that might contain null bytes
+            let key_debug = format!("{:?}", key);
+            log_transaction_event(&format!("delete key: {} (cf: {:?})", key_debug, column_family), Some(&self.transaction_id));
         }
         
         let operation = Operation::new(
             "delete".to_string(),
-            key.to_string(),
+            key.to_vec(),
             None,
             column_family.map(|s| s.to_string()),
         );
@@ -168,16 +201,16 @@ impl Transaction {
         Ok(())
     }
     
-    /// Get a range of key-value pairs
-    pub fn get_range(&self, start_key: &str, end_key: Option<&str>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(String, String)>> {
+    /// Get a range of key-value pairs as binary data
+    pub fn get_range(&self, start_key: &[u8], end_key: Option<&[u8]>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
         if self.committed || self.aborted {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
         }
         
         let client = Arc::clone(&self.client);
         let request = GetRangeRequest::new(
-            start_key.to_string(),
-            end_key.map(|s| s.to_string()),
+            start_key.to_vec(),
+            end_key.map(|k| k.to_vec()),
             limit.map(|l| l as i32),
             column_family.map(|s| s.to_string()),
         );
@@ -224,8 +257,8 @@ impl Transaction {
         
         let operation = Operation::new(
             "SET_VERSIONSTAMPED_KEY".to_string(),
-            key_prefix.to_string(),
-            Some(value.to_string()),
+            key_prefix.as_bytes().to_vec(),
+            Some(value.as_bytes().to_vec()),
             column_family.map(|s| s.to_string()),
         );
         
@@ -248,10 +281,13 @@ impl Transaction {
         }
         
         let client = Arc::clone(&self.client);
+        let read_conflict_keys_binary: Vec<Vec<u8>> = self.read_conflict_keys.iter()
+            .map(|k| k.as_bytes().to_vec())
+            .collect();
         let request = AtomicCommitRequest::new(
             self.read_version,
             self.operations.clone(),
-            self.read_conflict_keys.clone(),
+            read_conflict_keys_binary,
             None, // timeout_seconds
         );
         
@@ -376,7 +412,7 @@ impl ReadTransaction {
         let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRequest::new(
-            key.to_string(),
+            key.as_bytes().to_vec(),
             read_version,
             column_family.map(|s| s.to_string()),
         );
@@ -394,7 +430,8 @@ impl ReadTransaction {
             }
             
             if response.found {
-                Ok(Some(response.value))
+                let value_str = String::from_utf8_lossy(&response.value).to_string();
+                Ok(Some(value_str))
             } else {
                 Ok(None)
             }
@@ -402,12 +439,12 @@ impl ReadTransaction {
     }
     
     /// Get a range of key-value pairs at the snapshot version
-    pub fn snapshot_get_range(&self, start_key: &str, end_key: Option<&str>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(String, String)>> {
+    pub fn snapshot_get_range(&self, start_key: &[u8], end_key: Option<&[u8]>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
         let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRangeRequest::new(
-            start_key.to_string(),
-            end_key.map(|s| s.to_string()),
+            start_key.to_vec(),
+            end_key.map(|k| k.to_vec()),
             read_version,
             limit.map(|l| l as i32),
             column_family.map(|s| s.to_string()),

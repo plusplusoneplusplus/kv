@@ -31,12 +31,12 @@ use thrift::server::TProcessor;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetRequest {
-  pub key: String,
+  pub key: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl GetRequest {
-  pub fn new<F2>(key: String, column_family: F2) -> GetRequest where F2: Into<Option<String>> {
+  pub fn new<F2>(key: Vec<u8>, column_family: F2) -> GetRequest where F2: Into<Option<String>> {
     GetRequest {
       key,
       column_family: column_family.into(),
@@ -44,7 +44,7 @@ impl GetRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -54,7 +54,7 @@ impl GetRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -79,7 +79,7 @@ impl GetRequest {
     let struct_ident = TStructIdentifier::new("GetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
@@ -97,13 +97,13 @@ impl GetRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetResponse {
-  pub value: String,
+  pub value: Vec<u8>,
   pub found: bool,
   pub error: Option<String>,
 }
 
 impl GetResponse {
-  pub fn new<F3>(value: String, found: bool, error: F3) -> GetResponse where F3: Into<Option<String>> {
+  pub fn new<F3>(value: Vec<u8>, found: bool, error: F3) -> GetResponse where F3: Into<Option<String>> {
     GetResponse {
       value,
       found,
@@ -112,7 +112,7 @@ impl GetResponse {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetResponse> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<bool> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -123,7 +123,7 @@ impl GetResponse {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -154,7 +154,7 @@ impl GetResponse {
     let struct_ident = TStructIdentifier::new("GetResponse");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 1))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("found", TType::Bool, 2))?;
     o_prot.write_bool(self.found)?;
@@ -175,13 +175,13 @@ impl GetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetRequest {
-  pub key: String,
-  pub value: String,
+  pub key: Vec<u8>,
+  pub value: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl SetRequest {
-  pub fn new<F3>(key: String, value: String, column_family: F3) -> SetRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(key: Vec<u8>, value: Vec<u8>, column_family: F3) -> SetRequest where F3: Into<Option<String>> {
     SetRequest {
       key,
       value,
@@ -190,8 +190,8 @@ impl SetRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -201,11 +201,11 @@ impl SetRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -232,10 +232,10 @@ impl SetRequest {
     let struct_ident = TStructIdentifier::new("SetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
@@ -332,12 +332,12 @@ impl SetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DeleteRequest {
-  pub key: String,
+  pub key: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl DeleteRequest {
-  pub fn new<F2>(key: String, column_family: F2) -> DeleteRequest where F2: Into<Option<String>> {
+  pub fn new<F2>(key: Vec<u8>, column_family: F2) -> DeleteRequest where F2: Into<Option<String>> {
     DeleteRequest {
       key,
       column_family: column_family.into(),
@@ -345,7 +345,7 @@ impl DeleteRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<DeleteRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -355,7 +355,7 @@ impl DeleteRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -380,7 +380,7 @@ impl DeleteRequest {
     let struct_ident = TStructIdentifier::new("DeleteRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
@@ -477,14 +477,14 @@ impl DeleteResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GetRangeRequest {
-  pub start_key: String,
-  pub end_key: Option<String>,
+  pub start_key: Vec<u8>,
+  pub end_key: Option<Vec<u8>>,
   pub limit: Option<i32>,
   pub column_family: Option<String>,
 }
 
 impl GetRangeRequest {
-  pub fn new<F2, F3, F4>(start_key: String, end_key: F2, limit: F3, column_family: F4) -> GetRangeRequest where F2: Into<Option<String>>, F3: Into<Option<i32>>, F4: Into<Option<String>> {
+  pub fn new<F2, F3, F4>(start_key: Vec<u8>, end_key: F2, limit: F3, column_family: F4) -> GetRangeRequest where F2: Into<Option<Vec<u8>>>, F3: Into<Option<i32>>, F4: Into<Option<String>> {
     GetRangeRequest {
       start_key,
       end_key: end_key.into(),
@@ -494,8 +494,8 @@ impl GetRangeRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<GetRangeRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<i32> = None;
     let mut f_4: Option<String> = None;
     loop {
@@ -506,11 +506,11 @@ impl GetRangeRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -541,11 +541,11 @@ impl GetRangeRequest {
     let struct_ident = TStructIdentifier::new("GetRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
-    o_prot.write_string(&self.start_key)?;
+    o_prot.write_bytes(&self.start_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.end_key {
       o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
-      o_prot.write_string(fld_var)?;
+      o_prot.write_bytes(fld_var)?;
       o_prot.write_field_end()?
     }
     if let Some(fld_var) = self.limit {
@@ -569,12 +569,12 @@ impl GetRangeRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct KeyValue {
-  pub key: String,
-  pub value: String,
+  pub key: Vec<u8>,
+  pub value: Vec<u8>,
 }
 
 impl KeyValue {
-  pub fn new(key: String, value: String) -> KeyValue {
+  pub fn new(key: Vec<u8>, value: Vec<u8>) -> KeyValue {
     KeyValue {
       key,
       value,
@@ -582,8 +582,8 @@ impl KeyValue {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<KeyValue> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -592,11 +592,11 @@ impl KeyValue {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         _ => {
@@ -618,10 +618,10 @@ impl KeyValue {
     let struct_ident = TStructIdentifier::new("KeyValue");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
@@ -722,13 +722,13 @@ impl GetRangeResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotGetRequest {
-  pub key: String,
+  pub key: Vec<u8>,
   pub read_version: i64,
   pub column_family: Option<String>,
 }
 
 impl SnapshotGetRequest {
-  pub fn new<F3>(key: String, read_version: i64, column_family: F3) -> SnapshotGetRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(key: Vec<u8>, read_version: i64, column_family: F3) -> SnapshotGetRequest where F3: Into<Option<String>> {
     SnapshotGetRequest {
       key,
       read_version,
@@ -737,7 +737,7 @@ impl SnapshotGetRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotGetRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<i64> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -748,7 +748,7 @@ impl SnapshotGetRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -779,7 +779,7 @@ impl SnapshotGetRequest {
     let struct_ident = TStructIdentifier::new("SnapshotGetRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 2))?;
     o_prot.write_i64(self.read_version)?;
@@ -800,13 +800,13 @@ impl SnapshotGetRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotGetResponse {
-  pub value: String,
+  pub value: Vec<u8>,
   pub found: bool,
   pub error: Option<String>,
 }
 
 impl SnapshotGetResponse {
-  pub fn new<F3>(value: String, found: bool, error: F3) -> SnapshotGetResponse where F3: Into<Option<String>> {
+  pub fn new<F3>(value: Vec<u8>, found: bool, error: F3) -> SnapshotGetResponse where F3: Into<Option<String>> {
     SnapshotGetResponse {
       value,
       found,
@@ -815,7 +815,7 @@ impl SnapshotGetResponse {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotGetResponse> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<bool> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -826,7 +826,7 @@ impl SnapshotGetResponse {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -857,7 +857,7 @@ impl SnapshotGetResponse {
     let struct_ident = TStructIdentifier::new("SnapshotGetResponse");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 1))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("found", TType::Bool, 2))?;
     o_prot.write_bool(self.found)?;
@@ -878,15 +878,15 @@ impl SnapshotGetResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotGetRangeRequest {
-  pub start_key: String,
-  pub end_key: Option<String>,
+  pub start_key: Vec<u8>,
+  pub end_key: Option<Vec<u8>>,
   pub read_version: i64,
   pub limit: Option<i32>,
   pub column_family: Option<String>,
 }
 
 impl SnapshotGetRangeRequest {
-  pub fn new<F2, F4, F5>(start_key: String, end_key: F2, read_version: i64, limit: F4, column_family: F5) -> SnapshotGetRangeRequest where F2: Into<Option<String>>, F4: Into<Option<i32>>, F5: Into<Option<String>> {
+  pub fn new<F2, F4, F5>(start_key: Vec<u8>, end_key: F2, read_version: i64, limit: F4, column_family: F5) -> SnapshotGetRangeRequest where F2: Into<Option<Vec<u8>>>, F4: Into<Option<i32>>, F5: Into<Option<String>> {
     SnapshotGetRangeRequest {
       start_key,
       end_key: end_key.into(),
@@ -897,8 +897,8 @@ impl SnapshotGetRangeRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotGetRangeRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<i64> = None;
     let mut f_4: Option<i32> = None;
     let mut f_5: Option<String> = None;
@@ -910,11 +910,11 @@ impl SnapshotGetRangeRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -951,11 +951,11 @@ impl SnapshotGetRangeRequest {
     let struct_ident = TStructIdentifier::new("SnapshotGetRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
-    o_prot.write_string(&self.start_key)?;
+    o_prot.write_bytes(&self.start_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.end_key {
       o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
-      o_prot.write_string(fld_var)?;
+      o_prot.write_bytes(fld_var)?;
       o_prot.write_field_end()?
     }
     o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 3))?;
@@ -1070,12 +1070,12 @@ impl SnapshotGetRangeResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AddReadConflictRequest {
-  pub key: String,
+  pub key: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl AddReadConflictRequest {
-  pub fn new<F2>(key: String, column_family: F2) -> AddReadConflictRequest where F2: Into<Option<String>> {
+  pub fn new<F2>(key: Vec<u8>, column_family: F2) -> AddReadConflictRequest where F2: Into<Option<String>> {
     AddReadConflictRequest {
       key,
       column_family: column_family.into(),
@@ -1083,7 +1083,7 @@ impl AddReadConflictRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AddReadConflictRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -1093,7 +1093,7 @@ impl AddReadConflictRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -1118,7 +1118,7 @@ impl AddReadConflictRequest {
     let struct_ident = TStructIdentifier::new("AddReadConflictRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 2))?;
@@ -1202,13 +1202,13 @@ impl AddReadConflictResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AddReadConflictRangeRequest {
-  pub start_key: String,
-  pub end_key: String,
+  pub start_key: Vec<u8>,
+  pub end_key: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl AddReadConflictRangeRequest {
-  pub fn new<F3>(start_key: String, end_key: String, column_family: F3) -> AddReadConflictRangeRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(start_key: Vec<u8>, end_key: Vec<u8>, column_family: F3) -> AddReadConflictRangeRequest where F3: Into<Option<String>> {
     AddReadConflictRangeRequest {
       start_key,
       end_key,
@@ -1217,8 +1217,8 @@ impl AddReadConflictRangeRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<AddReadConflictRangeRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -1228,11 +1228,11 @@ impl AddReadConflictRangeRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -1259,10 +1259,10 @@ impl AddReadConflictRangeRequest {
     let struct_ident = TStructIdentifier::new("AddReadConflictRangeRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("start_key", TType::String, 1))?;
-    o_prot.write_string(&self.start_key)?;
+    o_prot.write_bytes(&self.start_key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("end_key", TType::String, 2))?;
-    o_prot.write_string(&self.end_key)?;
+    o_prot.write_bytes(&self.end_key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
@@ -1588,13 +1588,13 @@ impl GetCommittedVersionResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedKeyRequest {
-  pub key_prefix: String,
-  pub value: String,
+  pub key_prefix: Vec<u8>,
+  pub value: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl SetVersionstampedKeyRequest {
-  pub fn new<F3>(key_prefix: String, value: String, column_family: F3) -> SetVersionstampedKeyRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(key_prefix: Vec<u8>, value: Vec<u8>, column_family: F3) -> SetVersionstampedKeyRequest where F3: Into<Option<String>> {
     SetVersionstampedKeyRequest {
       key_prefix,
       value,
@@ -1603,8 +1603,8 @@ impl SetVersionstampedKeyRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetVersionstampedKeyRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -1614,11 +1614,11 @@ impl SetVersionstampedKeyRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -1645,10 +1645,10 @@ impl SetVersionstampedKeyRequest {
     let struct_ident = TStructIdentifier::new("SetVersionstampedKeyRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key_prefix", TType::String, 1))?;
-    o_prot.write_string(&self.key_prefix)?;
+    o_prot.write_bytes(&self.key_prefix)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
@@ -1666,13 +1666,13 @@ impl SetVersionstampedKeyRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedKeyResponse {
-  pub generated_key: String,
+  pub generated_key: Vec<u8>,
   pub success: bool,
   pub error: Option<String>,
 }
 
 impl SetVersionstampedKeyResponse {
-  pub fn new<F3>(generated_key: String, success: bool, error: F3) -> SetVersionstampedKeyResponse where F3: Into<Option<String>> {
+  pub fn new<F3>(generated_key: Vec<u8>, success: bool, error: F3) -> SetVersionstampedKeyResponse where F3: Into<Option<String>> {
     SetVersionstampedKeyResponse {
       generated_key,
       success,
@@ -1681,7 +1681,7 @@ impl SetVersionstampedKeyResponse {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetVersionstampedKeyResponse> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<bool> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -1692,7 +1692,7 @@ impl SetVersionstampedKeyResponse {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -1723,7 +1723,7 @@ impl SetVersionstampedKeyResponse {
     let struct_ident = TStructIdentifier::new("SetVersionstampedKeyResponse");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("generated_key", TType::String, 1))?;
-    o_prot.write_string(&self.generated_key)?;
+    o_prot.write_bytes(&self.generated_key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 2))?;
     o_prot.write_bool(self.success)?;
@@ -1744,13 +1744,13 @@ impl SetVersionstampedKeyResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedValueRequest {
-  pub key: String,
-  pub value_prefix: String,
+  pub key: Vec<u8>,
+  pub value_prefix: Vec<u8>,
   pub column_family: Option<String>,
 }
 
 impl SetVersionstampedValueRequest {
-  pub fn new<F3>(key: String, value_prefix: String, column_family: F3) -> SetVersionstampedValueRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(key: Vec<u8>, value_prefix: Vec<u8>, column_family: F3) -> SetVersionstampedValueRequest where F3: Into<Option<String>> {
     SetVersionstampedValueRequest {
       key,
       value_prefix,
@@ -1759,8 +1759,8 @@ impl SetVersionstampedValueRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetVersionstampedValueRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
+    let mut f_2: Option<Vec<u8>> = None;
     let mut f_3: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -1770,11 +1770,11 @@ impl SetVersionstampedValueRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
@@ -1801,10 +1801,10 @@ impl SetVersionstampedValueRequest {
     let struct_ident = TStructIdentifier::new("SetVersionstampedValueRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value_prefix", TType::String, 2))?;
-    o_prot.write_string(&self.value_prefix)?;
+    o_prot.write_bytes(&self.value_prefix)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.column_family {
       o_prot.write_field_begin(&TFieldIdentifier::new("column_family", TType::String, 3))?;
@@ -1822,13 +1822,13 @@ impl SetVersionstampedValueRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SetVersionstampedValueResponse {
-  pub generated_value: String,
+  pub generated_value: Vec<u8>,
   pub success: bool,
   pub error: Option<String>,
 }
 
 impl SetVersionstampedValueResponse {
-  pub fn new<F3>(generated_value: String, success: bool, error: F3) -> SetVersionstampedValueResponse where F3: Into<Option<String>> {
+  pub fn new<F3>(generated_value: Vec<u8>, success: bool, error: F3) -> SetVersionstampedValueResponse where F3: Into<Option<String>> {
     SetVersionstampedValueResponse {
       generated_value,
       success,
@@ -1837,7 +1837,7 @@ impl SetVersionstampedValueResponse {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SetVersionstampedValueResponse> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<bool> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -1848,7 +1848,7 @@ impl SetVersionstampedValueResponse {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -1879,7 +1879,7 @@ impl SetVersionstampedValueResponse {
     let struct_ident = TStructIdentifier::new("SetVersionstampedValueResponse");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("generated_value", TType::String, 1))?;
-    o_prot.write_string(&self.generated_value)?;
+    o_prot.write_bytes(&self.generated_value)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("success", TType::Bool, 2))?;
     o_prot.write_bool(self.success)?;
@@ -2059,13 +2059,13 @@ impl FaultInjectionResponse {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Operation {
   pub type_: String,
-  pub key: String,
-  pub value: Option<String>,
+  pub key: Vec<u8>,
+  pub value: Option<Vec<u8>>,
   pub column_family: Option<String>,
 }
 
 impl Operation {
-  pub fn new<F3, F4>(type_: String, key: String, value: F3, column_family: F4) -> Operation where F3: Into<Option<String>>, F4: Into<Option<String>> {
+  pub fn new<F3, F4>(type_: String, key: Vec<u8>, value: F3, column_family: F4) -> Operation where F3: Into<Option<Vec<u8>>>, F4: Into<Option<String>> {
     Operation {
       type_,
       key,
@@ -2076,8 +2076,8 @@ impl Operation {
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<Operation> {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<String> = None;
-    let mut f_2: Option<String> = None;
-    let mut f_3: Option<String> = None;
+    let mut f_2: Option<Vec<u8>> = None;
+    let mut f_3: Option<Vec<u8>> = None;
     let mut f_4: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -2091,11 +2091,11 @@ impl Operation {
           f_1 = Some(val);
         },
         2 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_2 = Some(val);
         },
         3 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_3 = Some(val);
         },
         4 => {
@@ -2126,11 +2126,11 @@ impl Operation {
     o_prot.write_string(&self.type_)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 2))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     if let Some(ref fld_var) = self.value {
       o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 3))?;
-      o_prot.write_string(fld_var)?;
+      o_prot.write_bytes(fld_var)?;
       o_prot.write_field_end()?
     }
     if let Some(ref fld_var) = self.column_family {
@@ -2151,12 +2151,12 @@ impl Operation {
 pub struct AtomicCommitRequest {
   pub read_version: i64,
   pub operations: Vec<Operation>,
-  pub read_conflict_keys: Vec<String>,
+  pub read_conflict_keys: Vec<Vec<u8>>,
   pub timeout_seconds: Option<i64>,
 }
 
 impl AtomicCommitRequest {
-  pub fn new<F4>(read_version: i64, operations: Vec<Operation>, read_conflict_keys: Vec<String>, timeout_seconds: F4) -> AtomicCommitRequest where F4: Into<Option<i64>> {
+  pub fn new<F4>(read_version: i64, operations: Vec<Operation>, read_conflict_keys: Vec<Vec<u8>>, timeout_seconds: F4) -> AtomicCommitRequest where F4: Into<Option<i64>> {
     AtomicCommitRequest {
       read_version,
       operations,
@@ -2168,7 +2168,7 @@ impl AtomicCommitRequest {
     i_prot.read_struct_begin()?;
     let mut f_1: Option<i64> = None;
     let mut f_2: Option<Vec<Operation>> = None;
-    let mut f_3: Option<Vec<String>> = None;
+    let mut f_3: Option<Vec<Vec<u8>>> = None;
     let mut f_4: Option<i64> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
@@ -2193,9 +2193,9 @@ impl AtomicCommitRequest {
         },
         3 => {
           let list_ident = i_prot.read_list_begin()?;
-          let mut val: Vec<String> = Vec::with_capacity(list_ident.size as usize);
+          let mut val: Vec<Vec<u8>> = Vec::with_capacity(list_ident.size as usize);
           for _ in 0..list_ident.size {
-            let list_elem_3 = i_prot.read_string()?;
+            let list_elem_3 = i_prot.read_bytes()?;
             val.push(list_elem_3);
           }
           i_prot.read_list_end()?;
@@ -2239,7 +2239,7 @@ impl AtomicCommitRequest {
     o_prot.write_field_begin(&TFieldIdentifier::new("read_conflict_keys", TType::List, 3))?;
     o_prot.write_list_begin(&TListIdentifier::new(TType::String, self.read_conflict_keys.len() as i32))?;
     for e in &self.read_conflict_keys {
-      o_prot.write_string(e)?;
+      o_prot.write_bytes(e)?;
     }
     o_prot.write_list_end()?;
     o_prot.write_field_end()?;
@@ -2474,13 +2474,13 @@ impl GetReadVersionResponse {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotReadRequest {
-  pub key: String,
+  pub key: Vec<u8>,
   pub read_version: i64,
   pub column_family: Option<String>,
 }
 
 impl SnapshotReadRequest {
-  pub fn new<F3>(key: String, read_version: i64, column_family: F3) -> SnapshotReadRequest where F3: Into<Option<String>> {
+  pub fn new<F3>(key: Vec<u8>, read_version: i64, column_family: F3) -> SnapshotReadRequest where F3: Into<Option<String>> {
     SnapshotReadRequest {
       key,
       read_version,
@@ -2489,7 +2489,7 @@ impl SnapshotReadRequest {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotReadRequest> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<i64> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -2500,7 +2500,7 @@ impl SnapshotReadRequest {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -2531,7 +2531,7 @@ impl SnapshotReadRequest {
     let struct_ident = TStructIdentifier::new("SnapshotReadRequest");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::String, 1))?;
-    o_prot.write_string(&self.key)?;
+    o_prot.write_bytes(&self.key)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("read_version", TType::I64, 2))?;
     o_prot.write_i64(self.read_version)?;
@@ -2552,13 +2552,13 @@ impl SnapshotReadRequest {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotReadResponse {
-  pub value: String,
+  pub value: Vec<u8>,
   pub found: bool,
   pub error: Option<String>,
 }
 
 impl SnapshotReadResponse {
-  pub fn new<F3>(value: String, found: bool, error: F3) -> SnapshotReadResponse where F3: Into<Option<String>> {
+  pub fn new<F3>(value: Vec<u8>, found: bool, error: F3) -> SnapshotReadResponse where F3: Into<Option<String>> {
     SnapshotReadResponse {
       value,
       found,
@@ -2567,7 +2567,7 @@ impl SnapshotReadResponse {
   }
   pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SnapshotReadResponse> {
     i_prot.read_struct_begin()?;
-    let mut f_1: Option<String> = None;
+    let mut f_1: Option<Vec<u8>> = None;
     let mut f_2: Option<bool> = None;
     let mut f_3: Option<String> = None;
     loop {
@@ -2578,7 +2578,7 @@ impl SnapshotReadResponse {
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_string()?;
+          let val = i_prot.read_bytes()?;
           f_1 = Some(val);
         },
         2 => {
@@ -2609,7 +2609,7 @@ impl SnapshotReadResponse {
     let struct_ident = TStructIdentifier::new("SnapshotReadResponse");
     o_prot.write_struct_begin(&struct_ident)?;
     o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 1))?;
-    o_prot.write_string(&self.value)?;
+    o_prot.write_bytes(&self.value)?;
     o_prot.write_field_end()?;
     o_prot.write_field_begin(&TFieldIdentifier::new("found", TType::Bool, 2))?;
     o_prot.write_bool(self.found)?;

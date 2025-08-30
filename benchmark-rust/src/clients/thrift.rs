@@ -21,7 +21,7 @@ enum Rpc {
     // FoundationDB-style client-side transactions
     GetReadVersion { tx: oneshot::Sender<Result<thrift_kv::GetReadVersionResponse, thrift::Error>> },
     SnapshotRead { key: String, read_version: i64, tx: oneshot::Sender<Result<thrift_kv::SnapshotReadResponse, thrift::Error>> },
-    AtomicCommit { operations: Vec<thrift_kv::Operation>, read_version: i64, read_conflicts: Vec<String>, tx: oneshot::Sender<Result<thrift_kv::AtomicCommitResponse, thrift::Error>> },
+    AtomicCommit { operations: Vec<thrift_kv::Operation>, read_version: i64, read_conflicts: Vec<Vec<u8>>, tx: oneshot::Sender<Result<thrift_kv::AtomicCommitResponse, thrift::Error>> },
     
     // Non-transactional operations 
     #[allow(dead_code)]
@@ -76,7 +76,7 @@ impl ClientTransaction {
         match resp_rx.await? {
             Ok(response) => {
                 if response.found {
-                    Ok(Some(response.value))
+                    Ok(Some(String::from_utf8_lossy(&response.value).to_string()))
                 } else {
                     Ok(None)
                 }
@@ -103,11 +103,11 @@ impl ClientTransaction {
         let mut operations = Vec::new();
         
         for (key, value) in self.pending_writes {
-            operations.push(thrift_kv::Operation::new("set".to_string(), key, Some(value), None));
+            operations.push(thrift_kv::Operation::new("set".to_string(), key.into_bytes(), Some(value.into_bytes()), None));
         }
         
         for key in self.pending_deletes {
-            operations.push(thrift_kv::Operation::new("delete".to_string(), key, None, None));
+            operations.push(thrift_kv::Operation::new("delete".to_string(), key.into_bytes(), None, None));
         }
         
         // Send entire transaction to server in one atomic operation
@@ -115,7 +115,7 @@ impl ClientTransaction {
         let _ = self.client_tx.send(Rpc::AtomicCommit {
             operations,
             read_version: self.read_version,
-            read_conflicts: self.read_conflict_keys.into_iter().collect(),
+            read_conflicts: self.read_conflict_keys.into_iter().map(|k| k.into_bytes()).collect(),
             tx: resp_tx,
         });
         
@@ -195,7 +195,7 @@ impl ClientFactory for ThriftClientFactory {
                         let _ = tx.send(res);
                     }
                     Rpc::SnapshotRead { key, read_version, tx } => {
-                        let res = client.snapshot_read(thrift_kv::SnapshotReadRequest::new(key, read_version, None));
+                        let res = client.snapshot_read(thrift_kv::SnapshotReadRequest::new(key.into_bytes(), read_version, None));
                         let _ = tx.send(res);
                     }
                     Rpc::AtomicCommit { operations, read_version, read_conflicts, tx } => {
@@ -210,11 +210,11 @@ impl ClientFactory for ThriftClientFactory {
                     
                     // Non-transactional operations
                     Rpc::Put { key, value, tx } => {
-                        let res = client.set_key(thrift_kv::SetRequest { key, value, column_family: None });
+                        let res = client.set_key(thrift_kv::SetRequest { key: key.into_bytes(), value: value.into_bytes(), column_family: None });
                         let _ = tx.send(res);
                     }
                     Rpc::Get { key, tx } => {
-                        let res = client.get(thrift_kv::GetRequest { key, column_family: None });
+                        let res = client.get(thrift_kv::GetRequest { key: key.into_bytes(), column_family: None });
                         let _ = tx.send(res);
                     }
                     Rpc::Ping { message, timestamp, tx } => {

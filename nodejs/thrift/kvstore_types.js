@@ -39,7 +39,7 @@ GetRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -64,7 +64,7 @@ GetRequest.prototype.write = function(output) {
   output.writeStructBegin('GetRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -110,7 +110,7 @@ GetResponse.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -142,7 +142,7 @@ GetResponse.prototype.write = function(output) {
   output.writeStructBegin('GetResponse');
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 1);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.found !== null && this.found !== undefined) {
@@ -193,14 +193,14 @@ SetRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -225,12 +225,12 @@ SetRequest.prototype.write = function(output) {
   output.writeStructBegin('SetRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 2);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -351,7 +351,7 @@ DeleteRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -376,7 +376,7 @@ DeleteRequest.prototype.write = function(output) {
   output.writeStructBegin('DeleteRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -505,14 +505,14 @@ GetRangeRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.start_key = input.readString();
+        this.start_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.end_key = input.readString();
+        this.end_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -544,12 +544,12 @@ GetRangeRequest.prototype.write = function(output) {
   output.writeStructBegin('GetRangeRequest');
   if (this.start_key !== null && this.start_key !== undefined) {
     output.writeFieldBegin('start_key', Thrift.Type.STRING, 1);
-    output.writeString(this.start_key);
+    output.writeBinary(this.start_key);
     output.writeFieldEnd();
   }
   if (this.end_key !== null && this.end_key !== undefined) {
     output.writeFieldBegin('end_key', Thrift.Type.STRING, 2);
-    output.writeString(this.end_key);
+    output.writeBinary(this.end_key);
     output.writeFieldEnd();
   }
   if (this.limit !== null && this.limit !== undefined) {
@@ -596,14 +596,14 @@ KeyValue.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -621,12 +621,12 @@ KeyValue.prototype.write = function(output) {
   output.writeStructBegin('KeyValue');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 2);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   output.writeFieldStop();
@@ -766,7 +766,7 @@ SnapshotGetRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -798,7 +798,7 @@ SnapshotGetRequest.prototype.write = function(output) {
   output.writeStructBegin('SnapshotGetRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.read_version !== null && this.read_version !== undefined) {
@@ -849,7 +849,7 @@ SnapshotGetResponse.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -881,7 +881,7 @@ SnapshotGetResponse.prototype.write = function(output) {
   output.writeStructBegin('SnapshotGetResponse');
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 1);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.found !== null && this.found !== undefined) {
@@ -940,14 +940,14 @@ SnapshotGetRangeRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.start_key = input.readString();
+        this.start_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.end_key = input.readString();
+        this.end_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -986,12 +986,12 @@ SnapshotGetRangeRequest.prototype.write = function(output) {
   output.writeStructBegin('SnapshotGetRangeRequest');
   if (this.start_key !== null && this.start_key !== undefined) {
     output.writeFieldBegin('start_key', Thrift.Type.STRING, 1);
-    output.writeString(this.start_key);
+    output.writeBinary(this.start_key);
     output.writeFieldEnd();
   }
   if (this.end_key !== null && this.end_key !== undefined) {
     output.writeFieldBegin('end_key', Thrift.Type.STRING, 2);
-    output.writeString(this.end_key);
+    output.writeBinary(this.end_key);
     output.writeFieldEnd();
   }
   if (this.read_version !== null && this.read_version !== undefined) {
@@ -1140,7 +1140,7 @@ AddReadConflictRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1165,7 +1165,7 @@ AddReadConflictRequest.prototype.write = function(output) {
   output.writeStructBegin('AddReadConflictRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -1276,14 +1276,14 @@ AddReadConflictRangeRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.start_key = input.readString();
+        this.start_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.end_key = input.readString();
+        this.end_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1308,12 +1308,12 @@ AddReadConflictRangeRequest.prototype.write = function(output) {
   output.writeStructBegin('AddReadConflictRangeRequest');
   if (this.start_key !== null && this.start_key !== undefined) {
     output.writeFieldBegin('start_key', Thrift.Type.STRING, 1);
-    output.writeString(this.start_key);
+    output.writeBinary(this.start_key);
     output.writeFieldEnd();
   }
   if (this.end_key !== null && this.end_key !== undefined) {
     output.writeFieldBegin('end_key', Thrift.Type.STRING, 2);
-    output.writeString(this.end_key);
+    output.writeBinary(this.end_key);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -1649,14 +1649,14 @@ SetVersionstampedKeyRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key_prefix = input.readString();
+        this.key_prefix = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1681,12 +1681,12 @@ SetVersionstampedKeyRequest.prototype.write = function(output) {
   output.writeStructBegin('SetVersionstampedKeyRequest');
   if (this.key_prefix !== null && this.key_prefix !== undefined) {
     output.writeFieldBegin('key_prefix', Thrift.Type.STRING, 1);
-    output.writeString(this.key_prefix);
+    output.writeBinary(this.key_prefix);
     output.writeFieldEnd();
   }
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 2);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -1732,7 +1732,7 @@ SetVersionstampedKeyResponse.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.generated_key = input.readString();
+        this.generated_key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1764,7 +1764,7 @@ SetVersionstampedKeyResponse.prototype.write = function(output) {
   output.writeStructBegin('SetVersionstampedKeyResponse');
   if (this.generated_key !== null && this.generated_key !== undefined) {
     output.writeFieldBegin('generated_key', Thrift.Type.STRING, 1);
-    output.writeString(this.generated_key);
+    output.writeBinary(this.generated_key);
     output.writeFieldEnd();
   }
   if (this.success !== null && this.success !== undefined) {
@@ -1815,14 +1815,14 @@ SetVersionstampedValueRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.value_prefix = input.readString();
+        this.value_prefix = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1847,12 +1847,12 @@ SetVersionstampedValueRequest.prototype.write = function(output) {
   output.writeStructBegin('SetVersionstampedValueRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.value_prefix !== null && this.value_prefix !== undefined) {
     output.writeFieldBegin('value_prefix', Thrift.Type.STRING, 2);
-    output.writeString(this.value_prefix);
+    output.writeBinary(this.value_prefix);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -1898,7 +1898,7 @@ SetVersionstampedValueResponse.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.generated_value = input.readString();
+        this.generated_value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -1930,7 +1930,7 @@ SetVersionstampedValueResponse.prototype.write = function(output) {
   output.writeStructBegin('SetVersionstampedValueResponse');
   if (this.generated_value !== null && this.generated_value !== undefined) {
     output.writeFieldBegin('generated_value', Thrift.Type.STRING, 1);
-    output.writeString(this.generated_value);
+    output.writeBinary(this.generated_value);
     output.writeFieldEnd();
   }
   if (this.success !== null && this.success !== undefined) {
@@ -2154,14 +2154,14 @@ Operation.prototype.read = function(input) {
       break;
       case 2:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
       break;
       case 3:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -2191,12 +2191,12 @@ Operation.prototype.write = function(output) {
   }
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 2);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 3);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.column_family !== null && this.column_family !== undefined) {
@@ -2276,7 +2276,7 @@ AtomicCommitRequest.prototype.read = function(input) {
         var _size14 = _rtmp315.size || 0;
         for (var _i16 = 0; _i16 < _size14; ++_i16) {
           var elem17 = null;
-          elem17 = input.readString();
+          elem17 = input.readBinary();
           this.read_conflict_keys.push(elem17);
         }
         input.readListEnd();
@@ -2325,7 +2325,7 @@ AtomicCommitRequest.prototype.write = function(output) {
     for (var iter19 in this.read_conflict_keys) {
       if (this.read_conflict_keys.hasOwnProperty(iter19)) {
         iter19 = this.read_conflict_keys[iter19];
-        output.writeString(iter19);
+        output.writeBinary(iter19);
       }
     }
     output.writeListEnd();
@@ -2579,7 +2579,7 @@ SnapshotReadRequest.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.key = input.readString();
+        this.key = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -2611,7 +2611,7 @@ SnapshotReadRequest.prototype.write = function(output) {
   output.writeStructBegin('SnapshotReadRequest');
   if (this.key !== null && this.key !== undefined) {
     output.writeFieldBegin('key', Thrift.Type.STRING, 1);
-    output.writeString(this.key);
+    output.writeBinary(this.key);
     output.writeFieldEnd();
   }
   if (this.read_version !== null && this.read_version !== undefined) {
@@ -2662,7 +2662,7 @@ SnapshotReadResponse.prototype.read = function(input) {
     switch (fid) {
       case 1:
       if (ftype == Thrift.Type.STRING) {
-        this.value = input.readString();
+        this.value = input.readBinary();
       } else {
         input.skip(ftype);
       }
@@ -2694,7 +2694,7 @@ SnapshotReadResponse.prototype.write = function(output) {
   output.writeStructBegin('SnapshotReadResponse');
   if (this.value !== null && this.value !== undefined) {
     output.writeFieldBegin('value', Thrift.Type.STRING, 1);
-    output.writeString(this.value);
+    output.writeBinary(this.value);
     output.writeFieldEnd();
   }
   if (this.found !== null && this.found !== undefined) {
