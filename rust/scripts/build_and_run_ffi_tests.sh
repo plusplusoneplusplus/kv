@@ -44,7 +44,7 @@ cd "$CLIENT_DIR"
 if [ "$VERBOSE" = true ]; then
     cargo build --release
 else
-    cargo build --release > /dev/null 2>&1
+    cargo build --release
 fi
 
 # Check if the shared library was built (platform-specific extension)
