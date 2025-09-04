@@ -468,8 +468,12 @@ pub extern "C" fn kv_transaction_set(
     value_length: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || key_data.is_null() || value_data.is_null() 
-       || key_length < 0 || value_length < 0 {
+    if transaction.is_null() || key_data.is_null() || key_length < 0 || value_length < 0 {
+        return ptr::null_mut();
+    }
+    
+    // Allow NULL value_data only if value_length is 0 (empty value)
+    if value_data.is_null() && value_length != 0 {
         return ptr::null_mut();
     }
     
@@ -483,8 +487,12 @@ pub extern "C" fn kv_transaction_set(
         slice::from_raw_parts(key_data, key_length as usize).to_vec() // Copy the data
     };
     
-    let value_bytes = unsafe {
-        slice::from_raw_parts(value_data, value_length as usize).to_vec() // Copy the data
+    let value_bytes = if value_data.is_null() {
+        Vec::new() // Empty value
+    } else {
+        unsafe {
+            slice::from_raw_parts(value_data, value_length as usize).to_vec() // Copy the data
+        }
     };
     
     let cf_str = if column_family.is_null() {

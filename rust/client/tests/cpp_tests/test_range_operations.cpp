@@ -212,7 +212,7 @@ int test_c_range_binary_keys() {
     // Test 2: Range with binary prefix "bin\x01prefix"
     const char prefix2[] = "bin\x01prefix";
     KvFutureHandle range_future2 = kv_read_transaction_get_range(read_tx,
-        (const uint8_t*)prefix2, 11,
+        (const uint8_t*)prefix2, 10,
         NULL, 0, 10, NULL);
     TEST_ASSERT(range_future2 != NULL, "Failed to create binary range future 2");
     
@@ -344,7 +344,9 @@ void test_cpp_advanced_range_operations() {
             }
             
             // Test 2: Get only direct children of "dir/" (exclude subdirectories)
-            std::string dir_end = "dir0";  // This will exclude "dir/subdir/" entries
+            // In lexicographic order: "dir/file1.txt", "dir/file2.txt" come before "dir/subdir/"
+            // Use "dir/s" as end key to stop before "dir/subdir/"
+            std::string dir_end = "dir/s";  
             auto direct_children = tx.get_range("dir/", &dir_end);
             test.assert_true(direct_children.size() == 2, "Expected 2 direct children of dir/");
             
