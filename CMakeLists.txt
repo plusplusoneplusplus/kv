@@ -176,20 +176,33 @@ add_dependencies(kv_client_static rust_client_lib)
 add_library(kv::client ALIAS kv_client)
 
 #==============================================================================
-# FFI Tests
+# C++ FFI Tests
 #==============================================================================
 
-# Create unified FFI test executable
-add_executable(unified_ffi_test
-    "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/tests/unified_ffi_test.cpp"
+# Set the cpp_tests directory
+set(CPP_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/tests/cpp_tests")
+
+# Create C++ FFI test executable with all test files
+add_executable(cpp_ffi_test
+    "${CPP_TESTS_DIR}/main.cpp"
+    "${CPP_TESTS_DIR}/test_basic_operations.cpp"
+    "${CPP_TESTS_DIR}/test_configuration.cpp"
+    "${CPP_TESTS_DIR}/test_binary_data.cpp"
+    "${CPP_TESTS_DIR}/test_range_operations.cpp"
+    "${CPP_TESTS_DIR}/test_transactions.cpp"
+    "${CPP_TESTS_DIR}/test_concurrency.cpp"
+    "${CPP_TESTS_DIR}/test_error_handling.cpp"
 )
 
-# Link against the KV client library using direct path and library name
-target_link_libraries(unified_ffi_test PRIVATE -L"${CMAKE_BINARY_DIR}/bin" -lkvstore_client)
-target_include_directories(unified_ffi_test PRIVATE ${KV_INCLUDE_DIR})
+# Link against the KV client library
+target_link_libraries(cpp_ffi_test PRIVATE -L"${CMAKE_BINARY_DIR}/bin" -lkvstore_client)
+target_include_directories(cpp_ffi_test PRIVATE 
+    ${KV_INCLUDE_DIR}
+    ${CPP_TESTS_DIR}
+)
 
-# Set C++ standard for the test
-set_target_properties(unified_ffi_test PROPERTIES
+# Set C++ standard for the tests
+set_target_properties(cpp_ffi_test PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -197,23 +210,23 @@ set_target_properties(unified_ffi_test PROPERTIES
 )
 
 # Ensure the test is built after the client library
-add_dependencies(unified_ffi_test rust_client_lib)
+add_dependencies(cpp_ffi_test rust_client_lib)
 
 # Copy the test executable to the bin directory
-add_custom_command(TARGET unified_ffi_test POST_BUILD
+add_custom_command(TARGET cpp_ffi_test POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:unified_ffi_test>
-        "${CMAKE_BINARY_DIR}/bin/unified_ffi_test"
-    COMMENT "Copying unified FFI test to bin directory"
+        $<TARGET_FILE:cpp_ffi_test>
+        "${CMAKE_BINARY_DIR}/bin/cpp_ffi_test"
+    COMMENT "Copying C++ FFI test to bin directory"
 )
 
-# Add test target for running the FFI tests (requires server running on localhost:9090)
+# Add test target for running the C++ FFI tests (requires server running on localhost:9090)
 add_custom_target(test_ffi
     COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/bin:$ENV{LD_LIBRARY_PATH}" 
-            ${CMAKE_BINARY_DIR}/bin/unified_ffi_test
-    DEPENDS unified_ffi_test
+            ${CMAKE_BINARY_DIR}/bin/cpp_ffi_test
+    DEPENDS cpp_ffi_test
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    COMMENT "Running unified FFI tests"
+    COMMENT "Running C++ FFI tests"
 )
 
 #==============================================================================
@@ -229,7 +242,7 @@ add_custom_target(build ALL
         rust_thrift_server
         rust_benchmark
         rust_client_lib
-        unified_ffi_test
+        cpp_ffi_test
 )
 
 #==============================================================================
@@ -292,8 +305,8 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_thrift_server - Build Rust Thrift server"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_benchmark - Build Rust benchmark tool"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_client_lib- Build Rust client library with FFI"
-    COMMAND ${CMAKE_COMMAND} -E echo "  unified_ffi_test - Build unified C/C++ FFI tests"
-    COMMAND ${CMAKE_COMMAND} -E echo "  test_ffi       - Run unified FFI tests (requires server on localhost:9090)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  cpp_ffi_test   - Build C++ FFI tests (organized by category)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test_ffi       - Run C++ FFI tests (requires server on localhost:9090)"
     COMMAND ${CMAKE_COMMAND} -E echo "  clean_all      - Clean all build artifacts"
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Usage:"
