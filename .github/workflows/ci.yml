@@ -42,9 +42,27 @@ jobs:
     - name: Install system dependencies for FFI tests
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev
+        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev cmake
 
-    - name: Run Rust client FFI tests
+    - name: Build FFI tests
       run: |
-        chmod +x rust/scripts/build_and_run_ffi_tests.sh
-        rust/scripts/build_and_run_ffi_tests.sh
+        cmake -B build -S .
+        cmake --build build --target cpp_ffi_test
+
+    - name: Start Thrift server for tests
+      run: |
+        cd rust
+        cargo run --bin thrift-server &
+        # Wait for server to start
+        for i in {1..30}; do
+          if nc -z localhost 9090 2>/dev/null; then
+            echo "Server is ready"
+            break
+          fi
+          sleep 1
+        done
+
+    - name: Run FFI tests
+      run: |
+        cd build/bin
+        ./cpp_ffi_test
