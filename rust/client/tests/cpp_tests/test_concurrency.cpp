@@ -1,4 +1,6 @@
 #include "test_common.hpp"
+#include <atomic>
+#include <mutex>
 
 //==============================================================================
 // Concurrency Tests
