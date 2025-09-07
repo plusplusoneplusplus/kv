@@ -78,22 +78,40 @@ trap cleanup EXIT
 check_prerequisites() {
     log_info "Checking prerequisites..."
     
-    if [ ! -f "../bin/benchmark-rust" ]; then
-        log_error "Benchmark binary not found. Please run 'make build' first from the project root."
+    # Check benchmark binary - try both release and debug
+    if [ -f "../benchmark-rust/target/release/benchmark" ]; then
+        BENCHMARK_BINARY="../benchmark-rust/target/release/benchmark"
+    elif [ -f "../benchmark-rust/target/debug/benchmark" ]; then
+        BENCHMARK_BINARY="../benchmark-rust/target/debug/benchmark"
+    else
+        log_error "Benchmark binary not found. Please run 'cd benchmark-rust && cargo build' first."
         exit 1
     fi
     
-    if [ ! -f "../bin/rocksdbserver-rust" ]; then
-        log_error "gRPC server binary not found. Please run 'make build' first from the project root."
+    # Check gRPC server binary - try both release and debug
+    if [ -f "../rust/target/release/server" ]; then
+        GRPC_SERVER_BINARY="../rust/target/release/server"
+    elif [ -f "../rust/target/debug/server" ]; then
+        GRPC_SERVER_BINARY="../rust/target/debug/server"
+    else
+        log_error "gRPC server binary not found. Please run 'cd rust && cargo build' first."
         exit 1
     fi
     
-    if [ ! -f "../bin/rocksdbserver-thrift" ]; then
-        log_error "Thrift server binary not found. Please run 'make build' first from the project root."
+    # Check Thrift server binary - try both release and debug
+    if [ -f "../rust/target/release/thrift-server" ]; then
+        THRIFT_SERVER_BINARY="../rust/target/release/thrift-server"
+    elif [ -f "../rust/target/debug/thrift-server" ]; then
+        THRIFT_SERVER_BINARY="../rust/target/debug/thrift-server"
+    else
+        log_error "Thrift server binary not found. Please run 'cd rust && cargo build' first."
         exit 1
     fi
     
     log_success "Prerequisites check passed"
+    log_info "Using benchmark binary: $BENCHMARK_BINARY"
+    log_info "Using gRPC server binary: $GRPC_SERVER_BINARY"
+    log_info "Using Thrift server binary: $THRIFT_SERVER_BINARY"
 }
 
 # Start Thrift server
@@ -101,11 +119,11 @@ start_thrift_server() {
     log_info "Starting Thrift server on port $THRIFT_SERVER_PORT..."
     
     # Clean up any existing server process
-    pkill -f "rocksdbserver-thrift" 2>/dev/null || true
+    pkill -f "thrift-server" 2>/dev/null || true
     sleep 2
     
     # Start the server in background
-    ../bin/rocksdbserver-thrift > thrift_server.log 2>&1 &
+    $THRIFT_SERVER_BINARY > thrift_server.log 2>&1 &
     THRIFT_SERVER_PID=$!
     
     log_info "Thrift server started with PID: $THRIFT_SERVER_PID"
@@ -141,11 +159,11 @@ start_grpc_server() {
     log_info "Starting gRPC server on port $GRPC_SERVER_PORT..."
     
     # Clean up any existing server process
-    pkill -f "rocksdbserver-rust" 2>/dev/null || true
+    pkill -f "server" 2>/dev/null || true
     sleep 2
     
     # Start the server in background
-    ../bin/rocksdbserver-rust > grpc_server.log 2>&1 &
+    $GRPC_SERVER_BINARY > grpc_server.log 2>&1 &
     GRPC_SERVER_PID=$!
     
     log_info "gRPC server started with PID: $GRPC_SERVER_PID"
@@ -216,7 +234,7 @@ run_benchmark() {
             addr_param="--addr=$unique_db_path"
         fi
         
-        ../bin/benchmark-rust \
+        $BENCHMARK_BINARY \
             --protocol=$protocol \
             $cmd_args \
             $config_param \
