@@ -1,4 +1,5 @@
 fn main() {
-    // No build steps needed - we use the pre-generated kvstore.rs file
+    // Generated kvstore.rs is copied by CMake from build/generated/
     println!("cargo:rerun-if-changed=src/kvstore.rs");
+    println!("cargo:rerun-if-changed=../thrift/kvstore.thrift");
 }

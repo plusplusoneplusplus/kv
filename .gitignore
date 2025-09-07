@@ -16,9 +16,11 @@ Makefile
 # Benchmark results
 benchmark_results/
 
-# Generated Thrift files
+# Generated protocol files (copied from build/generated during build)
 rust/src/kvstore.rs
-gen-nodejs/
+rust/client/src/kvstore.rs
+nodejs/thrift/kvstore_types.js
+nodejs/thrift/TransactionalKV.js
 
 # Rust build artifacts
 target/
