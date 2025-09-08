@@ -977,6 +977,7 @@
         
         function escapeJs(text) {
             if (text === null || text === undefined) return '';
+            if (typeof text !== 'string') text = String(text);
             return text.replace(/\\/g, '\\\\')
                       .replace(/'/g, "\\'")
                       .replace(/"/g, '\\"')

@@ -60,15 +60,17 @@ app.get('/api/keys', async (req, res) => {
             }
             
             const keyValues = result.key_values.map(kv => {
-                const value = kv.value;
-                const valueBuffer = Buffer.from(value, 'utf8');
+                // Convert Buffer objects to strings if needed
+                const keyString = Buffer.isBuffer(kv.key) ? kv.key.toString('utf8') : kv.key;
+                const valueString = Buffer.isBuffer(kv.value) ? kv.value.toString('utf8') : kv.value;
+                const valueBuffer = Buffer.isBuffer(kv.value) ? kv.value : Buffer.from(kv.value, 'utf8');
                 
                 return {
-                    key: kv.key,
-                    value: value,
-                    valueLength: value.length,
+                    key: keyString,
+                    value: valueString,
+                    valueLength: valueBuffer.length,
                     hexValue: valueBuffer.toString('hex'),
-                    isAscii: /^[\x20-\x7E]*$/.test(value),
+                    isAscii: /^[\x20-\x7E]*$/.test(valueString),
                     hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
                 };
             });
@@ -106,16 +108,17 @@ app.get('/api/key/:key', async (req, res) => {
             }
             
             if (result.found) {
-                const value = result.value;
-                const valueBuffer = Buffer.from(value, 'utf8');
+                // Convert Buffer objects to strings if needed
+                const valueString = Buffer.isBuffer(result.value) ? result.value.toString('utf8') : result.value;
+                const valueBuffer = Buffer.isBuffer(result.value) ? result.value : Buffer.from(result.value, 'utf8');
                 
                 res.json({
                     key: key,
-                    value: value,
+                    value: valueString,
                     found: result.found,
-                    valueLength: value.length,
+                    valueLength: valueBuffer.length,
                     hexValue: valueBuffer.toString('hex'),
-                    isAscii: /^[\x20-\x7E]*$/.test(value),
+                    isAscii: /^[\x20-\x7E]*$/.test(valueString),
                     hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
                 });
             } else {
