@@ -858,12 +858,6 @@ pub extern "C" fn kv_read_transaction_get(
         slice::from_raw_parts(key_data, key_length as usize)
     };
     
-    // Convert binary key to string (assuming UTF-8 for now)
-    let key_str = match std::str::from_utf8(key_bytes) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(), // TODO: Support true binary keys
-    };
-    
     let cf_str = if column_family.is_null() {
         None
     } else {
@@ -875,7 +869,7 @@ pub extern "C" fn kv_read_transaction_get(
         }
     };
     
-    let future = tx_arc.snapshot_get(key_str, cf_str);
+    let future = tx_arc.snapshot_get(key_bytes, cf_str);
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();

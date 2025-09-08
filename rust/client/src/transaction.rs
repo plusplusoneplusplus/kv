@@ -408,11 +408,11 @@ impl ReadTransaction {
     }
     
     /// Get a value by key at the snapshot version
-    pub fn snapshot_get(&self, key: &str, column_family: Option<&str>) -> KvFuture<Option<String>> {
+    pub fn snapshot_get(&self, key: &[u8], column_family: Option<&str>) -> KvFuture<Option<Vec<u8>>> {
         let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRequest::new(
-            key.as_bytes().to_vec(),
+            key.to_vec(),
             read_version,
             column_family.map(|s| s.to_string()),
         );
@@ -430,8 +430,7 @@ impl ReadTransaction {
             }
             
             if response.found {
-                let value_str = String::from_utf8_lossy(&response.value).to_string();
-                Ok(Some(value_str))
+                Ok(Some(response.value))
             } else {
                 Ok(None)
             }
