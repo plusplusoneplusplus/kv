@@ -24,6 +24,7 @@ int test_c_range_binary_keys();
 
 // Transaction Tests
 int test_c_read_transaction();
+int test_c_read_transaction_binary_keys();
 int test_c_transaction_abort();
 int test_c_transaction_conflict();
 int test_c_transaction_timeout();
@@ -89,6 +90,7 @@ int main() {
         
         // Transactions
         {"C Read Transaction", test_c_read_transaction},
+        {"C Read Transaction Binary Keys", test_c_read_transaction_binary_keys},
         {"C Transaction Abort", test_c_transaction_abort},
         {"C Transaction Conflict", test_c_transaction_conflict},
         {"C Transaction Timeout", test_c_transaction_timeout},

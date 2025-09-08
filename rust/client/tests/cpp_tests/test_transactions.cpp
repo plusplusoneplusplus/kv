@@ -68,6 +68,79 @@ int test_c_read_transaction() {
     return 0;
 }
 
+// Test read transaction with binary keys containing null bytes
+int test_c_read_transaction_binary_keys() {
+    kv_init();
+    
+    KvClientHandle client = kv_client_create("localhost:9090");
+    TEST_ASSERT(client != NULL, "Failed to create client");
+    
+    // First, set up binary data with a regular transaction
+    KvFutureHandle setup_tx_future = kv_transaction_begin(client, 30);
+    TEST_ASSERT(setup_tx_future != NULL, "Failed to begin setup transaction");
+    
+    int ready = wait_for_future_c(setup_tx_future);
+    TEST_ASSERT(ready == 1, "Setup transaction begin future not ready");
+    
+    KvTransactionHandle setup_tx = kv_future_get_transaction(setup_tx_future);
+    TEST_ASSERT(setup_tx != NULL, "Failed to get setup transaction handle");
+    
+    // Test binary key with diverse byte values including nulls and control chars (avoiding high bytes that may cause UTF-8 issues)
+    const uint8_t binary_key[] = {0x00, 0x01, 0x7F, 'k', 'e', 'y', 0x00, 0x0A, 0x0D, 0x1B, 0x20, 0x21, 0x22};
+    int key_len = sizeof(binary_key);
+    const uint8_t binary_value[] = {0x00, 'r', 'a', 'w', 0x7F, 'b', 'i', 'n', 'a', 'r', 'y', 0x0A, 0x0D, 0x1B, 0x30, 0x31, 0x32, 0x00, 'd', 'a', 't', 'a', 0x40, 0x41};
+    int value_len = sizeof(binary_value);
+    
+    KvFutureHandle set_future = kv_transaction_set(setup_tx, 
+        binary_key, key_len,
+        binary_value, value_len, NULL);
+    ready = wait_for_future_c(set_future);
+    TEST_ASSERT(ready == 1, "Setup set future not ready");
+    
+    KvResult set_result = kv_future_get_void_result(set_future);
+    TEST_ASSERT(set_result.success == 1, "Setup set operation failed");
+    
+    KvFutureHandle commit_future = kv_transaction_commit(setup_tx);
+    ready = wait_for_future_c(commit_future);
+    TEST_ASSERT(ready == 1, "Setup commit future not ready");
+    
+    KvResult commit_result = kv_future_get_void_result(commit_future);
+    TEST_ASSERT(commit_result.success == 1, "Setup commit operation failed");
+    
+    // Now test read transaction with binary key
+    KvFutureHandle read_tx_future = kv_read_transaction_begin(client, -1);
+    TEST_ASSERT(read_tx_future != NULL, "Failed to begin read transaction");
+    
+    ready = wait_for_future_c(read_tx_future);
+    TEST_ASSERT(ready == 1, "Read transaction begin future not ready");
+    
+    KvReadTransactionHandle read_tx = kv_future_get_read_transaction(read_tx_future);
+    TEST_ASSERT(read_tx != NULL, "Failed to get read transaction handle");
+    
+    // Read the binary key-value pair
+    KvFutureHandle get_future = kv_read_transaction_get(read_tx, 
+        binary_key, key_len, NULL);
+    TEST_ASSERT(get_future != NULL, "Failed to create read get future");
+    
+    ready = wait_for_future_c(get_future);
+    TEST_ASSERT(ready == 1, "Read get future not ready");
+    
+    KvBinaryData retrieved_value;
+    KvResult get_result = kv_future_get_value_result(get_future, &retrieved_value);
+    TEST_ASSERT(get_result.success == 1, "Read get operation failed");
+    TEST_ASSERT(retrieved_value.data != NULL, "Got NULL value from read transaction");
+    TEST_ASSERT(retrieved_value.length == value_len, "Binary value length mismatch");
+    TEST_ASSERT(memcmp(retrieved_value.data, binary_value, value_len) == 0, "Binary value content mismatch");
+    
+    // Cleanup
+    kv_binary_free(&retrieved_value);
+    kv_read_transaction_destroy(read_tx);
+    kv_client_destroy(client);
+    kv_shutdown();
+    TEST_PASS();
+    return 0;
+}
+
 // Test transaction abort functionality
 int test_c_transaction_abort() {
     kv_init();

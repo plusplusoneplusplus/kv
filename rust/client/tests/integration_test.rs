@@ -129,6 +129,38 @@ async fn test_read_transaction() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+async fn test_read_transaction_binary_keys() -> Result<(), Box<dyn std::error::Error>> {
+    let client = KvStoreClient::connect("localhost:9090")?;
+    
+    // First, set up binary data with a regular transaction
+    let tx_future = client.begin_transaction(None, Some(30));
+    let mut tx = tx_future.await_result().await?;
+    
+    // Test binary key with null bytes
+    let binary_key = b"binary\x00key\x00with\x00nulls";
+    let binary_value = b"binary\x00value\x00data\x00test";
+    
+    tx.set(binary_key, binary_value, None)?;
+    
+    let commit_future = tx.commit();
+    commit_future.await_result().await?;
+    
+    // Now test read transaction with binary key
+    let read_tx_future = client.begin_read_transaction(None);
+    let read_tx = read_tx_future.await_result().await?;
+    
+    let get_future = read_tx.snapshot_get(binary_key, None);
+    let value = get_future.await_result().await?;
+    
+    // Verify binary value retrieval
+    assert!(value.is_some());
+    let retrieved_value = value.unwrap();
+    assert_eq!(retrieved_value, binary_value);
+    
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_versionstamped_operations() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect("localhost:9090")?;
     
