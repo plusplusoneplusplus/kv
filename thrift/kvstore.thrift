@@ -205,12 +205,12 @@ struct SnapshotReadResponse {
 
 // Health check (preserved from original)
 struct PingRequest {
-    1: optional string message,
+    1: optional binary message,
     2: optional i64 timestamp
 }
 
 struct PingResponse {
-    1: required string message,
+    1: required binary message,
     2: required i64 timestamp,
     3: required i64 server_timestamp
 }

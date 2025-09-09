@@ -173,9 +173,9 @@ impl KvStoreClient {
     }
     
     /// Health check - ping the server
-    pub fn ping(&self, message: Option<String>) -> KvFuture<String> {
+    pub fn ping(&self, message: Option<Vec<u8>>) -> KvFuture<Vec<u8>> {
         if self.config.debug_mode {
-            log_network_operation(&format!("ping: {}", message.as_deref().unwrap_or("(empty)")), None);
+            log_network_operation(&format!("ping: {} bytes", message.as_ref().map(|v| v.len()).unwrap_or(0)), None);
         }
         let client = Arc::clone(&self.client);
         let debug_mode = self.config.debug_mode;
@@ -210,7 +210,7 @@ impl KvStoreClient {
             let operation_time = start_time.elapsed().as_millis() as u64;
             if debug_mode {
                 log_operation_timing("ping", operation_time);
-                log_network_operation(&format!("ping response: {}", response.message), None);
+                log_network_operation(&format!("ping response: {} bytes", response.message.len()), None);
             }
             
             Ok(response.message)

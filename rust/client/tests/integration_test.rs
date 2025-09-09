@@ -290,10 +290,10 @@ async fn test_transaction_timeout() -> Result<(), Box<dyn std::error::Error>> {
 async fn test_ping() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect("localhost:9090")?;
     
-    let ping_future = client.ping(Some("test message".to_string()));
+    let ping_future = client.ping(Some("test message".as_bytes().to_vec()));
     let response = ping_future.await_result().await?;
     
-    assert!(response.contains("test message") || response == "pong");
+    assert!(response.windows(12).any(|w| w == b"test message") || response == b"pong");
     
     Ok(())
 }

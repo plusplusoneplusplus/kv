@@ -959,19 +959,16 @@ pub extern "C" fn kv_client_ping(
         None => return ptr::null_mut(),
     };
     
-    let message_str = if message_data.is_null() || message_length <= 0 {
+    let message_bytes = if message_data.is_null() || message_length <= 0 {
         None
     } else {
         unsafe {
             let bytes = slice::from_raw_parts(message_data, message_length as usize);
-            match std::str::from_utf8(bytes) {
-                Ok(s) => Some(s.to_string()),
-                Err(_) => return ptr::null_mut(),
-            }
+            Some(bytes.to_vec())
         }
     };
     
-    let future = client_arc.ping(message_str);
+    let future = client_arc.ping(message_bytes);
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
