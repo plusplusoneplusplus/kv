@@ -168,9 +168,12 @@ add_custom_target(rust_client_lib ALL
         "${KV_CLIENT_DIR}/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --features ffi
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
-    # Use ls to verify file exists before copying
-    COMMAND ls -la "${KV_LIB_DIR}/${KV_LIB_NAME}"
-    COMMAND cp "${KV_LIB_DIR}/${KV_LIB_NAME}" "${CMAKE_BINARY_DIR}/bin/${KV_LIB_NAME}"
+    # List directory contents to verify source file exists
+    COMMAND ls -la "${KV_LIB_DIR}/"
+    # Copy with verbose output
+    COMMAND cp -v "${KV_LIB_DIR}/${KV_LIB_NAME}" "${CMAKE_BINARY_DIR}/bin/${KV_LIB_NAME}"
+    # Verify the copy was successful
+    COMMAND ls -la "${CMAKE_BINARY_DIR}/bin/${KV_LIB_NAME}"
     WORKING_DIRECTORY ${KV_CLIENT_DIR}
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Rust client library with FFI support"
