@@ -32,7 +32,7 @@ jobs:
         cd rust
         # Run tests and capture output, checking for actual test failures
         set +e  # Don't exit on error
-        OUTPUT=$(cargo test --verbose -- --test-threads=1 2>&1)
+        OUTPUT=$(cargo test --workspace --verbose -- --test-threads=1 2>&1)
         EXIT_CODE=$?
         echo "$OUTPUT"
         # Check if all tests passed (look for the success message)
