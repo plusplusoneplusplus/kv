@@ -167,7 +167,8 @@ add_custom_target(rust_client_lib ALL
         "${RUST_GENERATED_DIR}/kvstore.rs"
         "${KV_CLIENT_DIR}/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --features ffi
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${KV_LIB_DIR}/${KV_LIB_NAME}"
         "${CMAKE_BINARY_DIR}/bin/${KV_LIB_NAME}"
     WORKING_DIRECTORY ${KV_CLIENT_DIR}
