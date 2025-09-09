@@ -5,7 +5,7 @@ use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{TIoChannel, TTcpChannel};
 
 // Import the generated Thrift types and client from the current crate
-use rocksdb_server::lib::kvstore::*;
+use rocksdb_server::*;
 
 mod common;
 
