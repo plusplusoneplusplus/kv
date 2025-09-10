@@ -42,12 +42,16 @@ jobs:
     - name: Install system dependencies for FFI tests
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev cmake thrift-compiler
+        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev cmake thrift-compiler libc6-dev
+
+    - name: Clean build cache
+      run: |
+        rm -rf build/
 
     - name: Build FFI tests
       run: |
         cmake -B build -S .
-        cmake --build build --target cpp_ffi_test
+        cmake --build build --target cpp_ffi_test --verbose
 
     - name: Start Thrift server for tests
       run: |
