@@ -4,403 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KV Store Viewer</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #f5f5f5;
-            color: #333;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .header h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-        
-        .status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: #e74c3c;
-        }
-        
-        .status-indicator.connected {
-            background-color: #27ae60;
-        }
-        
-        .controls {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .controls-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .controls-row:last-child {
-            margin-bottom: 0;
-        }
-        
-        input[type="text"], input[type="number"] {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        
-        button {
-            padding: 8px 16px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        
-        button:hover {
-            background-color: #2980b9;
-        }
-        
-        button.danger {
-            background-color: #e74c3c;
-        }
-        
-        button.danger:hover {
-            background-color: #c0392b;
-        }
-        
-        button.success {
-            background-color: #27ae60;
-        }
-        
-        button.success:hover {
-            background-color: #229954;
-        }
-        
-        .data-section {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .section-header {
-            background-color: #34495e;
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .table-container {
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-        
-        tr:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .key-cell {
-            font-family: monospace;
-            font-weight: 600;
-            color: #2c3e50;
-            max-width: 200px;
-            word-break: break-all;
-        }
-        
-        .value-cell {
-            font-family: monospace;
-            max-width: 300px;
-            word-break: break-all;
-            font-size: 12px;
-        }
-        
-        .binary-indicator {
-            background-color: #f39c12;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-            margin-left: 5px;
-        }
-        
-        .length-cell {
-            color: #7f8c8d;
-            text-align: right;
-        }
-        
-        .actions-cell {
-            white-space: nowrap;
-        }
-        
-        .btn-small {
-            padding: 4px 8px;
-            font-size: 12px;
-            margin-right: 5px;
-        }
-        
-        .loading {
-            padding: 40px;
-            text-align: center;
-            color: #7f8c8d;
-        }
-        
-        .error {
-            padding: 20px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border-radius: 4px;
-            margin: 20px;
-        }
-        
-        .success {
-            padding: 20px;
-            background-color: #d4edda;
-            color: #155724;
-            border-radius: 4px;
-            margin: 20px;
-        }
-        
-        .stats {
-            display: flex;
-            gap: 20px;
-            font-size: 14px;
-            color: #7f8c8d;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        
-        .modal-content {
-            background-color: white;
-            margin: 10% auto;
-            padding: 20px;
-            border-radius: 8px;
-            width: 80%;
-            max-width: 500px;
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .close {
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        
-        .close:hover {
-            color: #e74c3c;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-        }
-        
-        .form-group input, .form-group textarea {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-        
-        .viewer-modal {
-            max-width: 800px;
-        }
-        
-        .view-mode-tabs {
-            display: flex;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #ddd;
-        }
-        
-        .view-mode-tab {
-            padding: 10px 20px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-        }
-        
-        .view-mode-tab.active {
-            border-bottom-color: #3498db;
-            color: #3498db;
-        }
-        
-        .view-content {
-            display: none;
-        }
-        
-        .view-content.active {
-            display: block;
-        }
-        
-        .hex-view {
-            font-family: monospace;
-            font-size: 12px;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            white-space: pre;
-            overflow-x: auto;
-        }
-        
-        .raw-view {
-            font-family: monospace;
-            font-size: 12px;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        
-        .admin-section {
-            background: #fff5f5;
-            border: 2px solid #fed7d7;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .admin-header {
-            color: #c53030;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .warning-icon {
-            font-size: 20px;
-            color: #e53e3e;
-        }
-        
-        .admin-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .danger-button {
-            background-color: #e53e3e;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        
-        .danger-button:hover {
-            background-color: #c53030;
-        }
-        
-        .danger-button:disabled {
-            background-color: #a0a0a0;
-            cursor: not-allowed;
-        }
-        
-        .confirmation-modal .modal-content {
-            border: 3px solid #e53e3e;
-        }
-        
-        .confirmation-step {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #fff5f5;
-            border-left: 4px solid #e53e3e;
-        }
-        
-        .confirmation-input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 2px solid #e53e3e;
-            border-radius: 4px;
-            font-family: monospace;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
+        <!-- Header Section -->
         <div class="header">
             <h1>KV Store Viewer</h1>
             <div class="status">
@@ -409,6 +17,27 @@
             </div>
         </div>
         
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-nav-item active" onclick="switchTab('browse')" id="browseTab">
+                📋 Browse Data
+            </button>
+            <button class="tab-nav-item" onclick="switchTab('analysis')" id="analysisTab">
+                🔍 Analysis <span class="tab-badge" id="analysisBadge" style="display: none;">0</span>
+            </button>
+            <button class="tab-nav-item" onclick="switchTab('search')" id="searchTab">
+                🔎 Search
+            </button>
+            <button class="tab-nav-item" onclick="switchTab('admin')" id="adminTab">
+                ⚠️ Admin
+            </button>
+        </div>
+        
+        <!-- Tab Container -->
+        <div class="tab-container">
+            <!-- Browse Data Tab -->
+            <div id="browseContent" class="tab-content active">
+                <!-- Controls Section -->
         <div class="controls">
             <div class="controls-row">
                 <input type="text" id="startKey" placeholder="Start key (optional)" style="width: 200px;">
@@ -423,18 +52,43 @@
             </div>
         </div>
         
-        <div class="admin-section">
-            <div class="admin-header">
-                <span class="warning-icon">⚠️</span>
-                <h3>Admin Operations</h3>
+        <!-- Filters Section -->
+        <div class="filters-section">
+            <div class="filter-row">
+                <label><strong>Sort by:</strong></label>
+                <select id="sortBy" class="sort-select" onchange="applySorting()">
+                    <option value="key">Key (A-Z)</option>
+                    <option value="key-desc">Key (Z-A)</option>
+                    <option value="size">Value Size (Small to Large)</option>
+                    <option value="size-desc">Value Size (Large to Small)</option>
+                    <option value="duplicates">Show Duplicates First</option>
+                </select>
+                
+                <label><strong>Filter:</strong></label>
+                <select id="filterType" class="sort-select" onchange="applyFilter()">
+                    <option value="all">Show All</option>
+                    <option value="duplicates">Only Duplicates</option>
+                    <option value="unique">Only Unique</option>
+                    <option value="binary">Only Binary</option>
+                    <option value="text">Only Text</option>
+                </select>
+                
+                <label><strong>Group duplicates:</strong></label>
+                <input type="checkbox" id="groupDuplicates" onchange="displayCurrentData()" checked>
             </div>
-            <p><strong>WARNING:</strong> These operations are dangerous and cannot be undone!</p>
-            <div class="admin-controls">
-                <button class="danger-button" onclick="openClearAllModal()">Clear All Data</button>
-                <span style="color: #666; font-size: 14px;">This will delete ALL key-value pairs permanently</span>
+            <div class="filter-row">
+                <label><strong>Items per page:</strong></label>
+                <select id="itemsPerPage" class="sort-select" onchange="changePage(1)">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                    <option value="-1">All</option>
+                </select>
             </div>
         </div>
         
+        <!-- Data Table Section -->
         <div class="data-section">
             <div class="section-header">
                 <h2>Key-Value Pairs</h2>
@@ -465,6 +119,125 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Pagination Section -->
+            <div class="pagination" id="pagination" style="display: none;">
+                <div class="pagination-info" id="paginationInfo"></div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="prevBtn" onclick="changePage(currentPage - 1)">← Prev</button>
+                    <span id="pageNumbers"></span>
+                    <button class="pagination-btn" id="nextBtn" onclick="changePage(currentPage + 1)">Next →</button>
+                </div>
+            </div>
+            </div>
+            <!-- End Browse Data Tab -->
+            
+            <!-- Analysis Tab -->
+            <div id="analysisContent" class="tab-content">
+                <!-- Data Summary Section -->
+                <div class="data-summary" id="dataSummary">
+                    <h3 style="margin-bottom: 15px;">📊 Data Summary</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-number" id="totalKeys">0</div>
+                            <div class="summary-label">Total Keys</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number" id="uniqueKeys">0</div>
+                            <div class="summary-label">Unique Keys</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number" id="duplicateGroups">0</div>
+                            <div class="summary-label">Duplicate Groups</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number" id="avgValueSize">0</div>
+                            <div class="summary-label">Avg Value Size (bytes)</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number" id="totalDataSize">0</div>
+                            <div class="summary-label">Total Data Size (KB)</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number" id="binaryKeys">0</div>
+                            <div class="summary-label">Binary Keys</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Duplicate Analysis Section -->
+                <div class="duplicate-analysis" id="duplicateAnalysis">
+                    <h3 style="margin-bottom: 15px; color: #f39c12;">🔍 Duplicate Key Analysis</h3>
+                    <div id="duplicateAnalysisContent"></div>
+                    <button onclick="showDetailedDuplicateAnalysis()" class="btn-small" style="margin-top: 10px;">Show Detailed Hex Analysis</button>
+                </div>
+            </div>
+            <!-- End Analysis Tab -->
+            
+            <!-- Search Tab -->
+            <div id="searchContent" class="tab-content">
+                <div style="padding: 20px;">
+                    <h3 style="margin-bottom: 20px;">🔎 Advanced Search</h3>
+                    
+                    <div class="controls">
+                        <div class="controls-row">
+                            <input type="text" id="searchKeyAdvanced" placeholder="Enter key to search for" style="width: 400px;">
+                            <button onclick="searchKeyAdvanced()" class="success">Search</button>
+                        </div>
+                        <div class="controls-row">
+                            <label><strong>Search type:</strong></label>
+                            <select id="searchType" class="sort-select">
+                                <option value="exact">Exact Match</option>
+                                <option value="contains">Contains</option>
+                                <option value="prefix">Starts With</option>
+                                <option value="suffix">Ends With</option>
+                                <option value="regex">Regular Expression</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="searchResults" style="margin-top: 20px;">
+                        <p style="color: #7f8c8d; text-align: center; padding: 40px;">Enter a search term above to find keys</p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Search Tab -->
+            
+            <!-- Admin Tab -->
+            <div id="adminContent" class="tab-content">
+                <div style="padding: 20px;">
+                    <div class="admin-section">
+                        <div class="admin-header">
+                            <span class="warning-icon">⚠️</span>
+                            <h3>Admin Operations</h3>
+                        </div>
+                        <p><strong>WARNING:</strong> These operations are dangerous and cannot be undone!</p>
+                        <div class="admin-controls">
+                            <button class="danger-button" onclick="openClearAllModal()">Clear All Data</button>
+                            <span style="color: #666; font-size: 14px;">This will delete ALL key-value pairs permanently</span>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h4>Database Information</h4>
+                        <div class="summary-grid" style="margin-top: 15px;">
+                            <div class="summary-item">
+                                <div class="summary-number" id="adminTotalKeys">-</div>
+                                <div class="summary-label">Total Keys</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-number" id="adminDbSize">-</div>
+                                <div class="summary-label">Database Size</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-number" id="adminConnection">-</div>
+                                <div class="summary-label">Connection Status</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Admin Tab -->
         </div>
     </div>
     
@@ -555,455 +328,12 @@
         </div>
     </div>
     
-    <script>
-        let currentData = [];
-        
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', function() {
-            testConnection();
-            loadKeys();
-        });
-        
-        async function testConnection() {
-            try {
-                const response = await fetch('/api/ping');
-                const result = await response.json();
-                
-                if (result.success) {
-                    document.getElementById('statusIndicator').classList.add('connected');
-                    document.getElementById('statusText').textContent = `Connected (${result.roundTripTime}ms)`;
-                    document.getElementById('connectionStats').textContent = 'Connected';
-                } else {
-                    throw new Error('Ping failed');
-                }
-            } catch (error) {
-                document.getElementById('statusIndicator').classList.remove('connected');
-                document.getElementById('statusText').textContent = 'Connection failed';
-                document.getElementById('connectionStats').textContent = 'Disconnected';
-                console.error('Connection test failed:', error);
-            }
-        }
-        
-        async function loadKeys() {
-            const startKey = document.getElementById('startKey').value;
-            const limit = document.getElementById('limitInput').value;
-            
-            showLoading(true);
-            hideMessages();
-            
-            try {
-                const params = new URLSearchParams();
-                if (startKey) params.append('startKey', startKey);
-                if (limit) params.append('limit', limit);
-                
-                const response = await fetch(`/api/keys?${params}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    currentData = result.keyValues;
-                    displayData(currentData);
-                    document.getElementById('countStats').textContent = `${result.count} items`;
-                } else {
-                    throw new Error(result.error || 'Failed to load keys');
-                }
-            } catch (error) {
-                showError(`Failed to load keys: ${error.message}`);
-                console.error('Load keys error:', error);
-            } finally {
-                showLoading(false);
-            }
-        }
-        
-        async function searchKey() {
-            const key = document.getElementById('searchKey').value;
-            if (!key) {
-                showError('Please enter a key to search for');
-                return;
-            }
-            
-            showLoading(true);
-            hideMessages();
-            
-            try {
-                const response = await fetch(`/api/key/${encodeURIComponent(key)}`);
-                const result = await response.json();
-                
-                if (result.found) {
-                    currentData = [{
-                        key: result.key,
-                        value: result.value,
-                        valueLength: result.valueLength,
-                        hexValue: result.hexValue,
-                        isAscii: result.isAscii,
-                        hasBinary: result.hasBinary
-                    }];
-                    displayData(currentData);
-                    document.getElementById('countStats').textContent = '1 item (search result)';
-                } else {
-                    showError(`Key '${key}' not found`);
-                    currentData = [];
-                    displayData(currentData);
-                    document.getElementById('countStats').textContent = '0 items';
-                }
-            } catch (error) {
-                showError(`Failed to search key: ${error.message}`);
-                console.error('Search key error:', error);
-            } finally {
-                showLoading(false);
-            }
-        }
-        
-        async function deleteKey(key) {
-            if (!confirm(`Are you sure you want to delete key '${key}'?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/key/${encodeURIComponent(key)}`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    showSuccess(`Key '${key}' deleted successfully`);
-                    loadKeys(); // Refresh the list
-                } else {
-                    throw new Error(result.error || 'Delete failed');
-                }
-            } catch (error) {
-                showError(`Failed to delete key: ${error.message}`);
-                console.error('Delete key error:', error);
-            }
-        }
-        
-        function displayData(data) {
-            const tableBody = document.getElementById('tableBody');
-            const table = document.getElementById('dataTable');
-            
-            tableBody.innerHTML = '';
-            
-            if (data.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #7f8c8d; padding: 40px;">No data found</td></tr>';
-            } else {
-                data.forEach(item => {
-                    const row = tableBody.insertRow();
-                    const binaryIndicator = item.hasBinary ? '<span class="binary-indicator">BINARY</span>' : '';
-                    const displayValue = item.hasBinary ? 
-                        `[${item.valueLength} bytes]` : 
-                        escapeHtml(truncateString(item.value, 100));
-                    
-                    row.innerHTML = `
-                        <td class="key-cell">${escapeHtml(item.key)}</td>
-                        <td class="value-cell">${displayValue}${binaryIndicator}</td>
-                        <td class="length-cell">${item.valueLength}</td>
-                        <td class="actions-cell">
-                            <button class="btn-small" onclick="viewValueAdvanced('${escapeJs(item.key)}', '${escapeJs(item.value)}', '${escapeJs(item.hexValue)}', ${item.hasBinary})">View</button>
-                            <button class="btn-small" onclick="editKey('${escapeJs(item.key)}', '${escapeJs(item.value)}')">Edit</button>
-                            <button class="btn-small danger" onclick="deleteKey('${escapeJs(item.key)}')">Delete</button>
-                        </td>
-                    `;
-                });
-            }
-            
-            table.style.display = 'table';
-        }
-        
-        function openAddModal() {
-            document.getElementById('modalTitle').textContent = 'Add Key-Value Pair';
-            document.getElementById('modalKey').value = '';
-            document.getElementById('modalValue').value = '';
-            document.getElementById('modalKey').readOnly = false;
-            document.getElementById('addModal').style.display = 'block';
-        }
-        
-        function editKey(key, value) {
-            document.getElementById('modalTitle').textContent = 'Edit Key-Value Pair';
-            document.getElementById('modalKey').value = key;
-            document.getElementById('modalValue').value = value;
-            document.getElementById('modalKey').readOnly = true;
-            document.getElementById('addModal').style.display = 'block';
-        }
-        
-        function viewValue(key, value) {
-            alert(`Key: ${key}\n\nValue:\n${value}`);
-        }
-        
-        function viewValueAdvanced(key, value, hexValue, hasBinary) {
-            document.getElementById('viewModalTitle').textContent = `View Value: ${key}`;
-            
-            // Text view
-            document.getElementById('textContent').textContent = value;
-            
-            // Hex view
-            document.getElementById('hexContent').textContent = formatHexDump(hexValue);
-            
-            // Raw bytes view
-            document.getElementById('rawContent').textContent = formatRawBytes(hexValue);
-            
-            // Show appropriate default tab
-            if (hasBinary) {
-                switchViewMode('hex');
-            } else {
-                switchViewMode('text');
-            }
-            
-            document.getElementById('viewModal').style.display = 'block';
-        }
-        
-        function switchViewMode(mode) {
-            // Update tabs
-            document.querySelectorAll('.view-mode-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            event.target.classList.add('active');
-            
-            // Update content
-            document.querySelectorAll('.view-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.getElementById(mode + 'View').classList.add('active');
-        }
-        
-        function formatHexDump(hexString) {
-            if (!hexString) return '';
-            
-            let result = '';
-            let ascii = '';
-            
-            for (let i = 0; i < hexString.length; i += 2) {
-                if (i > 0 && (i / 2) % 16 === 0) {
-                    result += '  |' + ascii + '|\n';
-                    ascii = '';
-                }
-                
-                if ((i / 2) % 16 === 0) {
-                    result += (i / 2).toString(16).padStart(8, '0') + '  ';
-                }
-                
-                const byte = hexString.substr(i, 2);
-                result += byte + ' ';
-                
-                const byteValue = parseInt(byte, 16);
-                ascii += (byteValue >= 32 && byteValue <= 126) ? String.fromCharCode(byteValue) : '.';
-                
-                if ((i / 2) % 8 === 7) {
-                    result += ' ';
-                }
-            }
-            
-            // Pad the last line
-            const lastLineBytes = (hexString.length / 2) % 16;
-            if (lastLineBytes > 0) {
-                const padding = ' '.repeat((16 - lastLineBytes) * 3 + (lastLineBytes <= 8 ? 1 : 0));
-                result += padding + '  |' + ascii.padEnd(16, ' ') + '|';
-            }
-            
-            return result;
-        }
-        
-        function formatRawBytes(hexString) {
-            if (!hexString) return '';
-            
-            let result = '';
-            for (let i = 0; i < hexString.length; i += 2) {
-                const byte = parseInt(hexString.substr(i, 2), 16);
-                result += byte.toString().padStart(3, ' ') + ' ';
-                
-                if ((i / 2) % 16 === 15) {
-                    result += '\n';
-                }
-            }
-            return result;
-        }
-        
-        function closeViewModal() {
-            document.getElementById('viewModal').style.display = 'none';
-        }
-        
-        function openClearAllModal() {
-            document.getElementById('clearAllConfirmation').value = '';
-            document.getElementById('clearAllStatus').textContent = '';
-            document.getElementById('clearAllExecute').disabled = true;
-            document.getElementById('clearAllModal').style.display = 'block';
-        }
-        
-        function closeClearAllModal() {
-            document.getElementById('clearAllModal').style.display = 'none';
-        }
-        
-        // Monitor confirmation input
-        document.addEventListener('DOMContentLoaded', function() {
-            const confirmationInput = document.getElementById('clearAllConfirmation');
-            if (confirmationInput) {
-                confirmationInput.addEventListener('input', function() {
-                    const executeButton = document.getElementById('clearAllExecute');
-                    const statusText = document.getElementById('clearAllStatus');
-                    
-                    if (this.value === 'DELETE ALL DATA') {
-                        executeButton.disabled = false;
-                        statusText.textContent = 'Ready to execute';
-                        statusText.style.color = '#e53e3e';
-                    } else {
-                        executeButton.disabled = true;
-                        statusText.textContent = this.value ? 'Incorrect confirmation phrase' : '';
-                        statusText.style.color = '#666';
-                    }
-                });
-            }
-        });
-        
-        async function executeClearAll() {
-            const confirmationInput = document.getElementById('clearAllConfirmation');
-            const statusText = document.getElementById('clearAllStatus');
-            const executeButton = document.getElementById('clearAllExecute');
-            
-            if (confirmationInput.value !== 'DELETE ALL DATA') {
-                statusText.textContent = 'Invalid confirmation phrase';
-                statusText.style.color = '#e53e3e';
-                return;
-            }
-            
-            // Final confirmation dialog
-            if (!confirm('FINAL WARNING: This will permanently delete ALL data. Are you absolutely sure?')) {
-                return;
-            }
-            
-            executeButton.disabled = true;
-            executeButton.textContent = 'Deleting...';
-            statusText.textContent = 'Executing deletion...';
-            statusText.style.color = '#e53e3e';
-            
-            try {
-                const response = await fetch('/api/admin/clear-all', {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ confirmation: 'DELETE_ALL_DATA' })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    statusText.textContent = `Success: ${result.message}`;
-                    statusText.style.color = '#27ae60';
-                    showSuccess(result.message);
-                    
-                    // Close modal after 2 seconds and refresh data
-                    setTimeout(() => {
-                        closeClearAllModal();
-                        loadKeys();
-                    }, 2000);
-                } else {
-                    throw new Error(result.error || 'Clear all failed');
-                }
-            } catch (error) {
-                statusText.textContent = `Error: ${error.message}`;
-                statusText.style.color = '#e53e3e';
-                showError(`Failed to clear all data: ${error.message}`);
-                console.error('Clear all error:', error);
-            } finally {
-                executeButton.disabled = false;
-                executeButton.textContent = 'Clear All Data';
-            }
-        }
-        
-        function closeModal() {
-            document.getElementById('addModal').style.display = 'none';
-        }
-        
-        async function saveKeyValue() {
-            const key = document.getElementById('modalKey').value;
-            const value = document.getElementById('modalValue').value;
-            
-            if (!key || !value) {
-                alert('Both key and value are required');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/key', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ key, value })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showSuccess(`Key '${key}' saved successfully`);
-                    closeModal();
-                    loadKeys(); // Refresh the list
-                } else {
-                    throw new Error(result.error || 'Save failed');
-                }
-            } catch (error) {
-                showError(`Failed to save key: ${error.message}`);
-                console.error('Save key error:', error);
-            }
-        }
-        
-        function showLoading(show) {
-            document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
-        }
-        
-        function showError(message) {
-            const errorDiv = document.getElementById('errorDisplay');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
-        
-        function showSuccess(message) {
-            const successDiv = document.getElementById('successDisplay');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            setTimeout(() => {
-                successDiv.style.display = 'none';
-            }, 5000);
-        }
-        
-        function hideMessages() {
-            document.getElementById('errorDisplay').style.display = 'none';
-            document.getElementById('successDisplay').style.display = 'none';
-        }
-        
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function escapeJs(text) {
-            if (text === null || text === undefined) return '';
-            if (typeof text !== 'string') text = String(text);
-            return text.replace(/\\/g, '\\\\')
-                      .replace(/'/g, "\\'")
-                      .replace(/"/g, '\\"')
-                      .replace(/\n/g, '\\n')
-                      .replace(/\r/g, '\\r')
-                      .replace(/\t/g, '\\t');
-        }
-        
-        function truncateString(str, length) {
-            return str.length > length ? str.substring(0, length) + '...' : str;
-        }
-        
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const addModal = document.getElementById('addModal');
-            const viewModal = document.getElementById('viewModal');
-            const clearAllModal = document.getElementById('clearAllModal');
-            
-            if (event.target === addModal) {
-                closeModal();
-            } else if (event.target === viewModal) {
-                closeViewModal();
-            } else if (event.target === clearAllModal) {
-                closeClearAllModal();
-            }
-        }
-    </script>
+    <!-- JavaScript Modules -->
+    <script src="app.js"></script>
+    <script src="data-analysis.js"></script>
+    <script src="display.js"></script>
+    <script src="pagination.js"></script>
+    <script src="modals.js"></script>
+    <script src="tabs.js"></script>
 </body>
 </html>
