@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Tab Debug</title>
+    <style>
+        .admin-section {
+            background: #fff5f5;
+            border: 2px solid #fed7d7;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .admin-header {
+            color: #c53030;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .admin-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .danger-button {
+            background-color: #e53e3e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .warning-icon {
+            font-size: 20px;
+            color: #e53e3e;
+        }
+    </style>
+</head>
+<body>
+    <h1>Admin Tab Debug Page</h1>
+    
+    <div class="admin-section">
+        <div class="admin-header">
+            <span class="warning-icon">⚠️</span>
+            <h3>Admin Operations</h3>
+        </div>
+        <p><strong>WARNING:</strong> These operations are dangerous and cannot be undone!</p>
+        <div class="admin-controls">
+            <button class="danger-button" onclick="alert('Button clicked!')">Clear All Data</button>
+            <span style="color: #666; font-size: 14px;">This will delete ALL key-value pairs permanently</span>
+        </div>
+    </div>
+    
+    <script>
+        console.log('Debug page loaded');
+        console.log('Button element:', document.querySelector('.danger-button'));
+    </script>
+</body>
+</html>

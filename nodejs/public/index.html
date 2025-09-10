@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KV Store Viewer</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=admin-update-1">
 </head>
 <body>
+    
     <div class="container">
         <!-- Header Section -->
         <div class="header">
@@ -17,26 +18,8 @@
             </div>
         </div>
         
-        <!-- Tab Navigation -->
-        <div class="tab-navigation">
-            <button class="tab-nav-item active" onclick="switchTab('browse')" id="browseTab">
-                📋 Browse Data
-            </button>
-            <button class="tab-nav-item" onclick="switchTab('analysis')" id="analysisTab">
-                🔍 Analysis <span class="tab-badge" id="analysisBadge" style="display: none;">0</span>
-            </button>
-            <button class="tab-nav-item" onclick="switchTab('search')" id="searchTab">
-                🔎 Search
-            </button>
-            <button class="tab-nav-item" onclick="switchTab('admin')" id="adminTab">
-                ⚠️ Admin
-            </button>
-        </div>
-        
-        <!-- Tab Container -->
-        <div class="tab-container">
-            <!-- Browse Data Tab -->
-            <div id="browseContent" class="tab-content active">
+        <!-- Browse Data Content -->
+        <div class="data-container">
                 <!-- Controls Section -->
         <div class="controls">
             <div class="controls-row">
@@ -129,115 +112,6 @@
                     <button class="pagination-btn" id="nextBtn" onclick="changePage(currentPage + 1)">Next →</button>
                 </div>
             </div>
-            </div>
-            <!-- End Browse Data Tab -->
-            
-            <!-- Analysis Tab -->
-            <div id="analysisContent" class="tab-content">
-                <!-- Data Summary Section -->
-                <div class="data-summary" id="dataSummary">
-                    <h3 style="margin-bottom: 15px;">📊 Data Summary</h3>
-                    <div class="summary-grid">
-                        <div class="summary-item">
-                            <div class="summary-number" id="totalKeys">0</div>
-                            <div class="summary-label">Total Keys</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-number" id="uniqueKeys">0</div>
-                            <div class="summary-label">Unique Keys</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-number" id="duplicateGroups">0</div>
-                            <div class="summary-label">Duplicate Groups</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-number" id="avgValueSize">0</div>
-                            <div class="summary-label">Avg Value Size (bytes)</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-number" id="totalDataSize">0</div>
-                            <div class="summary-label">Total Data Size (KB)</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-number" id="binaryKeys">0</div>
-                            <div class="summary-label">Binary Keys</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Duplicate Analysis Section -->
-                <div class="duplicate-analysis" id="duplicateAnalysis">
-                    <h3 style="margin-bottom: 15px; color: #f39c12;">🔍 Duplicate Key Analysis</h3>
-                    <div id="duplicateAnalysisContent"></div>
-                    <button onclick="showDetailedDuplicateAnalysis()" class="btn-small" style="margin-top: 10px;">Show Detailed Hex Analysis</button>
-                </div>
-            </div>
-            <!-- End Analysis Tab -->
-            
-            <!-- Search Tab -->
-            <div id="searchContent" class="tab-content">
-                <div style="padding: 20px;">
-                    <h3 style="margin-bottom: 20px;">🔎 Advanced Search</h3>
-                    
-                    <div class="controls">
-                        <div class="controls-row">
-                            <input type="text" id="searchKeyAdvanced" placeholder="Enter key to search for" style="width: 400px;">
-                            <button onclick="searchKeyAdvanced()" class="success">Search</button>
-                        </div>
-                        <div class="controls-row">
-                            <label><strong>Search type:</strong></label>
-                            <select id="searchType" class="sort-select">
-                                <option value="exact">Exact Match</option>
-                                <option value="contains">Contains</option>
-                                <option value="prefix">Starts With</option>
-                                <option value="suffix">Ends With</option>
-                                <option value="regex">Regular Expression</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div id="searchResults" style="margin-top: 20px;">
-                        <p style="color: #7f8c8d; text-align: center; padding: 40px;">Enter a search term above to find keys</p>
-                    </div>
-                </div>
-            </div>
-            <!-- End Search Tab -->
-            
-            <!-- Admin Tab -->
-            <div id="adminContent" class="tab-content">
-                <div style="padding: 20px;">
-                    <div class="admin-section">
-                        <div class="admin-header">
-                            <span class="warning-icon">⚠️</span>
-                            <h3>Admin Operations</h3>
-                        </div>
-                        <p><strong>WARNING:</strong> These operations are dangerous and cannot be undone!</p>
-                        <div class="admin-controls">
-                            <button class="danger-button" onclick="openClearAllModal()">Clear All Data</button>
-                            <span style="color: #666; font-size: 14px;">This will delete ALL key-value pairs permanently</span>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: 30px;">
-                        <h4>Database Information</h4>
-                        <div class="summary-grid" style="margin-top: 15px;">
-                            <div class="summary-item">
-                                <div class="summary-number" id="adminTotalKeys">-</div>
-                                <div class="summary-label">Total Keys</div>
-                            </div>
-                            <div class="summary-item">
-                                <div class="summary-number" id="adminDbSize">-</div>
-                                <div class="summary-label">Database Size</div>
-                            </div>
-                            <div class="summary-item">
-                                <div class="summary-number" id="adminConnection">-</div>
-                                <div class="summary-label">Connection Status</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- End Admin Tab -->
         </div>
     </div>
     
@@ -334,6 +208,5 @@
     <script src="display.js"></script>
     <script src="pagination.js"></script>
     <script src="modals.js"></script>
-    <script src="tabs.js"></script>
 </body>
 </html>

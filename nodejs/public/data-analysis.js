@@ -58,14 +58,22 @@ function stringToHex(str) {
 }
 
 function updateSummary() {
-    document.getElementById('totalKeys').textContent = dataStats.totalKeys;
-    document.getElementById('uniqueKeys').textContent = dataStats.uniqueKeys;
-    document.getElementById('duplicateGroups').textContent = dataStats.duplicateGroups;
-    document.getElementById('avgValueSize').textContent = dataStats.avgValueSize;
-    document.getElementById('totalDataSize').textContent = dataStats.totalDataSize;
-    document.getElementById('binaryKeys').textContent = dataStats.binaryKeys;
+    // Only update elements that exist (since Analysis tab was removed)
+    const totalKeysEl = document.getElementById('totalKeys');
+    const uniqueKeysEl = document.getElementById('uniqueKeys');
+    const duplicateGroupsEl = document.getElementById('duplicateGroups');
+    const avgValueSizeEl = document.getElementById('avgValueSize');
+    const totalDataSizeEl = document.getElementById('totalDataSize');
+    const binaryKeysEl = document.getElementById('binaryKeys');
     
-    // Always show the summary in the analysis tab context
+    if (totalKeysEl) totalKeysEl.textContent = dataStats.totalKeys;
+    if (uniqueKeysEl) uniqueKeysEl.textContent = dataStats.uniqueKeys;
+    if (duplicateGroupsEl) duplicateGroupsEl.textContent = dataStats.duplicateGroups;
+    if (avgValueSizeEl) avgValueSizeEl.textContent = dataStats.avgValueSize;
+    if (totalDataSizeEl) totalDataSizeEl.textContent = dataStats.totalDataSize;
+    if (binaryKeysEl) binaryKeysEl.textContent = dataStats.binaryKeys;
+    
+    // Always show the summary in the analysis tab context (if it exists)
     const summaryDiv = document.getElementById('dataSummary');
     if (summaryDiv) {
         summaryDiv.style.display = 'block';
