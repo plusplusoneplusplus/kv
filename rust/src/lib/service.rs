@@ -21,9 +21,9 @@ impl KvStore for KvStoreGrpcService {
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let req = request.into_inner();
         
-        match self.db.get(&req.key) {
+        match self.db.get(req.key.as_bytes()) {
             Ok(result) => Ok(Response::new(GetResponse {
-                value: result.value,
+                value: String::from_utf8_lossy(&result.value).to_string(),
                 found: result.found,
             })),
             Err(e) => Err(Status::invalid_argument(e)),
@@ -33,7 +33,7 @@ impl KvStore for KvStoreGrpcService {
     async fn put(&self, request: Request<PutRequest>) -> Result<Response<PutResponse>, Status> {
         let req = request.into_inner();
         
-        let result = self.db.put(&req.key, &req.value);
+        let result = self.db.put(req.key.as_bytes(), req.value.as_bytes());
         Ok(Response::new(PutResponse {
             success: result.success,
             error: result.error,
@@ -43,7 +43,7 @@ impl KvStore for KvStoreGrpcService {
     async fn delete(&self, request: Request<DeleteRequest>) -> Result<Response<DeleteResponse>, Status> {
         let req = request.into_inner();
         
-        let result = self.db.delete(&req.key);
+        let result = self.db.delete(req.key.as_bytes());
         Ok(Response::new(DeleteResponse {
             success: result.success,
             error: result.error,
@@ -54,8 +54,13 @@ impl KvStore for KvStoreGrpcService {
         let req = request.into_inner();
         
         let limit = if req.limit >= 0 { req.limit as u32 } else { 0 };
-        match self.db.list_keys(&req.prefix, limit) {
-            Ok(keys) => Ok(Response::new(ListKeysResponse { keys })),
+        match self.db.list_keys(req.prefix.as_bytes(), limit) {
+            Ok(keys) => {
+                let string_keys: Vec<String> = keys.into_iter()
+                    .map(|k| String::from_utf8_lossy(&k).to_string())
+                    .collect();
+                Ok(Response::new(ListKeysResponse { keys: string_keys }))
+            },
             Err(e) => Err(Status::internal(e)),
         }
     }

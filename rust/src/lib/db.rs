@@ -17,14 +17,14 @@ pub struct TransactionalKvDatabase {
 
 #[derive(Debug)]
 pub struct GetResult {
-    pub value: String,
+    pub value: Vec<u8>,
     pub found: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct KeyValue {
-    pub key: String,
-    pub value: String,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -43,8 +43,8 @@ pub struct OpResult {
 
 #[derive(Debug)]
 pub enum WriteOperation {
-    Put { key: String, value: String },
-    Delete { key: String },
+    Put { key: Vec<u8>, value: Vec<u8> },
+    Delete { key: Vec<u8> },
 }
 
 #[derive(Debug)]
@@ -65,8 +65,8 @@ pub struct FaultInjectionConfig {
 #[derive(Debug, Clone)]
 pub struct AtomicOperation {
     pub op_type: String,  // "set" or "delete"
-    pub key: String,
-    pub value: Option<String>,  // Only for "set" operations
+    pub key: Vec<u8>,
+    pub value: Option<Vec<u8>>,  // Only for "set" operations
     pub column_family: Option<String>,
 }
 
@@ -74,7 +74,7 @@ pub struct AtomicOperation {
 pub struct AtomicCommitRequest {
     pub read_version: u64,
     pub operations: Vec<AtomicOperation>,
-    pub read_conflict_keys: Vec<String>,
+    pub read_conflict_keys: Vec<Vec<u8>>,
     pub timeout_seconds: u64,
 }
 
@@ -180,7 +180,7 @@ impl TransactionalKvDatabase {
     }
     
     /// Snapshot read at specific version (used by client for consistent reads)
-    pub fn snapshot_read(&self, key: &str, _read_version: u64, column_family: Option<&str>) -> Result<GetResult, String> {
+    pub fn snapshot_read(&self, key: &[u8], _read_version: u64, column_family: Option<&str>) -> Result<GetResult, String> {
         if key.is_empty() {
             return Err("key cannot be empty".to_string());
         }
@@ -199,10 +199,9 @@ impl TransactionalKvDatabase {
         
         match self.db.get_opt(key, &read_opts) {
             Ok(Some(value)) => {
-                let value_str = String::from_utf8_lossy(&value).to_string();
-                Ok(GetResult { value: value_str, found: true })
+                Ok(GetResult { value, found: true })
             }
-            Ok(None) => Ok(GetResult { value: String::new(), found: false }),
+            Ok(None) => Ok(GetResult { value: Vec::new(), found: false }),
             Err(e) => Err(format!("Snapshot read failed: {}", e))
         }
     }
@@ -234,7 +233,7 @@ impl TransactionalKvDatabase {
                 if self.has_key_been_modified_since(read_key, request.read_version) {
                     return AtomicCommitResult {
                         success: false,
-                        error: format!("Conflict detected on key: {}", read_key),
+                        error: format!("Conflict detected on key: {:?}", read_key),
                         error_code: Some("CONFLICT".to_string()),
                         committed_version: None,
                     };
@@ -326,14 +325,14 @@ impl TransactionalKvDatabase {
     }
 
     /// Simplified conflict detection (in reality this would be more sophisticated)
-    fn has_key_been_modified_since(&self, _key: &str, _since_version: u64) -> bool {
+    fn has_key_been_modified_since(&self, _key: &[u8], _since_version: u64) -> bool {
         // Simplified implementation - always return false (no conflict)
         // In a real system, this would check key-specific version metadata
         false
     }
 
     // Non-transactional operations for backward compatibility
-    pub fn get(&self, key: &str) -> Result<GetResult, String> {
+    pub fn get(&self, key: &[u8]) -> Result<GetResult, String> {
         if key.is_empty() {
             return Err("key cannot be empty".to_string());
         }
@@ -344,15 +343,14 @@ impl TransactionalKvDatabase {
         
         match txn.get(key) {
             Ok(Some(value)) => {
-                let value_str = String::from_utf8_lossy(&value).to_string();
                 Ok(GetResult {
-                    value: value_str,
+                    value,
                     found: true,
                 })
             }
             Ok(None) => {
                 Ok(GetResult {
-                    value: String::new(),
+                    value: Vec::new(),
                     found: false,
                 })
             }
@@ -363,12 +361,12 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub fn put(&self, key: &str, value: &str) -> OpResult {
+    pub fn put(&self, key: &[u8], value: &[u8]) -> OpResult {
         let (response_tx, response_rx) = mpsc::channel();
         let write_request = WriteRequest {
             operation: WriteOperation::Put {
-                key: key.to_string(),
-                value: value.to_string(),
+                key: key.to_vec(),
+                value: value.to_vec(),
             },
             response_tx,
         };
@@ -385,11 +383,11 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub fn delete(&self, key: &str) -> OpResult {
+    pub fn delete(&self, key: &[u8]) -> OpResult {
         let (response_tx, response_rx) = mpsc::channel();
         let write_request = WriteRequest {
             operation: WriteOperation::Delete {
-                key: key.to_string(),
+                key: key.to_vec(),
             },
             response_tx,
         };
@@ -406,7 +404,7 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub fn list_keys(&self, prefix: &str, limit: u32) -> Result<Vec<String>, String> {
+    pub fn list_keys(&self, prefix: &[u8], limit: u32) -> Result<Vec<Vec<u8>>, String> {
         let mut keys = Vec::new();
         let iter = self.db.prefix_iterator(prefix);
         
@@ -417,7 +415,7 @@ impl TransactionalKvDatabase {
             
             match result {
                 Ok((key, _)) => {
-                    keys.push(String::from_utf8_lossy(&key).to_string());
+                    keys.push(key.to_vec());
                 }
                 Err(e) => {
                     error!("Failed to iterate key: {}", e);
@@ -447,24 +445,21 @@ impl TransactionalKvDatabase {
             
             match result {
                 Ok((key, value)) => {
-                    let key_str = String::from_utf8_lossy(&key).to_string();
-                    
                     // If this is a prefix scan (no end_key), ensure the key starts with the start_key
-                    if end_key.is_none() && !key_str.starts_with(start_key) {
+                    if end_key.is_none() && !key.starts_with(start_key.as_bytes()) {
                         break;
                     }
                     
                     // If end_key is specified, stop when we reach it
                     if let Some(end) = end_key {
-                        if key_str.as_str() >= end {
+                        if key.as_ref() >= end.as_bytes() {
                             break;
                         }
                     }
                     
-                    let value_str = String::from_utf8_lossy(&value).to_string();
                     key_values.push(KeyValue {
-                        key: key_str,
-                        value: value_str,
+                        key: key.to_vec(),
+                        value: value.to_vec(),
                     });
                 }
                 Err(e) => {
@@ -485,7 +480,7 @@ impl TransactionalKvDatabase {
         }
     }
 
-    pub fn snapshot_get_range(&self, start_key: &str, end_key: Option<&str>, _read_version: u64, limit: Option<i32>, _column_family: Option<&str>) -> GetRangeResult {
+    pub fn snapshot_get_range(&self, start_key: &[u8], end_key: Option<&[u8]>, _read_version: u64, limit: Option<i32>, _column_family: Option<&str>) -> GetRangeResult {
         let mut key_values = Vec::new();
         let limit = limit.unwrap_or(1000).max(1) as usize;
         
@@ -495,7 +490,7 @@ impl TransactionalKvDatabase {
         read_opts.set_snapshot(&snapshot);
         
         // Use iterator with snapshot for consistent range read
-        let iter = self.db.iterator_opt(rocksdb::IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward), read_opts);
+        let iter = self.db.iterator_opt(rocksdb::IteratorMode::From(start_key, rocksdb::Direction::Forward), read_opts);
         
         for result in iter {
             if key_values.len() >= limit {
@@ -504,24 +499,21 @@ impl TransactionalKvDatabase {
             
             match result {
                 Ok((key, value)) => {
-                    let key_str = String::from_utf8_lossy(&key).to_string();
-                    
                     // If this is a prefix scan (no end_key), ensure the key starts with the start_key
-                    if end_key.is_none() && !key_str.starts_with(start_key) {
+                    if end_key.is_none() && !key.starts_with(start_key) {
                         break;
                     }
                     
                     // If end_key is specified, stop when we reach it
                     if let Some(end) = end_key {
-                        if key_str.as_str() >= end {
+                        if key.as_ref() >= end {
                             break;
                         }
                     }
                     
-                    let value_str = String::from_utf8_lossy(&value).to_string();
                     key_values.push(KeyValue {
-                        key: key_str,
-                        value: value_str,
+                        key: key.to_vec(),
+                        value: value.to_vec(),
                     });
                 }
                 Err(e) => {
@@ -615,15 +607,15 @@ mod tests {
         assert!(read_version > 0);
         
         // Test snapshot read on non-existent key
-        let result = db.snapshot_read("test_key", read_version, None);
+        let result = db.snapshot_read(b"test_key", read_version, None);
         assert!(result.is_ok());
         assert!(!result.unwrap().found);
         
         // Test atomic commit with write operation
         let operations = vec![AtomicOperation {
             op_type: "set".to_string(),
-            key: "test_key".to_string(),
-            value: Some("test_value".to_string()),
+            key: b"test_key".to_vec(),
+            value: Some(b"test_value".to_vec()),
             column_family: None,
         }];
         
@@ -640,11 +632,11 @@ mod tests {
         
         // Test snapshot read on existing key
         let new_read_version = db.get_read_version();
-        let result = db.snapshot_read("test_key", new_read_version, None);
+        let result = db.snapshot_read(b"test_key", new_read_version, None);
         assert!(result.is_ok());
         let get_result = result.unwrap();
         assert!(get_result.found);
-        assert_eq!(get_result.value, "test_value");
+        assert_eq!(get_result.value, b"test_value".to_vec());
     }
 
     #[test]
@@ -656,13 +648,13 @@ mod tests {
         let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
         
         // Insert some test data
-        let put_result = db.put("key001", "value1");
+        let put_result = db.put(b"key001", b"value1");
         assert!(put_result.success);
-        let put_result = db.put("key002", "value2");
+        let put_result = db.put(b"key002", b"value2");
         assert!(put_result.success);
-        let put_result = db.put("key003", "value3");
+        let put_result = db.put(b"key003", b"value3");
         assert!(put_result.success);
-        let put_result = db.put("other_key", "other_value");
+        let put_result = db.put(b"other_key", b"other_value");
         assert!(put_result.success);
         
         // Test get_range with prefix
@@ -677,7 +669,7 @@ mod tests {
         
         // Test snapshot get_range
         let read_version = db.get_read_version();
-        let snapshot_range_result = db.snapshot_get_range("key", None, read_version, Some(10), None);
+        let snapshot_range_result = db.snapshot_get_range(b"key", None, read_version, Some(10), None);
         assert!(snapshot_range_result.success);
         assert_eq!(snapshot_range_result.key_values.len(), 3);
     }
