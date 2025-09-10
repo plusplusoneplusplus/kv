@@ -35,6 +35,48 @@ body {
     margin-bottom: 20px;
 }
 
+/* Tab Navigation Styles */
+.tab-nav {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: 15px 25px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #7f8c8d;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+    background-color: #f8f9fa;
+    color: #2c3e50;
+}
+
+.tab-button.active {
+    color: #3498db;
+    border-bottom-color: #3498db;
+    background-color: #f8f9fa;
+}
+
+/* Tab Content Styles */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
 .header h1 {
     color: #2c3e50;
     margin-bottom: 10px;
@@ -594,4 +636,82 @@ textarea {
     border: 2px solid #e53e3e;
     border-radius: 4px;
     font-family: monospace;
+}
+
+/* Clear Data Tab Styles */
+.clear-data-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 30px;
+}
+
+.warning-section {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+}
+
+.warning-section h2 {
+    color: #e53e3e;
+    margin-bottom: 10px;
+    font-size: 24px;
+}
+
+.warning-text {
+    color: #856404;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.clear-info-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+}
+
+.clear-info-section h3 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+}
+
+.clear-checklist {
+    list-style: none;
+    padding: 0;
+}
+
+.clear-checklist li {
+    padding: 8px 0;
+    position: relative;
+    padding-left: 25px;
+}
+
+.clear-checklist li:before {
+    content: "⚠️";
+    position: absolute;
+    left: 0;
+    top: 8px;
+}
+
+.clear-action-section {
+    text-align: center;
+    padding: 20px;
+}
+
+.danger-button.large {
+    font-size: 16px;
+    padding: 15px 30px;
+    margin-bottom: 15px;
+}
+
+.clear-note {
+    color: #7f8c8d;
+    font-size: 14px;
+    font-style: italic;
+    margin: 0;
 }

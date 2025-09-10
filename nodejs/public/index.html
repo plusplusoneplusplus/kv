@@ -18,8 +18,14 @@
             </div>
         </div>
         
-        <!-- Browse Data Content -->
-        <div class="data-container">
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-button active" onclick="showTab('browse')">Browse Data</button>
+            <button class="tab-button" onclick="showTab('clear')">Clear Data</button>
+        </div>
+        
+        <!-- Browse Data Tab -->
+        <div id="browseTab" class="tab-content active">
                 <!-- Controls Section -->
         <div class="controls">
             <div class="controls-row">
@@ -110,6 +116,34 @@
                     <button class="pagination-btn" id="prevBtn" onclick="changePage(currentPage - 1)">← Prev</button>
                     <span id="pageNumbers"></span>
                     <button class="pagination-btn" id="nextBtn" onclick="changePage(currentPage + 1)">Next →</button>
+                </div>
+            </div>
+        </div>
+        </div>
+        
+        <!-- Clear Data Tab -->
+        <div id="clearTab" class="tab-content">
+            <div class="clear-data-container">
+                <div class="warning-section">
+                    <h2>⚠️ Clear All Data</h2>
+                    <p class="warning-text">This action will permanently delete ALL key-value pairs from the database.</p>
+                </div>
+                
+                <div class="clear-info-section">
+                    <h3>Before proceeding:</h3>
+                    <ul class="clear-checklist">
+                        <li>Ensure you have a backup if needed</li>
+                        <li>Confirm this is the correct database</li>
+                        <li>Verify no critical processes are running</li>
+                        <li>Understand this action cannot be undone</li>
+                    </ul>
+                </div>
+                
+                <div class="clear-action-section">
+                    <button class="danger-button large" onclick="openClearAllModal()">
+                        🗑️ Clear All Data
+                    </button>
+                    <p class="clear-note">This will open a confirmation dialog with additional safety checks.</p>
                 </div>
             </div>
         </div>

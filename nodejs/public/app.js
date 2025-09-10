@@ -208,6 +208,25 @@ function hideMessages() {
     document.getElementById('successDisplay').style.display = 'none';
 }
 
+// Tab management
+function showTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+}
+
 // Close modal when clicking outside
 window.onclick = function(event) {
     const addModal = document.getElementById('addModal');
