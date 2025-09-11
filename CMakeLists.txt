@@ -23,6 +23,17 @@ find_package(Protobuf REQUIRED)
 find_program(THRIFT_COMPILER thrift REQUIRED)
 find_program(CARGO_EXECUTABLE cargo REQUIRED)
 
+# Google Test
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG release-1.12.1
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
 # Include utilities
 include(ExternalProject)
 
@@ -218,8 +229,12 @@ add_executable(cpp_ffi_test
     "${CPP_TESTS_DIR}/test_versionstamped_operations.cpp"
 )
 
-# Link against the unified Rust library
-target_link_libraries(cpp_ffi_test PRIVATE -L"${CMAKE_BINARY_DIR}/bin" -lrocksdb_server)
+# Link against the unified Rust library and gtest
+target_link_libraries(cpp_ffi_test PRIVATE 
+    -L"${CMAKE_BINARY_DIR}/bin" -lrocksdb_server
+    gtest_main
+    gtest
+)
 target_include_directories(cpp_ffi_test PRIVATE 
     ${KV_INCLUDE_DIR}
     ${CPP_TESTS_DIR}
