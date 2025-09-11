@@ -4,23 +4,35 @@ This file provides guidance to Claude Code when working with the Rust implementa
 
 ## Project Overview
 
-This is the Rust implementation of a transactional key-value store service supporting both gRPC and Thrift protocols, using RocksDB as the storage engine. The Rust implementation emphasizes async performance using Tokio and provides a comprehensive client SDK with C FFI bindings.
+This is a unified Rust implementation of a transactional key-value store service supporting both gRPC and Thrift protocols, using RocksDB as the storage engine. The implementation combines server and client components in a single workspace, emphasizing async performance using Tokio and providing a comprehensive client SDK with C FFI bindings.
 
 ## Architecture
 
 ### Core Components
-- **Main Server Library** (`src/lib.rs`): Library exports and common types
-- **Service Implementations**:
+- **Main Library** (`src/lib.rs`): Unified library exports and re-exports for both server and client
+- **Server Implementations**:
   - `src/servers/grpc_server.rs`: gRPC server binary using Tokio async runtime
   - `src/servers/thrift_server.rs`: Thrift server binary with async support
-- **Core Libraries** (`src/lib/`):
+- **Core Server Libraries** (`src/lib/`):
   - `service.rs`: gRPC service implementation with TransactionalKvDatabase
   - `db.rs`: RocksDB wrapper with transaction support
   - `config.rs`: Configuration management with TOML support
   - `proto.rs`: Generated protobuf types and service definitions
-  - `kvstore.rs`: Core KV store logic and types
-- **Client SDK** (`client/`): High-performance async client with C FFI bindings
-- **Testing** (`tests/`): Integration tests with common utilities
+- **Client SDK Module** (`src/client/`): High-performance async client with C FFI bindings
+  - `mod.rs`: Client module exports and re-exports
+  - `client.rs`: High-level client API for connecting and managing transactions
+  - `transaction.rs`: Transaction and ReadTransaction implementations
+  - `ffi.rs`: C FFI bindings for cross-language integration
+  - `config.rs`: Client configuration with debug logging support
+  - `error.rs`: Comprehensive error types and result handling
+  - `future.rs`: Async future utilities for FFI compatibility
+- **Generated Code** (`src/generated/`): Shared protocol definitions
+- **Unified Testing** (`tests/`): All tests in organized subdirectories
+  - `integration_tests.rs`: Server integration tests
+  - `client/`: Client SDK tests
+  - `cpp_tests/`: C++ FFI tests
+- **Sub-Crates** (`crates/`): Additional workspace members
+  - `benchmark/`: Benchmarking tools
 
 ### Data Storage
 - gRPC server database: `./data/rocksdb-rust/`
@@ -40,11 +52,11 @@ cargo build --release
 cargo build --bin server          # gRPC server
 cargo build --bin thrift-server   # Thrift server
 
-# Build client SDK
-cd client && cargo build --release
+# Build unified library with client SDK
+cargo build --release
 
 # Build with C FFI support
-cd client && cargo build --release --features ffi
+cargo build --release --features ffi
 ```
 
 ### Running Servers
@@ -74,14 +86,17 @@ make proto thrift
 # Unit tests
 cargo test
 
+# All tests (unified)
+cargo test
+
 # Integration tests (requires running server)
 cargo test --test integration_tests
 
 # Client SDK tests (requires Thrift server)
-cd client && cargo test
+cargo test client
 
-# C FFI tests
-cd client && ./scripts/build_and_run_ffi_tests.sh
+# C FFI tests (via CMake)
+cd .. && cmake --build build --target test_ffi
 ```
 
 ## Configuration
@@ -99,9 +114,16 @@ Both servers support:
 - Structured logging with tracing
 - Graceful shutdown handling
 
-## Client SDK
+## Unified Library Structure
 
-### Features
+The crate now combines server and client components in a single workspace:
+
+### Library Exports
+- **Server Types**: `Config`, `TransactionalKvDatabase`, protocol types
+- **Client Types**: `KvStoreClient`, `ClientConfig`, `KvError`, `Transaction`, etc.
+- **Shared Code**: Protocol definitions, error types, utilities
+
+### Client SDK Features
 - **Async/Await Support**: Full Tokio async runtime integration
 - **Transaction Management**: ACID transactions with conflict detection
 - **C FFI Bindings**: C-compatible API for cross-language integration
@@ -114,7 +136,7 @@ Both servers support:
 
 **Basic Rust Client:**
 ```rust
-use kvstore_client::{KvStoreClient, KvResult};
+use rocksdb_server::client::{KvStoreClient, KvResult};
 
 #[tokio::main]
 async fn main() -> KvResult<()> {
@@ -133,7 +155,7 @@ async fn main() -> KvResult<()> {
 
 **Debug-Enabled Client:**
 ```rust
-use kvstore_client::{KvStoreClient, ClientConfig, KvResult};
+use rocksdb_server::client::{KvStoreClient, ClientConfig, KvResult};
 
 #[tokio::main]
 async fn main() -> KvResult<()> {
@@ -153,9 +175,10 @@ async fn main() -> KvResult<()> {
 ```c
 #include "kvstore_client.h"
 
-KvStoreClient* client = kv_client_connect("localhost:9090");
-KvTransactionFuture* tx_future = kv_client_begin_transaction(client, NULL, 60);
-KvTransaction* tx = kv_future_get_transaction(tx_future);
+KvClientHandle client = kv_client_create("localhost:9090");
+KvFutureHandle tx_future = kv_transaction_begin(client, 60);
+while (!kv_future_poll(tx_future)) { usleep(1000); }
+KvTransactionHandle tx = kv_future_get_transaction(tx_future);
 // ... use transaction
 ```
 
@@ -169,7 +192,7 @@ KvTransaction* tx = kv_future_get_transaction(tx_future);
 3. Implement methods:
    - gRPC: Add to `KvStoreGrpcService` impl in `src/lib/service.rs`
    - Thrift: Add to `ThriftKvStoreService` impl in `src/servers/thrift_server.rs`
-4. Update client SDK in `client/src/` if needed
+4. Update client SDK in `src/client/` if needed
 5. Add tests to verify functionality
 
 ### Database Operations
@@ -207,19 +230,20 @@ The codebase uses structured error handling:
 
 ## Testing Strategy
 
-### Unit Tests
-- Individual component testing in `tests/` directory
-- Mock implementations for isolated testing
-- Common test utilities in `tests/common/mod.rs`
+### Unified Test Structure
+- **Server Tests**: `tests/integration_tests.rs` - Full server lifecycle testing
+- **Client Tests**: `tests/client/` - Client SDK functionality validation  
+- **FFI Tests**: `tests/cpp_tests/` - C++ FFI binding correctness
+- **Common Utilities**: `tests/common/mod.rs` - Shared test helpers
 
-### Integration Tests
-- Full server lifecycle testing
-- Multi-protocol compatibility verification
-- Client SDK functionality validation
-- C FFI binding correctness
+### Test Organization
+- All tests run with single `cargo test` command
+- Integration tests require running server on localhost:9090
+- FFI tests can be run via CMake: `cmake --build build --target test_ffi`
+- Client and server tests share common test utilities
 
 ### Performance Testing
-- Use the benchmark tool from `../benchmark-rust/`
+- Use the benchmark tool from `crates/benchmark/`
 - Supports both gRPC and Thrift protocol benchmarking
 - Configurable workload patterns and thread counts
 - Database configuration testing with different TOML files

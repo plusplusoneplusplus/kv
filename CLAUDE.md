@@ -4,8 +4,17 @@ This file provides guidance to Claude Code when working with the high-performanc
 
 ## Project Overview
 
-This is a transactional key-value store service implemented in Rust, supporting both gRPC and Thrift protocols, using RocksDB as the storage engine.
+This is a transactional key-value store service implemented in Rust, supporting both gRPC and Thrift protocols, using RocksDB as the storage engine. The implementation uses a unified workspace structure combining server and client components for better code sharing and maintainability.
+
+## Key Changes (Recent)
+
+The project has been refactored to use a unified Rust workspace structure:
+- **Consolidated Structure**: Client and server are now in a single Rust crate (`rust/`)
+- **Unified Testing**: All tests are organized under `rust/tests/` with subdirectories
+- **Shared Code**: Protocol definitions and utilities are shared between client and server
+- **Simplified Build**: Single `cargo build` command builds everything
+- **FFI Support**: C FFI bindings integrated into main library with `--features ffi`
 
 ## Language-Specific Documentation
 
-- **Rust Implementation**: See [rust/CLAUDE.md](rust/CLAUDE.md) for Rust-specific guidance including async Tokio implementation, client SDK with C FFI bindings, and build instructions.
+- **Rust Implementation**: See [rust/CLAUDE.md](rust/CLAUDE.md) for Rust-specific guidance including the unified workspace structure, async Tokio implementation, client SDK with C FFI bindings, and build instructions.

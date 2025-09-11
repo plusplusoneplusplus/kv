@@ -6,26 +6,36 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 
 ```
 .
-├── rust/                  # Rust implementation  
+├── rust/                  # Unified Rust implementation  
 │   ├── src/
-│   │   ├── main.rs       # Rust gRPC server implementation
-│   │   ├── thrift_main.rs # Rust Thrift server implementation
-│   │   ├── service.rs    # gRPC service implementation
-│   │   ├── db.rs         # Database operations
-│   │   └── kvstore.rs    # Generated Thrift definitions (auto-generated)
-│   ├── Cargo.toml       # Rust dependencies
-│   └── build.rs         # Protobuf build script
-├── rust/client/           # Rust client library with C FFI bindings
-│   ├── src/
-│   ├── include/          # C header files
-│   ├── tests/            # C++ FFI tests
-│   └── Cargo.toml
-├── benchmark-rust/        # Rust benchmarking tools
-│   ├── src/              # Rust benchmark implementation
-│   │   ├── main.rs       # Main benchmark entry point
-│   │   ├── clients/      # Client implementations (gRPC, raw, thrift)
-│   │   └── config.rs     # Configuration management
-│   └── Cargo.toml        # Rust dependencies
+│   │   ├── lib.rs        # Library exports and re-exports
+│   │   ├── servers/      # Server implementations
+│   │   │   ├── grpc_server.rs  # Rust gRPC server binary
+│   │   │   └── thrift_server.rs # Rust Thrift server binary
+│   │   ├── lib/          # Core library modules
+│   │   │   ├── service.rs     # gRPC service implementation
+│   │   │   ├── db.rs          # Database operations
+│   │   │   ├── config.rs      # Configuration management
+│   │   │   └── proto.rs       # Protocol buffer types
+│   │   ├── client/       # Client SDK module
+│   │   │   ├── mod.rs         # Module exports
+│   │   │   ├── client.rs      # High-level client API
+│   │   │   ├── transaction.rs # Transaction support
+│   │   │   ├── ffi.rs         # C FFI bindings
+│   │   │   ├── config.rs      # Client configuration
+│   │   │   ├── error.rs       # Error types
+│   │   │   └── future.rs      # Async future utilities
+│   │   └── generated/    # Generated protocol code
+│   │       └── kvstore.rs     # Thrift definitions (auto-generated)
+│   ├── tests/            # All tests (unified)
+│   │   ├── integration_tests.rs # Server integration tests
+│   │   ├── client/            # Client SDK tests
+│   │   ├── cpp_tests/         # C++ FFI tests
+│   │   └── kvstore_client.h   # FFI header file
+│   ├── crates/           # Sub-crates
+│   │   └── benchmark/    # Benchmarking tools
+│   ├── Cargo.toml       # Workspace configuration
+│   └── build.rs         # Build script
 ├── proto/                 # Protocol buffer definitions
 │   └── kvstore.proto     # gRPC service and message definitions
 ├── thrift/               # Thrift definitions
@@ -155,9 +165,9 @@ cd benchmark-rust && cargo build --release
 cp target/release/benchmark ../bin/benchmark-rust
 ```
 
-**Rust Client Library with FFI:**
+**Unified Rust Library with Client SDK and FFI:**
 ```bash
-cd rust/client && cargo build --release --features ffi
+cd rust && cargo build --release --features ffi
 ```
 
 ### CMake Build Targets
@@ -232,16 +242,25 @@ The client library can be used from Rust, C, or C++:
 
 **Rust Usage:**
 ```rust
-use kvstore_client::{KVClient, Config};
+use rocksdb_server::client::{KvStoreClient, ClientConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::default();
-    let mut client = KVClient::new(config).await?;
+    let client = KvStoreClient::connect("localhost:9090")?;
     
-    client.put("key1", "value1").await?;
-    let value = client.get("key1").await?;
+    // Begin transaction
+    let tx_future = client.begin_transaction(None, Some(60));
+    let tx = tx_future.await_result().await?;
+    
+    // Set and get values
+    tx.set("key1", "value1", None)?;
+    let get_future = tx.get("key1", None);
+    let value = get_future.await_result().await?;
     println!("Retrieved: {:?}", value);
+    
+    // Commit transaction
+    let commit_future = tx.commit();
+    commit_future.await_result().await?;
     
     Ok(())
 }
@@ -252,15 +271,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #include "kvstore_client.h"
 
 int main() {
-    KVConfig config = kv_config_default();
-    KVClient* client = kv_client_new(config);
+    KvClientHandle client = kv_client_create("localhost:9090");
     
-    kv_put(client, "key1", "value1");
+    // Begin transaction
+    KvFutureHandle tx_future = kv_transaction_begin(client, 30);
+    while (!kv_future_poll(tx_future)) {
+        usleep(1000);  // Wait for completion
+    }
+    KvTransactionHandle tx = kv_future_get_transaction(tx_future);
     
-    const char* value = kv_get(client, "key1");
-    printf("Retrieved: %s\n", value);
+    // Set and get values
+    KvFutureHandle set_future = kv_transaction_set(tx, 
+        KV_STR("key1"), KV_STR("value1"), NULL);
+    // ... poll and handle set_future
     
-    kv_client_free(client);
+    KvFutureHandle get_future = kv_transaction_get(tx, 
+        KV_STR("key1"), NULL);
+    // ... poll and get result
+    
+    // Commit
+    KvFutureHandle commit_future = kv_transaction_commit(tx);
+    // ... poll and handle commit
+    
+    kv_client_destroy(client);
     return 0;
 }
 ```
