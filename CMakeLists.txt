@@ -45,26 +45,15 @@ set(THRIFT_FILE "${THRIFT_DIR}/kvstore.thrift")
 set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Generate Rust thrift files directly into source generated folders
-set(RUST_SERVER_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/generated")
-set(RUST_CLIENT_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/src/generated")
+set(RUST_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/generated")
 
-# Generate Rust thrift files for server
+# Generate Rust thrift files (unified for both server and client)
 add_custom_command(
-    OUTPUT "${RUST_SERVER_GENERATED_DIR}/kvstore.rs"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_SERVER_GENERATED_DIR}"
-    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_SERVER_GENERATED_DIR}" "${THRIFT_FILE}"
+    OUTPUT "${RUST_GENERATED_DIR}/kvstore.rs"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_GENERATED_DIR}"
+    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_GENERATED_DIR}" "${THRIFT_FILE}"
     DEPENDS ${THRIFT_FILE}
-    COMMENT "Generating Rust server thrift files"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# Generate Rust thrift files for client
-add_custom_command(
-    OUTPUT "${RUST_CLIENT_GENERATED_DIR}/kvstore.rs"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_CLIENT_GENERATED_DIR}"
-    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_CLIENT_GENERATED_DIR}" "${THRIFT_FILE}"
-    DEPENDS ${THRIFT_FILE}
-    COMMENT "Generating Rust client thrift files"
+    COMMENT "Generating Rust thrift files"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -84,8 +73,7 @@ add_custom_target(generate_proto ALL)
 
 add_custom_target(generate_thrift ALL
     DEPENDS 
-        "${RUST_SERVER_GENERATED_DIR}/kvstore.rs"
-        "${RUST_CLIENT_GENERATED_DIR}/kvstore.rs"
+        "${RUST_GENERATED_DIR}/kvstore.rs"
         "${NODEJS_GENERATED_DIR}/kvstore_types.js"
 )
 
@@ -152,21 +140,21 @@ add_custom_target(rust_benchmark ALL
 # Rust Client Library with FFI Support
 #==============================================================================
 
-# Define the Rust client library paths
-set(KV_CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client")
-set(KV_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/include")
+# Define the Rust client library paths (now unified in main rust directory)
+set(KV_CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
+set(KV_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/tests")
 set(KV_LIB_DIR "${KV_CLIENT_DIR}/target/${CARGO_TARGET_DIR}")
 
-# Set library name based on platform
+# Set library name based on platform (now using unified rocksdb_server library)
 if(WIN32)
-    set(KV_LIB_NAME "kvstore_client.dll")
-    set(KV_STATIC_LIB_NAME "kvstore_client.lib")
+    set(KV_LIB_NAME "rocksdb_server.dll")
+    set(KV_STATIC_LIB_NAME "rocksdb_server.lib")
 elseif(APPLE)
-    set(KV_LIB_NAME "libkvstore_client.dylib")
-    set(KV_STATIC_LIB_NAME "libkvstore_client.a")
+    set(KV_LIB_NAME "librocksdb_server.dylib")
+    set(KV_STATIC_LIB_NAME "librocksdb_server.a")
 else()
-    set(KV_LIB_NAME "libkvstore_client.so")
-    set(KV_STATIC_LIB_NAME "libkvstore_client.a")
+    set(KV_LIB_NAME "librocksdb_server.so")
+    set(KV_STATIC_LIB_NAME "librocksdb_server.a")
 endif()
 
 # Build the Rust client library
@@ -214,8 +202,8 @@ add_library(kv::client ALIAS kv_client)
 # C++ FFI Tests
 #==============================================================================
 
-# Set the cpp_tests directory
-set(CPP_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/tests/cpp_tests")
+# Set the cpp_tests directory (now in unified tests directory)
+set(CPP_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/tests/cpp_tests")
 
 # Create C++ FFI test executable with all test files
 add_executable(cpp_ffi_test
@@ -229,8 +217,8 @@ add_executable(cpp_ffi_test
     "${CPP_TESTS_DIR}/test_error_handling.cpp"
 )
 
-# Link against the KV client library
-target_link_libraries(cpp_ffi_test PRIVATE -L"${CMAKE_BINARY_DIR}/bin" -lkvstore_client)
+# Link against the unified Rust library
+target_link_libraries(cpp_ffi_test PRIVATE -L"${CMAKE_BINARY_DIR}/bin" -lrocksdb_server)
 target_include_directories(cpp_ffi_test PRIVATE 
     ${KV_INCLUDE_DIR}
     ${CPP_TESTS_DIR}
@@ -296,15 +284,9 @@ add_custom_target(rust_deps
 # Benchmark dependencies are now part of the main workspace
 # No separate dependency target needed
 
-add_custom_target(rust_client_deps
-    COMMAND ${CARGO_EXECUTABLE} fetch
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust/client"
-    COMMENT "Installing Rust dependencies (client)"
-)
-
-# All dependencies target
+# All dependencies target (client deps now included in main rust workspace)
 add_custom_target(deps
-    DEPENDS rust_deps rust_client_deps
+    DEPENDS rust_deps
     COMMENT "Installing all dependencies"
 )
 
@@ -320,7 +302,6 @@ add_custom_target(clean_all
     
     # Clean generated protocol files
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/generated"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/src/generated"
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/generated"
     
     # Clean copied Node.js thrift files
