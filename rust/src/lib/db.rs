@@ -85,6 +85,7 @@ pub struct AtomicCommitResult {
     pub error_code: Option<String>,
     pub committed_version: Option<u64>,
     pub generated_keys: Vec<Vec<u8>>,  // Keys generated for versionstamped operations
+    pub generated_values: Vec<Vec<u8>>,  // Values generated for versionstamped operations
 }
 
 impl OpResult {
@@ -206,6 +207,17 @@ impl TransactionalKvDatabase {
             Err(e) => Err(format!("Snapshot read failed: {}", e))
         }
     }
+
+    /// Generate a versionstamp by appending commit version and batch order to a prefix
+    fn generate_versionstamp(&self, prefix: &[u8], commit_version: u64, batch_order: u16) -> Vec<u8> {
+        let mut versionstamped_data = prefix.to_vec();
+        
+        // Append 8-byte commit version + 2-byte batch order (10 bytes total, FoundationDB-compatible)
+        versionstamped_data.extend_from_slice(&commit_version.to_be_bytes());
+        versionstamped_data.extend_from_slice(&batch_order.to_be_bytes());
+        
+        versionstamped_data
+    }
     
     /// Atomic commit of client-buffered operations with conflict detection
     pub fn atomic_commit(&self, request: AtomicCommitRequest) -> AtomicCommitResult {
@@ -222,6 +234,7 @@ impl TransactionalKvDatabase {
                 error_code: Some(error_code),
                 committed_version: None,
                 generated_keys: Vec::new(),
+                generated_values: Vec::new(),
             };
         }
 
@@ -239,6 +252,7 @@ impl TransactionalKvDatabase {
                         error_code: Some("CONFLICT".to_string()),
                         committed_version: None,
                         generated_keys: Vec::new(),
+                        generated_values: Vec::new(),
                     };
                 }
             }
@@ -253,6 +267,7 @@ impl TransactionalKvDatabase {
         // Pre-allocate the commit version for versionstamped operations
         let commit_version = self.current_version.load(std::sync::atomic::Ordering::SeqCst) + 1;
         let mut generated_keys = Vec::new();
+        let mut generated_values = Vec::new();
         let mut batch_order: u16 = 0; // 2-byte counter for operations within transaction
         
         // Apply all operations atomically
@@ -268,6 +283,7 @@ impl TransactionalKvDatabase {
                             error_code: Some("INVALID_OPERATION".to_string()),
                             committed_version: None,
                             generated_keys: Vec::new(),
+                            generated_values: Vec::new(),
                         };
                     }
                 }
@@ -275,12 +291,7 @@ impl TransactionalKvDatabase {
                 "SET_VERSIONSTAMPED_KEY" => {
                     if let Some(value) = &operation.value {
                         // Generate a unique key by appending the commit version to the key prefix
-                        let mut versionstamped_key = operation.key.clone();
-                        
-                        // Append 8-byte commit version + 2-byte batch order (10 bytes total, FoundationDB-compatible)
-                        versionstamped_key.extend_from_slice(&commit_version.to_be_bytes());
-                        versionstamped_key.extend_from_slice(&batch_order.to_be_bytes());
-                        
+                        let versionstamped_key = self.generate_versionstamp(&operation.key, commit_version, batch_order);
                         batch_order += 1; // Increment for next versionstamped operation
                         
                         // Store the generated key for returning to client
@@ -295,6 +306,29 @@ impl TransactionalKvDatabase {
                             error_code: Some("INVALID_OPERATION".to_string()),
                             committed_version: None,
                             generated_keys: Vec::new(),
+                            generated_values: Vec::new(),
+                        };
+                    }
+                }
+                "SET_VERSIONSTAMPED_VALUE" => {
+                    if let Some(value_prefix) = &operation.value {
+                        // Generate a unique value by appending the commit version to the value prefix
+                        let versionstamped_value = self.generate_versionstamp(value_prefix, commit_version, batch_order);
+                        batch_order += 1; // Increment for next versionstamped operation
+                        
+                        // Store the generated value for returning to client
+                        generated_values.push(versionstamped_value.clone());
+                        
+                        // Apply the operation with the generated value
+                        rocksdb_txn.put(&operation.key, &versionstamped_value)
+                    } else {
+                        return AtomicCommitResult {
+                            success: false,
+                            error: "Versionstamped value operation missing value prefix".to_string(),
+                            error_code: Some("INVALID_OPERATION".to_string()),
+                            committed_version: None,
+                            generated_keys: Vec::new(),
+                            generated_values: Vec::new(),
                         };
                     }
                 }
@@ -305,6 +339,7 @@ impl TransactionalKvDatabase {
                         error_code: Some("INVALID_OPERATION".to_string()),
                         committed_version: None,
                         generated_keys: Vec::new(),
+                        generated_values: Vec::new(),
                     };
                 }
             };
@@ -316,6 +351,7 @@ impl TransactionalKvDatabase {
                     error_code: Some("OPERATION_FAILED".to_string()),
                     committed_version: None,
                     generated_keys: Vec::new(),
+                    generated_values: Vec::new(),
                 };
             }
         }
@@ -332,6 +368,7 @@ impl TransactionalKvDatabase {
                     error_code: None,
                     committed_version: Some(committed_version),
                     generated_keys,
+                    generated_values,
                 }
             }
             Err(e) => {
@@ -343,6 +380,7 @@ impl TransactionalKvDatabase {
                         error_code: Some("CONFLICT".to_string()),
                         committed_version: None,
                         generated_keys: Vec::new(),
+                        generated_values: Vec::new(),
                     }
                 } else if error_msg.contains("TimedOut") {
                     AtomicCommitResult {
@@ -351,6 +389,7 @@ impl TransactionalKvDatabase {
                         error_code: Some("TIMEOUT".to_string()),
                         committed_version: None,
                         generated_keys: Vec::new(),
+                        generated_values: Vec::new(),
                     }
                 } else {
                     AtomicCommitResult {
@@ -359,6 +398,7 @@ impl TransactionalKvDatabase {
                         error_code: Some("COMMIT_FAILED".to_string()),
                         committed_version: None,
                         generated_keys: Vec::new(),
+                        generated_values: Vec::new(),
                     }
                 }
             }
@@ -886,5 +926,176 @@ mod tests {
         assert!(get3.found && get4.found, "Both versionstamped keys should be found");
         assert_eq!(get3.value, b"value1");
         assert_eq!(get4.value, b"value2");
+    }
+
+    #[test]
+    fn test_versionstamped_value_operations() {
+        use tempfile::tempdir;
+        
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_versionstamp_value_db");
+        let config = Config::default();
+        
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let initial_read_version = db.get_read_version();
+        
+        // Test 1: Single versionstamped value operation
+        let versionstamp_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"user_session".to_vec(),
+            value: Some(b"session_".to_vec()),
+            column_family: None,
+        };
+        
+        let commit_request = AtomicCommitRequest {
+            read_version: initial_read_version,
+            operations: vec![versionstamp_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+        
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(commit_result.success, "Versionstamp value commit should succeed: {}", commit_result.error);
+        assert!(commit_result.committed_version.is_some(), "Should have committed version");
+        assert_eq!(commit_result.generated_values.len(), 1, "Should have one generated value");
+        assert_eq!(commit_result.generated_keys.len(), 0, "Should have no generated keys for value operation");
+        
+        let generated_value = &commit_result.generated_values[0];
+        assert!(generated_value.starts_with(b"session_"), "Generated value should start with prefix");
+        assert_eq!(generated_value.len(), b"session_".len() + 10, "Generated value should be prefix + 10 bytes for version");
+        
+        // Test 2: Verify the versionstamped value was actually stored
+        let new_read_version = db.get_read_version();
+        let get_result = db.snapshot_read(b"user_session", new_read_version, None);
+        assert!(get_result.is_ok(), "Should be able to read key with versionstamped value");
+        let get_result = get_result.unwrap();
+        assert!(get_result.found, "Key with versionstamped value should be found in database");
+        assert_eq!(get_result.value, *generated_value, "Value should match the generated versionstamped value");
+        
+        // Test 3: Multiple versionstamped values in same transaction
+        let vs_op1 = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"log_entry_1".to_vec(),
+            value: Some(b"event_".to_vec()),
+            column_family: None,
+        };
+        
+        let vs_op2 = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"log_entry_2".to_vec(),
+            value: Some(b"event_".to_vec()),
+            column_family: None,
+        };
+        
+        let regular_op = AtomicOperation {
+            op_type: "set".to_string(),
+            key: b"regular_key".to_vec(),
+            value: Some(b"regular_value".to_vec()),
+            column_family: None,
+        };
+        
+        let multi_commit_request = AtomicCommitRequest {
+            read_version: db.get_read_version(),
+            operations: vec![vs_op1, vs_op2, regular_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+        
+        let multi_commit_result = db.atomic_commit(multi_commit_request);
+        assert!(multi_commit_result.success, "Multi-operation commit should succeed: {}", multi_commit_result.error);
+        assert_eq!(multi_commit_result.generated_values.len(), 2, "Should have two generated values");
+        
+        // Verify both versionstamped values have the same commit version but different batch order
+        let value1 = &multi_commit_result.generated_values[0];
+        let value2 = &multi_commit_result.generated_values[1];
+        
+        // Extract version bytes (last 10 bytes) from each value
+        let version1 = &value1[value1.len() - 10..];
+        let version2 = &value2[value2.len() - 10..];
+        
+        // Extract commit version (first 8 bytes of version stamp)
+        let commit_version1 = &version1[..8];
+        let commit_version2 = &version2[..8];
+        assert_eq!(commit_version1, commit_version2, "Values from same transaction should have same commit version");
+        
+        // Extract batch order (last 2 bytes of version stamp) 
+        let batch_order1 = &version1[8..];
+        let batch_order2 = &version2[8..];
+        assert_ne!(batch_order1, batch_order2, "Values from same transaction should have different batch order for uniqueness");
+        
+        // Verify regular key was also stored
+        let final_read_version = db.get_read_version();
+        let regular_result = db.snapshot_read(b"regular_key", final_read_version, None);
+        assert!(regular_result.is_ok() && regular_result.unwrap().found, "Regular key should be stored");
+        
+        // Test 4: Error handling for missing value prefix
+        let invalid_vs_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"test_key".to_vec(),
+            value: None,
+            column_family: None,
+        };
+        
+        let invalid_commit_request = AtomicCommitRequest {
+            read_version: final_read_version,
+            operations: vec![invalid_vs_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+        
+        let invalid_commit_result = db.atomic_commit(invalid_commit_request);
+        assert!(!invalid_commit_result.success, "Versionstamp value operation without value prefix should fail");
+        assert!(invalid_commit_result.error.contains("missing value prefix"), "Error should mention missing value prefix");
+        assert_eq!(invalid_commit_result.error_code, Some("INVALID_OPERATION".to_string()));
+        assert_eq!(invalid_commit_result.generated_values.len(), 0, "Should have no generated values on failure");
+        
+        // Test 5: Verify values are unique across different transactions
+        let vs_op3 = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"unique_test_1".to_vec(),
+            value: Some(b"prefix_".to_vec()),
+            column_family: None,
+        };
+        
+        let commit3 = AtomicCommitRequest {
+            read_version: db.get_read_version(),
+            operations: vec![vs_op3],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+        
+        let result3 = db.atomic_commit(commit3);
+        assert!(result3.success);
+        
+        let vs_op4 = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"unique_test_2".to_vec(),
+            value: Some(b"prefix_".to_vec()),
+            column_family: None,
+        };
+        
+        let commit4 = AtomicCommitRequest {
+            read_version: db.get_read_version(),
+            operations: vec![vs_op4],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+        
+        let result4 = db.atomic_commit(commit4);
+        assert!(result4.success);
+        
+        // Generated values should be different
+        let value3 = &result3.generated_values[0];
+        let value4 = &result4.generated_values[0];
+        assert_ne!(value3, value4, "Values from different transactions should be unique");
+        
+        // Both should be retrievable with their respective versionstamped values
+        let final_version = db.get_read_version();
+        let get3 = db.snapshot_read(b"unique_test_1", final_version, None).unwrap();
+        let get4 = db.snapshot_read(b"unique_test_2", final_version, None).unwrap();
+        
+        assert!(get3.found && get4.found, "Both versionstamped values should be found");
+        assert_eq!(get3.value, *value3, "First key should have its versionstamped value");
+        assert_eq!(get4.value, *value4, "Second key should have its versionstamped value");
     }
 }
