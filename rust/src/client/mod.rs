@@ -13,7 +13,7 @@ pub mod ffi;
 pub use client::KvStoreClient;
 pub use config::ClientConfig;
 pub use error::{KvError, KvResult};
-pub use transaction::{Transaction, ReadTransaction};
+pub use transaction::{Transaction, ReadTransaction, CommitResult};
 pub use future::{KvFuture, KvFuturePtr};
 
 // Re-export Thrift types for convenience

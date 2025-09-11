@@ -88,6 +88,23 @@ pub struct KvPairArray {
     pub count: usize,
 }
 
+// Array of binary data for generated keys/values
+#[repr(C)]
+pub struct KvBinaryDataArray {
+    pub data: *mut KvBinaryData,
+    pub count: usize,
+}
+
+// Commit result containing generated keys and values
+#[repr(C)]
+pub struct KvCommitResult {
+    pub success: c_int,
+    pub error_code: c_int,
+    pub error_message: *mut c_char,
+    pub generated_keys: KvBinaryDataArray,
+    pub generated_values: KvBinaryDataArray,
+}
+
 /// Initialize the KV client library
 #[no_mangle]
 pub extern "C" fn kv_init() -> c_int {
@@ -590,6 +607,37 @@ pub extern "C" fn kv_transaction_commit(transaction: KvTransactionHandle) -> KvF
     };
     
     let future = tx.commit();
+    let future_ptr = KvFuturePtr::new(future);
+    
+    let future_id = next_id();
+    FUTURES.lock().insert(future_id, Box::new(future_ptr));
+    
+    future_id as KvFutureHandle
+}
+
+/// Commit a transaction and return generated keys and values
+#[no_mangle]
+pub extern "C" fn kv_transaction_commit_with_results(transaction: KvTransactionHandle) -> KvFutureHandle {
+    if transaction.is_null() {
+        return ptr::null_mut();
+    }
+    
+    let tx_id = transaction as usize;
+    let tx = match TRANSACTIONS.lock().remove(&tx_id) {
+        Some(tx_arc) => match Arc::try_unwrap(tx_arc) {
+            Ok(tx_mutex) => match tx_mutex.into_inner() {
+                tx => tx,
+            },
+            Err(tx_arc) => {
+                // Put it back if we can't unwrap the Arc
+                TRANSACTIONS.lock().insert(tx_id, tx_arc);
+                return ptr::null_mut();
+            }
+        },
+        None => return ptr::null_mut(),
+    };
+    
+    let future = tx.commit_with_results();
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -1269,6 +1317,138 @@ pub extern "C" fn kv_pair_array_free(pairs: *mut KvPairArray) {
                 pairs_ref.count = 0;
             }
         }
+    }
+}
+
+/// Set a versionstamped key in a transaction (key prefix will be appended with version)
+#[no_mangle]
+pub extern "C" fn kv_transaction_set_versionstamped_key(
+    transaction: KvTransactionHandle,
+    key_prefix_data: *const u8,
+    key_prefix_length: c_int,
+    value_data: *const u8,
+    value_length: c_int,
+    column_family: *const c_char,
+) -> c_int {
+    if transaction.is_null() || key_prefix_data.is_null() || key_prefix_length < 0 || value_length < 0 {
+        return 0; // Error
+    }
+    
+    // Allow NULL value_data only if value_length is 0 (empty value)
+    if value_data.is_null() && value_length != 0 {
+        return 0; // Error
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return 0, // Error
+    };
+    
+    let key_prefix_bytes = unsafe {
+        slice::from_raw_parts(key_prefix_data, key_prefix_length as usize)
+    };
+    
+    let value_bytes = if value_data.is_null() {
+        &[]
+    } else {
+        unsafe {
+            slice::from_raw_parts(value_data, value_length as usize)
+        }
+    };
+    
+    // Convert to string (assuming UTF-8)
+    let key_prefix_str = match std::str::from_utf8(key_prefix_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0, // Error
+    };
+    
+    let value_str = match std::str::from_utf8(value_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0, // Error
+    };
+    
+    let cf_name = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return 0, // Error
+            }
+        }
+    };
+    
+    let result = tx_arc.lock().set_versionstamped_key(key_prefix_str, value_str, cf_name);
+    match result {
+        Ok(_) => 1, // Success
+        Err(_) => 0, // Error
+    }
+}
+
+/// Set a versionstamped value in a transaction (value prefix will be appended with version)
+#[no_mangle]
+pub extern "C" fn kv_transaction_set_versionstamped_value(
+    transaction: KvTransactionHandle,
+    key_data: *const u8,
+    key_length: c_int,
+    value_prefix_data: *const u8,
+    value_prefix_length: c_int,
+    column_family: *const c_char,
+) -> c_int {
+    if transaction.is_null() || key_data.is_null() || key_length < 0 || value_prefix_length < 0 {
+        return 0; // Error
+    }
+    
+    // Allow NULL value_prefix_data only if value_prefix_length is 0 (empty prefix)
+    if value_prefix_data.is_null() && value_prefix_length != 0 {
+        return 0; // Error
+    }
+    
+    let tx_id = transaction as usize;
+    let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
+        Some(tx) => tx,
+        None => return 0, // Error
+    };
+    
+    let key_bytes = unsafe {
+        slice::from_raw_parts(key_data, key_length as usize)
+    };
+    
+    let value_prefix_bytes = if value_prefix_data.is_null() {
+        &[]
+    } else {
+        unsafe {
+            slice::from_raw_parts(value_prefix_data, value_prefix_length as usize)
+        }
+    };
+    
+    // Convert to string (assuming UTF-8)
+    let key_str = match std::str::from_utf8(key_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0, // Error
+    };
+    
+    let value_prefix_str = match std::str::from_utf8(value_prefix_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0, // Error
+    };
+    
+    let cf_name = if column_family.is_null() {
+        None
+    } else {
+        unsafe {
+            match CStr::from_ptr(column_family).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return 0, // Error
+            }
+        }
+    };
+    
+    let result = tx_arc.lock().set_versionstamped_value(key_str, value_prefix_str, cf_name);
+    match result {
+        Ok(_) => 1, // Success
+        Err(_) => 0, // Error
     }
 }
 

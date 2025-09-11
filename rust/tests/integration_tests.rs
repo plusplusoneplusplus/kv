@@ -1,11 +1,13 @@
+// Server integration tests
+// Full integration tests for the Rust KV store server functionality
+
 use std::time::Duration;
 use tokio::time::timeout;
 
-use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
-use thrift::transport::{TIoChannel, TTcpChannel};
-
 // Import the generated Thrift types and client from the current crate
 use rocksdb_server::generated::kvstore::*;
+use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
+use thrift::transport::{TTcpChannel, TIoChannel};
 
 mod common;
 

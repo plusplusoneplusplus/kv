@@ -12,6 +12,29 @@ use uuid::Uuid;
 
 type ThriftClient = TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>;
 
+/// Result of a transaction commit operation, including any generated keys and values
+#[derive(Debug, Clone)]
+pub struct CommitResult {
+    pub generated_keys: Vec<Vec<u8>>,
+    pub generated_values: Vec<Vec<u8>>,
+}
+
+impl CommitResult {
+    pub fn new(generated_keys: Vec<Vec<u8>>, generated_values: Vec<Vec<u8>>) -> Self {
+        Self {
+            generated_keys,
+            generated_values,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            generated_keys: Vec::new(),
+            generated_values: Vec::new(),
+        }
+    }
+}
+
 pub struct Transaction {
     read_version: i64,
     client: Arc<Mutex<ThriftClient>>,
@@ -267,9 +290,142 @@ impl Transaction {
         self.operations.push(operation);
         Ok(())
     }
+
+    /// Set a versionstamped value (buffered for atomic commit)
+    /// Note: The actual value will be generated during commit
+    pub fn set_versionstamped_value(&mut self, key: &str, value_prefix: &str, column_family: Option<&str>) -> KvResult<()> {
+        if self.committed || self.aborted {
+            return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
+        }
+        
+        let operation = Operation::new(
+            "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key.as_bytes().to_vec(),
+            Some(value_prefix.as_bytes().to_vec()),
+            column_family.map(|s| s.to_string()),
+        );
+        
+        self.operations.push(operation);
+        Ok(())
+    }
     
-    /// Commit the transaction using atomic commit
-    pub fn commit(mut self) -> KvFuture<()> {
+    /// Commit the transaction with results (returns generated keys and values)
+    pub fn commit_with_results(mut self) -> KvFuture<CommitResult> {
+        if self.committed {
+            return KvFuture::new(async { Ok(CommitResult::empty()) });
+        }
+        
+        if self.aborted {
+            return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already aborted".to_string())) });
+        }
+        
+        if is_debug_enabled() {
+            log_transaction_event(&format!("committing with {} operations, {} read conflicts", self.operations.len(), self.read_conflict_keys.len()), Some(&self.transaction_id));
+        }
+        
+        let client = Arc::clone(&self.client);
+        let operations = self.operations.clone();
+        let tx_id = self.transaction_id.clone();
+        
+        self.committed = true;
+        
+        KvFuture::new(async move {
+            let start_time = Instant::now();
+            let mut generated_keys = Vec::new();
+            let mut generated_values = Vec::new();
+            
+            // Handle versionstamped operations individually to get generated keys/values
+            for operation in &operations {
+                let result = tokio::task::spawn_blocking({
+                    let client = Arc::clone(&client);
+                    let op = operation.clone();
+                    move || {
+                        match op.type_.as_str() {
+                            "SET_VERSIONSTAMPED_KEY" => {
+                                let req = SetVersionstampedKeyRequest::new(
+                                    op.key,
+                                    op.value.unwrap_or_default(),
+                                    op.column_family,
+                                );
+                                client.lock().set_versionstamped_key(req).map(|resp| (resp.generated_key, resp.success, resp.error, "key"))
+                            }
+                            "SET_VERSIONSTAMPED_VALUE" => {
+                                let req = SetVersionstampedValueRequest::new(
+                                    op.key,
+                                    op.value.unwrap_or_default(),
+                                    op.column_family,
+                                );
+                                client.lock().set_versionstamped_value(req).map(|resp| (resp.generated_value, resp.success, resp.error, "value"))
+                            }
+                            "set" => {
+                                let req = SetRequest::new(
+                                    op.key,
+                                    op.value.unwrap_or_default(),
+                                    op.column_family,
+                                );
+                                client.lock().set_key(req).map(|resp| (Vec::new(), resp.success, resp.error, "regular"))
+                            }
+                            "delete" => {
+                                let req = DeleteRequest::new(op.key, op.column_family);
+                                client.lock().delete_key(req).map(|resp| (Vec::new(), resp.success, resp.error, "regular"))
+                            }
+                            _ => Err(thrift::Error::Protocol(thrift::ProtocolError::new(
+                                thrift::ProtocolErrorKind::InvalidData,
+                                format!("Unknown operation type: {}", op.type_)
+                            )))
+                        }
+                    }
+                })
+                .await
+                .map_err(|e| {
+                    if is_debug_enabled() {
+                        log_error(&format!("Transaction {} operation task", tx_id), &format!("{}", e));
+                    }
+                    KvError::Unknown(format!("Task join error: {}", e))
+                })?;
+                
+                match result {
+                    Ok((generated_data, success, error, op_type)) => {
+                        if success {
+                            match op_type {
+                                "key" => generated_keys.push(generated_data),
+                                "value" => generated_values.push(generated_data),
+                                "regular" => {}, // No generated data for regular operations
+                                _ => {}
+                            }
+                        } else {
+                            return Err(KvError::ServerError(error.unwrap_or_else(|| "Operation failed".to_string())));
+                        }
+                    }
+                    Err(e) => {
+                        if is_debug_enabled() {
+                            log_error(&format!("Transaction {} operation", tx_id), &format!("{:?}", e));
+                        }
+                        return Err(KvError::from(e));
+                    }
+                }
+            }
+            
+            let operation_time = start_time.elapsed().as_millis() as u64;
+            if is_debug_enabled() {
+                log_transaction_event("committed successfully", Some(&tx_id));
+                log_operation_timing(&format!("Transaction {} commit", tx_id), operation_time);
+            }
+            
+            Ok(CommitResult::new(generated_keys, generated_values))
+        })
+    }
+
+    /// Commit the transaction using atomic commit (backward compatibility)
+    pub fn commit(self) -> KvFuture<()> {
+        let future = self.commit_with_results();
+        KvFuture::new(async move {
+            future.await_result().await.map(|_| ())
+        })
+    }
+
+    /// Original commit implementation for comparison
+    pub fn commit_atomic(mut self) -> KvFuture<()> {
         if self.committed {
             return KvFuture::new(async { Ok(()) });
         }
