@@ -7,12 +7,14 @@ use parking_lot::Mutex;
 use crate::config::{log_transaction_event, log_operation_timing, log_error, log_network_operation, is_debug_enabled};
 use crate::error::{KvResult, KvError};
 use crate::future::KvFuture;
-use crate::kvstore::*;
+use crate::generated::kvstore::*;
 use uuid::Uuid;
+
+type ThriftClient = TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>;
 
 pub struct Transaction {
     read_version: i64,
-    client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+    client: Arc<Mutex<ThriftClient>>,
     operations: Vec<Operation>,
     read_conflict_keys: Vec<String>,
     committed: bool,
@@ -23,7 +25,7 @@ pub struct Transaction {
 impl Transaction {
     pub(crate) fn new(
         read_version: i64,
-        client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+        client: Arc<Mutex<ThriftClient>>,
     ) -> Self {
         let transaction_id = Uuid::new_v4().to_string();
         if is_debug_enabled() {
@@ -131,7 +133,7 @@ impl Transaction {
                 if is_debug_enabled() {
                     log_error(&format!("Transaction {} get", tx_id), &error);
                 }
-                return Err(KvError::ServerError(error));
+                return Err(KvError::ServerError(error.to_string()));
             }
             
             let operation_time = start_time.elapsed().as_millis() as u64;
@@ -368,13 +370,13 @@ impl Drop for Transaction {
 /// Read-only transaction for snapshot operations
 pub struct ReadTransaction {
     read_version: i64,
-    client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+    client: Arc<Mutex<ThriftClient>>,
 }
 
 impl ReadTransaction {
     pub(crate) fn new(
         read_version: i64,
-        client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+        client: Arc<Mutex<ThriftClient>>,
     ) -> Self {
         Self {
             read_version,

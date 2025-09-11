@@ -12,8 +12,8 @@ use super::{ClientFactory, KvOperations};
 use std::collections::HashMap;
 
 // Use the generated Thrift code re-exported by the server crate's library.
-use rocksdb_server::lib::kvstore as thrift_kv;
-use rocksdb_server::lib::kvstore::TTransactionalKVSyncClient; // bring client trait methods into scope
+use rocksdb_server::generated::kvstore as thrift_kv;
+use rocksdb_server::generated::kvstore::TTransactionalKVSyncClient; // bring client trait methods into scope
 
 use tokio::sync::oneshot;
 
@@ -218,7 +218,7 @@ impl ClientFactory for ThriftClientFactory {
                         let _ = tx.send(res);
                     }
                     Rpc::Ping { message, timestamp, tx } => {
-                        let res = client.ping(thrift_kv::PingRequest { message: Some(message), timestamp: Some(timestamp) });
+                        let res = client.ping(thrift_kv::PingRequest { message: Some(message.into_bytes()), timestamp: Some(timestamp) });
                         let _ = tx.send(res);
                     }
                 }
@@ -327,7 +327,7 @@ impl KvOperations for ThriftClient {
 
         match result {
             Ok(Ok(Ok(resp))) => {
-                let success = resp.message == expected_message && resp.timestamp == timestamp;
+                let success = resp.message == expected_message.into_bytes() && resp.timestamp == timestamp;
                 BenchmarkResult {
                     operation: "ping".to_string(),
                     latency,

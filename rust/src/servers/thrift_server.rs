@@ -9,7 +9,7 @@ use tracing::{info, debug, trace, warn, error};
 use clap::Parser;
 
 use rocksdb_server::lib::db::TransactionalKvDatabase;
-use rocksdb_server::lib::kvstore::*;
+use rocksdb_server::generated::kvstore::*;
 use rocksdb_server::lib::config::Config;
 
 #[derive(Parser, Debug)]
@@ -389,7 +389,7 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
             .unwrap()
             .as_millis() as i64;
             
-        let message = req.message.unwrap_or_else(|| "pong".to_string());
+        let message = req.message.unwrap_or_else(|| "pong".to_string().into_bytes());
         let timestamp = req.timestamp.unwrap_or(server_timestamp);
         
         Ok(PingResponse::new(message, timestamp, server_timestamp))

@@ -10,10 +10,12 @@ use crate::transaction::{Transaction, ReadTransaction};
 use crate::future::KvFuture;
 
 // Use the Thrift client types
-use crate::kvstore::*;
+use crate::generated::kvstore::*;
+
+type ThriftClient = TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>;
 
 pub struct KvStoreClient {
-    client: Arc<Mutex<TransactionalKVSyncClient<TBinaryInputProtocol<TBufferedReadTransport<TcpStream>>, TBinaryOutputProtocol<TBufferedWriteTransport<TcpStream>>>>>,
+    client: Arc<Mutex<ThriftClient>>,
     config: ClientConfig,
     server_address: String,
 }

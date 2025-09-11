@@ -5,7 +5,7 @@ use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{TIoChannel, TTcpChannel};
 
 // Import the generated Thrift types and client from the current crate
-use rocksdb_server::lib::kvstore::*;
+use rocksdb_server::generated::kvstore::*;
 
 mod common;
 
@@ -497,9 +497,9 @@ async fn test_ping_integration() {
         let mut client = create_thrift_client(port).expect("Failed to create client");
         
         // Test ping
-        let ping_req = PingRequest::new(Some("hello".to_string()), None::<i64>);
+        let ping_req = PingRequest::new(Some("hello".to_string().into_bytes()), None::<i64>);
         let ping_resp = client.ping(ping_req).expect("Failed to ping");
-        assert_eq!(ping_resp.message, "hello", "Ping message should echo");
+        assert_eq!(ping_resp.message, "hello".to_string().into_bytes(), "Ping message should echo");
         assert!(ping_resp.server_timestamp > 0, "Server timestamp should be positive");
         assert!(ping_resp.timestamp <= ping_resp.server_timestamp, "Timestamp should be reasonable");
         

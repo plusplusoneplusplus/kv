@@ -41,22 +41,35 @@ set(THRIFT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thrift")
 set(THRIFT_FILE "${THRIFT_DIR}/kvstore.thrift")
 
 
-# Generated files directory
-set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
+# Generated files directory - Use source tree for better organization
+set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Generate Rust thrift files
-set(RUST_GENERATED_DIR "${GENERATED_DIR}/rust")
+# Generate Rust thrift files directly into source generated folders
+set(RUST_SERVER_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/generated")
+set(RUST_CLIENT_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/src/generated")
+
+# Generate Rust thrift files for server
 add_custom_command(
-    OUTPUT "${RUST_GENERATED_DIR}/kvstore.rs"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_GENERATED_DIR}"
-    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_GENERATED_DIR}" "${THRIFT_FILE}"
+    OUTPUT "${RUST_SERVER_GENERATED_DIR}/kvstore.rs"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_SERVER_GENERATED_DIR}"
+    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_SERVER_GENERATED_DIR}" "${THRIFT_FILE}"
     DEPENDS ${THRIFT_FILE}
-    COMMENT "Generating Rust thrift files"
+    COMMENT "Generating Rust server thrift files"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Generate Rust thrift files for client
+add_custom_command(
+    OUTPUT "${RUST_CLIENT_GENERATED_DIR}/kvstore.rs"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RUST_CLIENT_GENERATED_DIR}"
+    COMMAND ${THRIFT_COMPILER} --gen rs -out "${RUST_CLIENT_GENERATED_DIR}" "${THRIFT_FILE}"
+    DEPENDS ${THRIFT_FILE}
+    COMMENT "Generating Rust client thrift files"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Generate Node.js thrift files
-set(NODEJS_GENERATED_DIR "${GENERATED_DIR}/nodejs")
+set(NODEJS_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/generated")
 add_custom_command(
     OUTPUT "${NODEJS_GENERATED_DIR}/kvstore_types.js"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NODEJS_GENERATED_DIR}"
@@ -71,7 +84,8 @@ add_custom_target(generate_proto ALL)
 
 add_custom_target(generate_thrift ALL
     DEPENDS 
-        "${RUST_GENERATED_DIR}/kvstore.rs"
+        "${RUST_SERVER_GENERATED_DIR}/kvstore.rs"
+        "${RUST_CLIENT_GENERATED_DIR}/kvstore.rs"
         "${NODEJS_GENERATED_DIR}/kvstore_types.js"
 )
 
@@ -103,9 +117,6 @@ endif()
 
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${RUST_GENERATED_DIR}/kvstore.rs"
-        "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin server
     COMMAND ${CMAKE_COMMAND} -E copy 
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
@@ -117,9 +128,6 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${RUST_GENERATED_DIR}/kvstore.rs"
-        "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin thrift-server
     COMMAND ${CMAKE_COMMAND} -E copy 
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
@@ -163,9 +171,6 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${RUST_GENERATED_DIR}/kvstore.rs"
-        "${KV_CLIENT_DIR}/src/kvstore.rs"
     COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --features ffi
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists

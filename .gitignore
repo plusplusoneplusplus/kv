@@ -16,9 +16,10 @@ Makefile
 # Benchmark results
 benchmark_results/
 
-# Generated protocol files (copied from build/generated during build)
-rust/src/kvstore.rs
-rust/client/src/kvstore.rs
+# Generated protocol files
+rust/src/generated/
+rust/client/src/generated/
+nodejs/generated/
 nodejs/thrift/kvstore_types.js
 nodejs/thrift/TransactionalKV.js
 
