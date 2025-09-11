@@ -139,11 +139,11 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin benchmark
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} -p kv-benchmark
     COMMAND ${CMAKE_COMMAND} -E copy 
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust/target/${CARGO_TARGET_DIR}/benchmark"
+        "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     DEPENDS generate_proto generate_thrift
     COMMENT "Building Rust benchmark tool"
 )
@@ -293,11 +293,8 @@ add_custom_target(rust_deps
     COMMENT "Installing Rust dependencies (main)"
 )
 
-add_custom_target(rust_benchmark_deps
-    COMMAND ${CARGO_EXECUTABLE} fetch
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-rust"
-    COMMENT "Installing Rust dependencies (benchmark)"
-)
+# Benchmark dependencies are now part of the main workspace
+# No separate dependency target needed
 
 add_custom_target(rust_client_deps
     COMMAND ${CARGO_EXECUTABLE} fetch
@@ -307,7 +304,7 @@ add_custom_target(rust_client_deps
 
 # All dependencies target
 add_custom_target(deps
-    DEPENDS rust_deps rust_benchmark_deps rust_client_deps
+    DEPENDS rust_deps rust_client_deps
     COMMENT "Installing all dependencies"
 )
 
@@ -317,13 +314,23 @@ add_custom_target(deps
 
 # Clean target
 add_custom_target(clean_all
+    # Clean build directories
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/bin"
-    COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/kvstore.rs"
-    COMMAND ${CARGO_EXECUTABLE} clean || true
-    COMMAND ${CARGO_EXECUTABLE} clean || true
-    COMMAND ${CARGO_EXECUTABLE} clean || true
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT "Cleaning all build artifacts"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/generated"
+    
+    # Clean generated protocol files
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/generated"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/rust/client/src/generated"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/generated"
+    
+    # Clean copied Node.js thrift files
+    COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/thrift/kvstore_types.js" || true
+    COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/thrift/TransactionalKV.js" || true
+    
+    # Clean Rust build artifacts
+    COMMAND ${CARGO_EXECUTABLE} clean --workspace || true
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
+    COMMENT "Cleaning all build artifacts and generated files"
 )
 
 #==============================================================================
@@ -343,7 +350,7 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_client_lib- Build Rust client library with FFI"
     COMMAND ${CMAKE_COMMAND} -E echo "  cpp_ffi_test   - Build C++ FFI tests (organized by category)"
     COMMAND ${CMAKE_COMMAND} -E echo "  test_ffi       - Run C++ FFI tests (requires server on localhost:9090)"
-    COMMAND ${CMAKE_COMMAND} -E echo "  clean_all      - Clean all build artifacts"
+    COMMAND ${CMAKE_COMMAND} -E echo "  clean_all      - Clean all build artifacts and generated files"
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Usage:"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -S ."
