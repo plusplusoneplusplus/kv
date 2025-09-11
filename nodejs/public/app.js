@@ -7,6 +7,47 @@ let dataStats = {};
 let currentPage = 1;
 let itemsPerPage = 50;
 
+// Process base64 encoded data from server into displayable format
+function processRawData(rawKeyValues) {
+    return rawKeyValues.map(kv => {
+        // Handle key
+        let keyString;
+        if (kv.keyIsBuffer && typeof kv.key === 'string') {
+            // Decode base64 to bytes, then to string
+            const keyBytes = Uint8Array.from(atob(kv.key), c => c.charCodeAt(0));
+            keyString = new TextDecoder('utf-8').decode(keyBytes);
+        } else {
+            keyString = kv.key || '';
+        }
+        
+        // Handle value
+        let valueString, valueBytes;
+        if (kv.valueIsBuffer && typeof kv.value === 'string') {
+            // Decode base64 to bytes
+            valueBytes = Uint8Array.from(atob(kv.value), c => c.charCodeAt(0));
+            valueString = new TextDecoder('utf-8').decode(valueBytes);
+        } else {
+            valueString = kv.value || '';
+            valueBytes = new TextEncoder().encode(valueString);
+        }
+        
+        // Calculate metadata
+        const valueLength = valueBytes.length;
+        const hexValue = Array.from(valueBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const isAscii = /^[\x20-\x7E]*$/.test(valueString);
+        const hasBinary = Array.from(valueBytes).some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13);
+        
+        return {
+            key: keyString,
+            value: valueString,
+            valueLength: valueLength,
+            hexValue: hexValue,
+            isAscii: isAscii,
+            hasBinary: hasBinary
+        };
+    });
+}
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
     testConnection();
@@ -70,7 +111,7 @@ async function loadKeys() {
         const result = await response.json();
         
         if (result.success) {
-            currentData = result.keyValues;
+            currentData = processRawData(result.keyValues);
             analyzeData(currentData);
             applyFilter();
             document.getElementById('countStats').textContent = `${result.count} items`;
@@ -100,14 +141,12 @@ async function searchKey() {
         const result = await response.json();
         
         if (result.found) {
-            currentData = [{
+            currentData = processRawData([{
                 key: result.key,
                 value: result.value,
-                valueLength: result.valueLength,
-                hexValue: result.hexValue,
-                isAscii: result.isAscii,
-                hasBinary: result.hasBinary
-            }];
+                keyIsBuffer: false, // Individual key search uses string key
+                valueIsBuffer: result.valueIsBuffer || false
+            }]);
             analyzeData(currentData);
             applyFilter();
             document.getElementById('countStats').textContent = '1 item (search result)';

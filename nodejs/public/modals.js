@@ -17,6 +17,13 @@ function editKey(key, value) {
     document.getElementById('addModal').style.display = 'block';
 }
 
+// Base64 wrapper functions for binary data
+function editKeyB64(keyB64, valueB64) {
+    const key = decodeURIComponent(escape(atob(keyB64)));
+    const value = decodeURIComponent(escape(atob(valueB64)));
+    editKey(key, value);
+}
+
 function closeModal() {
     document.getElementById('addModal').style.display = 'none';
 }
@@ -46,6 +53,13 @@ function viewValueAdvanced(key, value, hexValue, hasBinary) {
     }
     
     document.getElementById('viewModal').style.display = 'block';
+}
+
+function viewValueAdvancedB64(keyB64, valueB64, hexB64, hasBinary) {
+    const key = decodeURIComponent(escape(atob(keyB64)));
+    const value = decodeURIComponent(escape(atob(valueB64)));
+    const hexValue = atob(hexB64);
+    viewValueAdvanced(key, value, hexValue, hasBinary);
 }
 
 function switchViewMode(mode) {

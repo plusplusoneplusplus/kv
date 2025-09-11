@@ -118,13 +118,18 @@ function displayFlatData(data, tableBody) {
             row.classList.add('key-group');
         }
         
+        // Encode data safely for onclick handlers
+        const keyB64 = btoa(unescape(encodeURIComponent(item.key)));
+        const valueB64 = btoa(unescape(encodeURIComponent(item.value)));
+        const hexB64 = btoa(item.hexValue);
+        
         row.innerHTML = `
             <td class="key-cell">${formatKeyDisplay(item.key)}${duplicateIndicator}</td>
             <td class="value-cell">${displayValue}${binaryIndicator}</td>
             <td class="length-cell">${item.valueLength}</td>
             <td class="actions-cell">
-                <button class="btn-small" onclick="viewValueAdvanced('${escapeJs(item.key)}', '${escapeJs(item.value)}', '${escapeJs(item.hexValue)}', ${item.hasBinary})">View</button>
-                <button class="btn-small" onclick="editKey('${escapeJs(item.key)}', '${escapeJs(item.value)}')">Edit</button>
+                <button class="btn-small" onclick="viewValueAdvancedB64('${keyB64}', '${valueB64}', '${hexB64}', ${item.hasBinary})">View</button>
+                <button class="btn-small" onclick="editKeyB64('${keyB64}', '${valueB64}')">Edit</button>
                 <button class="btn-small danger" onclick="deleteKey('${escapeJs(item.key)}')">Delete</button>
             </td>
         `;
@@ -158,13 +163,18 @@ function displayGroupedData(data, tableBody) {
                 row.classList.add('key-group');
             }
             
+            // Encode data safely for onclick handlers
+            const keyB64 = btoa(unescape(encodeURIComponent(item.key)));
+            const valueB64 = btoa(unescape(encodeURIComponent(item.value)));
+            const hexB64 = btoa(item.hexValue);
+            
             row.innerHTML = `
                 <td class="key-cell">${isFirstInGroup ? formatKeyDisplay(item.key) + duplicateIndicator : '↳ ' + formatKeyDisplay(item.key)}</td>
                 <td class="value-cell">${displayValue}${binaryIndicator}</td>
                 <td class="length-cell">${item.valueLength}</td>
                 <td class="actions-cell">
-                    <button class="btn-small" onclick="viewValueAdvanced('${escapeJs(item.key)}', '${escapeJs(item.value)}', '${escapeJs(item.hexValue)}', ${item.hasBinary})">View</button>
-                    <button class="btn-small" onclick="editKey('${escapeJs(item.key)}', '${escapeJs(item.value)}')">Edit</button>
+                    <button class="btn-small" onclick="viewValueAdvancedB64('${keyB64}', '${valueB64}', '${hexB64}', ${item.hasBinary})">View</button>
+                    <button class="btn-small" onclick="editKeyB64('${keyB64}', '${valueB64}')">Edit</button>
                     <button class="btn-small danger" onclick="deleteKey('${escapeJs(item.key)}')">Delete</button>
                 </td>
             `;

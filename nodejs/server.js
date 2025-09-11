@@ -60,18 +60,11 @@ app.get('/api/keys', async (req, res) => {
             }
             
             const keyValues = result.key_values.map(kv => {
-                // Convert Buffer objects to strings if needed
-                const keyString = Buffer.isBuffer(kv.key) ? kv.key.toString('utf8') : kv.key;
-                const valueString = Buffer.isBuffer(kv.value) ? kv.value.toString('utf8') : kv.value;
-                const valueBuffer = Buffer.isBuffer(kv.value) ? kv.value : Buffer.from(kv.value, 'utf8');
-                
                 return {
-                    key: keyString,
-                    value: valueString,
-                    valueLength: valueBuffer.length,
-                    hexValue: valueBuffer.toString('hex'),
-                    isAscii: /^[\x20-\x7E]*$/.test(valueString),
-                    hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
+                    key: Buffer.isBuffer(kv.key) ? kv.key.toString('base64') : kv.key,
+                    value: Buffer.isBuffer(kv.value) ? kv.value.toString('base64') : kv.value,
+                    keyIsBuffer: Buffer.isBuffer(kv.key),
+                    valueIsBuffer: Buffer.isBuffer(kv.value)
                 };
             });
             
@@ -108,25 +101,18 @@ app.get('/api/key/:key', async (req, res) => {
             }
             
             if (result.found) {
-                // Convert Buffer objects to strings if needed
-                const valueString = Buffer.isBuffer(result.value) ? result.value.toString('utf8') : result.value;
-                const valueBuffer = Buffer.isBuffer(result.value) ? result.value : Buffer.from(result.value, 'utf8');
-                
                 res.json({
                     key: key,
-                    value: valueString,
-                    found: result.found,
-                    valueLength: valueBuffer.length,
-                    hexValue: valueBuffer.toString('hex'),
-                    isAscii: /^[\x20-\x7E]*$/.test(valueString),
-                    hasBinary: valueBuffer.some(byte => byte < 32 && byte !== 9 && byte !== 10 && byte !== 13)
+                    value: Buffer.isBuffer(result.value) ? result.value.toString('base64') : result.value,
+                    valueIsBuffer: Buffer.isBuffer(result.value),
+                    found: result.found
                 });
             } else {
                 res.json({
                     key: key,
                     value: '',
-                    found: result.found,
-                    valueLength: 0
+                    valueIsBuffer: false,
+                    found: result.found
                 });
             }
         });
