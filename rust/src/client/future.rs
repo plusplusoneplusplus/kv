@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::sync::{Arc, Mutex as StdMutex};
 use super::error::KvResult;
+use super::CommitResult;
 
 /// A future that can be used from C code
 pub struct KvFuture<T> {
@@ -76,6 +77,15 @@ impl<T: Send + 'static> KvFuturePtr<T> {
             guard.is_some()
         } else {
             false
+        }
+    }
+}
+
+impl KvFuturePtr<CommitResult> {
+    pub fn take_commit_result(&self) -> KvResult<CommitResult> {
+        match self.take_result() {
+            Some(result) => result,
+            None => Err(super::error::KvError::Unknown("Future not ready".to_string())),
         }
     }
 }

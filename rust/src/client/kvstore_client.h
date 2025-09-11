@@ -56,6 +56,21 @@ typedef struct {
     size_t count;   // Number of pairs in the array
 } KvPairArray;
 
+// Array of binary data for generated keys/values
+typedef struct {
+    KvBinaryData* data;  // Array of binary data (must be freed with kv_binary_data_array_free)
+    size_t count;        // Number of items in the array
+} KvBinaryDataArray;
+
+// Commit result containing generated keys and values
+typedef struct {
+    int success;                      // 1 for success, 0 for failure
+    int error_code;                   // Error code from KvErrorCode enum
+    char* error_message;              // Error message (must be freed)
+    KvBinaryDataArray generated_keys; // Generated keys from versionstamped operations
+    KvBinaryDataArray generated_values; // Generated values from versionstamped operations
+} KvCommitResult;
+
 // Library initialization and cleanup
 int kv_init(void);
 void kv_shutdown(void);
@@ -85,6 +100,7 @@ KvReadTransactionHandle kv_future_get_read_transaction(KvFutureHandle future);
 KvResult kv_future_get_void_result(KvFutureHandle future);
 KvResult kv_future_get_value_result(KvFutureHandle future, KvBinaryData* value);
 KvResult kv_future_get_kv_array_result(KvFutureHandle future, KvPairArray* pairs);
+KvCommitResult kv_future_get_commit_result(KvFutureHandle future);
 
 // Transaction operations (FoundationDB-style binary interface)
 KvFutureHandle kv_transaction_get(KvTransactionHandle transaction,
@@ -102,6 +118,7 @@ KvFutureHandle kv_transaction_get_range(KvTransactionHandle transaction,
                                         const uint8_t* end_key_data, int end_key_length,
                                         int limit, const char* column_family);
 KvFutureHandle kv_transaction_commit(KvTransactionHandle transaction);
+KvFutureHandle kv_transaction_commit_with_results(KvTransactionHandle transaction);
 KvFutureHandle kv_transaction_abort(KvTransactionHandle transaction);
 
 // Read transaction operations (FoundationDB-style binary interface)
@@ -124,19 +141,21 @@ KvFutureHandle kv_transaction_add_read_conflict_range(KvTransactionHandle transa
                                                       const char* column_family);
 
 // Versionstamped operations (FoundationDB-style binary interface)
-KvFutureHandle kv_transaction_set_versionstamped_key(KvTransactionHandle transaction,
-                                                     const uint8_t* key_prefix_data, int key_prefix_length,
-                                                     const uint8_t* value_data, int value_length,
-                                                     const char* column_family);
-KvFutureHandle kv_transaction_set_versionstamped_value(KvTransactionHandle transaction,
-                                                       const uint8_t* key_data, int key_length,
-                                                       const uint8_t* value_prefix_data, int value_prefix_length,
-                                                       const char* column_family);
+int kv_transaction_set_versionstamped_key(KvTransactionHandle transaction,
+                                           const uint8_t* key_prefix_data, int key_prefix_length,
+                                           const uint8_t* value_data, int value_length,
+                                           const char* column_family);
+int kv_transaction_set_versionstamped_value(KvTransactionHandle transaction,
+                                             const uint8_t* key_data, int key_length,
+                                             const uint8_t* value_prefix_data, int value_prefix_length,
+                                             const char* column_family);
 
 // Utility functions
 void kv_binary_free(KvBinaryData* data);        // Free binary data allocated by the library
 void kv_result_free(KvResult* result);          // Free result structure
 void kv_pair_array_free(KvPairArray* pairs);    // Free array of key-value pairs
+void kv_binary_data_array_free(KvBinaryDataArray* array); // Free array of binary data
+void kv_commit_result_free(KvCommitResult* result);       // Free commit result structure
 
 // Convenience functions for string operations
 KvBinaryData kv_binary_from_string(const char* str);  // Create binary data from null-terminated string

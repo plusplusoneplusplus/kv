@@ -51,6 +51,9 @@ void test_cpp_network_errors();
 void test_cpp_resource_cleanup();
 void test_cpp_timeout_scenarios();
 
+// Versionstamped Operations Tests
+void run_versionstamped_tests();
+
 //==============================================================================
 // Main Test Runner
 //==============================================================================
@@ -138,6 +141,17 @@ int main() {
     int passed = 0;
     int failed = 0;
     int test_counter = 1;
+    
+    // Run versionstamped tests first (as they are newer functionality)
+    std::cout << "\n=== Versionstamped Operations Tests ===" << std::endl;
+    try {
+        run_versionstamped_tests();
+        passed++;
+        std::cout << "✅ All versionstamped tests passed!" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "❌ Versionstamped tests failed: " << e.what() << std::endl;
+        failed++;
+    }
     
     std::cout << "\n=== C-Style Tests ===" << std::endl;
     

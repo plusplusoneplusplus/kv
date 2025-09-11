@@ -1,12 +1,14 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
+use libc::{size_t};
 use std::ptr;
 use std::sync::Arc;
 use std::slice;
+use std::mem::size_of;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use super::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, ClientConfig};
+use super::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, ClientConfig, CommitResult};
 use super::error::KvErrorCode;
 use super::future::KvFuturePtr;
 
@@ -1449,6 +1451,162 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
     match result {
         Ok(_) => 1, // Success
         Err(_) => 0, // Error
+    }
+}
+
+/// Get the result of a commit future that returns generated keys and values
+#[no_mangle]
+pub extern "C" fn kv_future_get_commit_result(future: KvFutureHandle) -> KvCommitResult {
+    if future.is_null() {
+        return KvCommitResult {
+            success: 0,
+            error_code: KvErrorCode::Unknown as c_int,
+            error_message: std::ptr::null_mut(),
+            generated_keys: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+            generated_values: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+        };
+    }
+    
+    let future_id = future as usize;
+    let mut futures = FUTURES.lock();
+    
+    if let Some(boxed_future) = futures.remove(&future_id) {
+        if let Ok(future_ptr) = boxed_future.downcast::<KvFuturePtr<CommitResult>>() {
+            match future_ptr.take_commit_result() {
+                Ok(commit_result) => {
+                    let generated_keys = create_binary_data_array(commit_result.generated_keys);
+                    let generated_values = create_binary_data_array(commit_result.generated_values);
+                    
+                    return KvCommitResult {
+                        success: 1,
+                        error_code: 0,
+                        error_message: std::ptr::null_mut(),
+                        generated_keys,
+                        generated_values,
+                    };
+                },
+                Err(e) => {
+                    let error_code = KvErrorCode::from(&e) as c_int;
+                    let error_message = CString::new(format!("{:?}", e))
+                        .unwrap_or_else(|_| CString::new("Invalid error message").unwrap())
+                        .into_raw();
+                        
+                    return KvCommitResult {
+                        success: 0,
+                        error_code,
+                        error_message,
+                        generated_keys: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+                        generated_values: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+                    };
+                },
+            }
+        }
+    }
+    
+    // Fallback error case
+    let error_message = CString::new("Future not ready or invalid type")
+        .unwrap_or_else(|_| CString::new("Invalid error message").unwrap())
+        .into_raw();
+    KvCommitResult {
+        success: 0,
+        error_code: KvErrorCode::Unknown as c_int,
+        error_message,
+        generated_keys: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+        generated_values: KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 },
+    }
+}
+
+/// Helper function to create KvBinaryDataArray from Vec<Vec<u8>>
+fn create_binary_data_array(data: Vec<Vec<u8>>) -> KvBinaryDataArray {
+    if data.is_empty() {
+        return KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 };
+    }
+    
+    let count = data.len();
+    let array = unsafe {
+        let ptr = libc::malloc(count * size_of::<KvBinaryData>()) as *mut KvBinaryData;
+        if ptr.is_null() {
+            return KvBinaryDataArray { data: std::ptr::null_mut(), count: 0 };
+        }
+        
+        for (i, item) in data.into_iter().enumerate() {
+            let binary_data = create_binary_data(item);
+            std::ptr::write(ptr.add(i), binary_data);
+        }
+        
+        ptr
+    };
+    
+    KvBinaryDataArray { data: array, count }
+}
+
+/// Helper function to create KvBinaryData from Vec<u8>
+fn create_binary_data(data: Vec<u8>) -> KvBinaryData {
+    if data.is_empty() {
+        return KvBinaryData { data: std::ptr::null_mut(), length: 0 };
+    }
+    
+    let length = data.len() as c_int;
+    let ptr = unsafe {
+        let ptr = libc::malloc(length as size_t) as *mut u8;
+        if !ptr.is_null() {
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+        }
+        ptr
+    };
+    
+    KvBinaryData { data: ptr, length }
+}
+
+/// Free binary data array
+#[no_mangle]
+pub extern "C" fn kv_binary_data_array_free(array: *mut KvBinaryDataArray) {
+    if array.is_null() {
+        return;
+    }
+    
+    unsafe {
+        let array_ref = &mut *array;
+        if !array_ref.data.is_null() {
+            for i in 0..array_ref.count {
+                let binary_data = &mut *array_ref.data.add(i);
+                if !binary_data.data.is_null() {
+                    libc::free(binary_data.data as *mut libc::c_void);
+                    binary_data.data = std::ptr::null_mut();
+                }
+                binary_data.length = 0;
+            }
+            libc::free(array_ref.data as *mut libc::c_void);
+            array_ref.data = std::ptr::null_mut();
+        }
+        array_ref.count = 0;
+    }
+}
+
+/// Free commit result structure
+#[no_mangle]
+pub extern "C" fn kv_commit_result_free(result: *mut KvCommitResult) {
+    if result.is_null() {
+        return;
+    }
+    
+    unsafe {
+        let result_ref = &mut *result;
+        
+        // Free error message if present
+        if !result_ref.error_message.is_null() {
+            let _ = CString::from_raw(result_ref.error_message);
+            result_ref.error_message = std::ptr::null_mut();
+        }
+        
+        // Free generated keys array
+        kv_binary_data_array_free(&mut result_ref.generated_keys as *mut KvBinaryDataArray);
+        
+        // Free generated values array
+        kv_binary_data_array_free(&mut result_ref.generated_values as *mut KvBinaryDataArray);
+        
+        result_ref.success = 0;
+        result_ref.error_code = 0;
     }
 }
 

@@ -9,7 +9,7 @@
 #include <cstring>
 #include <functional>
 #include <unistd.h>
-#include "../kvstore_client.h"
+#include "../../src/client/kvstore_client.h"
 
 // Test framework macros and classes
 #define TEST_ASSERT(condition, message) \

@@ -142,7 +142,7 @@ add_custom_target(rust_benchmark ALL
 
 # Define the Rust client library paths (now unified in main rust directory)
 set(KV_CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
-set(KV_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/tests")
+set(KV_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust/src/client")
 set(KV_LIB_DIR "${KV_CLIENT_DIR}/target/${CARGO_TARGET_DIR}")
 
 # Set library name based on platform (now using unified rocksdb_server library)
@@ -215,6 +215,7 @@ add_executable(cpp_ffi_test
     "${CPP_TESTS_DIR}/test_transactions.cpp"
     "${CPP_TESTS_DIR}/test_concurrency.cpp"
     "${CPP_TESTS_DIR}/test_error_handling.cpp"
+    "${CPP_TESTS_DIR}/test_versionstamped_operations.cpp"
 )
 
 # Link against the unified Rust library
