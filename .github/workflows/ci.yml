@@ -24,10 +24,15 @@ jobs:
           rust/target
           rust/client/target
 
-    - name: Install Protocol Buffers
+    - name: Install Protocol Buffers and Thrift
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
+        sudo apt-get install -y protobuf-compiler thrift-compiler
+
+    - name: Generate protocol files
+      run: |
+        cmake -B build -S .
+        cmake --build build --target generate_thrift
 
     - name: Build Rust server
       run: |

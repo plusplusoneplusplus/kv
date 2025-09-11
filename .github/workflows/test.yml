@@ -25,7 +25,12 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler librocksdb-dev
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+
+    - name: Generate protocol files
+      run: |
+        cmake -B build -S .
+        cmake --build build --target generate_thrift
 
     - name: Run Rust tests
       run: |
@@ -60,7 +65,11 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler librocksdb-dev
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+    - name: Generate protocol files
+      run: |
+        cmake -B build -S .
+        cmake --build build --target generate_thrift
     - name: Build Thrift server (debug)
       run: |
         cd rust
@@ -69,5 +78,5 @@ jobs:
       env:
         THRIFT_SERVER_BIN: ./rust/target/debug/thrift-server
       run: |
-        cd benchmark-rust
-        cargo test --verbose -- --nocapture
+        cd rust
+        cargo test -p kv-benchmark --verbose -- --nocapture
