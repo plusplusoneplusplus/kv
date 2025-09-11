@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::sync::{Arc, Mutex as StdMutex};
-use crate::error::KvResult;
+use super::error::KvResult;
 
 /// A future that can be used from C code
 pub struct KvFuture<T> {

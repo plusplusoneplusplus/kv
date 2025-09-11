@@ -1,4 +1,4 @@
-use kvstore_client::KvStoreClient;
+use rocksdb_server::client::KvStoreClient;
 
 #[tokio::test]
 async fn test_read_transaction_binary_keys_snapshot_get() -> Result<(), Box<dyn std::error::Error>> {

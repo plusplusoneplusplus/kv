@@ -6,9 +6,9 @@ use std::slice;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use crate::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, ClientConfig};
-use crate::error::KvErrorCode;
-use crate::future::KvFuturePtr;
+use super::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, ClientConfig};
+use super::error::KvErrorCode;
+use super::future::KvFuturePtr;
 
 // Global runtime for async operations
 #[allow(dead_code)]

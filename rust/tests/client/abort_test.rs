@@ -1,4 +1,4 @@
-use kvstore_client::KvStoreClient;
+use rocksdb_server::client::KvStoreClient;
 
 #[tokio::test]
 async fn test_transaction_abort() -> Result<(), Box<dyn std::error::Error>> {

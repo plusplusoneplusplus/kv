@@ -1,7 +1,6 @@
 [workspace]
 members = [
     ".",
-    "client",
     "crates/benchmark"
 ]
 resolver = "2"
@@ -43,6 +42,7 @@ edition = "2021"
 [lib]
 name = "rocksdb_server"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib", "staticlib"]
 
 [[bin]]
 name = "server"
@@ -70,9 +70,17 @@ clap = { workspace = true }
 uuid = { workspace = true }
 tempfile = { workspace = true }
 rand = { workspace = true }
+anyhow = { workspace = true }
+libc = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }
+
+[features]
+default = ["ffi"]
+ffi = []
 
 [profile.test]
 # Run tests sequentially (no parallelism)

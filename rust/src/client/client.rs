@@ -4,10 +4,10 @@ use std::time::Instant;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use parking_lot::Mutex;
-use crate::config::{ClientConfig, log_connection_event, log_transaction_event, log_operation_timing, log_error, log_network_operation, init_debug_logging};
-use crate::error::{KvResult, KvError};
-use crate::transaction::{Transaction, ReadTransaction};
-use crate::future::KvFuture;
+use super::config::{ClientConfig, log_connection_event, log_transaction_event, log_operation_timing, log_error, log_network_operation, init_debug_logging};
+use super::error::{KvResult, KvError};
+use super::transaction::{Transaction, ReadTransaction};
+use super::future::KvFuture;
 
 // Use the Thrift client types
 use crate::generated::kvstore::*;

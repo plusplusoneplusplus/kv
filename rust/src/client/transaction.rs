@@ -4,9 +4,9 @@ use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use std::net::TcpStream;
 use parking_lot::Mutex;
-use crate::config::{log_transaction_event, log_operation_timing, log_error, log_network_operation, is_debug_enabled};
-use crate::error::{KvResult, KvError};
-use crate::future::KvFuture;
+use super::config::{log_transaction_event, log_operation_timing, log_error, log_network_operation, is_debug_enabled};
+use super::error::{KvResult, KvError};
+use super::future::KvFuture;
 use crate::generated::kvstore::*;
 use uuid::Uuid;
 

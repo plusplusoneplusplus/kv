@@ -1,4 +1,4 @@
-use kvstore_client::{KvStoreClient, KvError};
+use rocksdb_server::client::{KvStoreClient, KvError};
 use std::time::Duration;
 use tokio::time::timeout;
 

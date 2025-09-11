@@ -4,9 +4,8 @@ pub mod error;
 pub mod transaction;
 pub mod future;
 
-pub mod generated {
-    pub mod kvstore;
-}
+// Re-export server's generated types
+pub use crate::generated;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;
