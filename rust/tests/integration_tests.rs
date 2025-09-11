@@ -322,12 +322,27 @@ async fn test_versionstamped_operations_integration() {
         assert!(vs_key_resp2.success, "Second versionstamped key should succeed");
         assert_ne!(vs_key_resp.generated_key, vs_key_resp2.generated_key, "Different transactions should generate different keys");
         
-        // Test versionstamped value - should return error indicating not supported
+        // Test versionstamped value - should now work with the implemented functionality
         let vs_value_req = SetVersionstampedValueRequest::new("test_key".as_bytes().to_vec(), "value_prefix_".as_bytes().to_vec(), None::<String>);
         let vs_value_resp = client.set_versionstamped_value(vs_value_req).expect("Failed to call set versionstamped value");
-        assert!(!vs_value_resp.success, "Versionstamped value should not be supported");
-        assert!(vs_value_resp.error.is_some(), "Should have error message explaining not supported");
-        assert!(vs_value_resp.error.as_ref().unwrap().contains("not supported"), "Error should mention not supported");
+        assert!(vs_value_resp.success, "Versionstamped value should now be supported: {:?}", vs_value_resp.error);
+        assert!(vs_value_resp.error.is_none(), "Should have no error message");
+        assert!(!vs_value_resp.generated_value.is_empty(), "Should have generated value");
+        assert!(vs_value_resp.generated_value.starts_with("value_prefix_".as_bytes()), "Generated value should start with prefix");
+        assert_eq!(vs_value_resp.generated_value.len(), "value_prefix_".len() + 10, "Generated value should be prefix + 10 bytes");
+        
+        // Verify the versionstamped value can be read back
+        let generated_value = vs_value_resp.generated_value.clone();
+        let get_req = GetRequest::new("test_key".as_bytes().to_vec(), None::<String>);
+        let get_resp = client.get(get_req).expect("Failed to get key with versionstamped value");
+        assert!(get_resp.found, "Key with versionstamped value should be found");
+        assert_eq!(get_resp.value, generated_value, "Retrieved value should match generated versionstamped value");
+        
+        // Test another versionstamped value to ensure uniqueness
+        let vs_value_req2 = SetVersionstampedValueRequest::new("test_key2".as_bytes().to_vec(), "value_prefix_".as_bytes().to_vec(), None::<String>);
+        let vs_value_resp2 = client.set_versionstamped_value(vs_value_req2).expect("Failed to call second set versionstamped value");
+        assert!(vs_value_resp2.success, "Second versionstamped value should succeed");
+        assert_ne!(vs_value_resp.generated_value, vs_value_resp2.generated_value, "Different operations should generate different values");
         
         // Verify regular operations still work with FoundationDB-style API
         let read_version_req = GetReadVersionRequest::new();

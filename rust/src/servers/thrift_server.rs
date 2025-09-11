@@ -395,12 +395,56 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         }
     }
 
-    fn handle_set_versionstamped_value(&self, _req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
-        Ok(SetVersionstampedValueResponse::new(
-            Vec::new(),
-            false,
-            Some("Versionstamped operations not supported in simplified model".to_string())
-        ))
+    fn handle_set_versionstamped_value(&self, req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
+        if self.verbose {
+            debug!("Set versionstamped value: key={:?}, value_prefix_len={}, column_family={:?}", 
+                   req.key, req.value_prefix.len(), req.column_family);
+        }
+        
+        // Get current read version for the transaction
+        let read_version = self.database.get_read_version();
+        
+        // Create a single versionstamped value operation
+        let versionstamp_operation = rocksdb_server::lib::db::AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: req.key,
+            value: Some(req.value_prefix),
+            column_family: req.column_family,
+        };
+        
+        // Create atomic commit request with this single operation
+        let atomic_request = rocksdb_server::lib::db::AtomicCommitRequest {
+            read_version,
+            operations: vec![versionstamp_operation],
+            read_conflict_keys: vec![], // No read conflicts for single versionstamp operation
+            timeout_seconds: 60, // Default timeout
+        };
+        
+        let result = self.database.atomic_commit(atomic_request);
+        
+        if self.verbose {
+            debug!("Versionstamped value result: success={}, generated_values_count={}, committed_version={:?}", 
+                   result.success, result.generated_values.len(), result.committed_version);
+            if !result.error.is_empty() {
+                warn!("Versionstamped value error: {}", result.error);
+            }
+        }
+        
+        if result.success && !result.generated_values.is_empty() {
+            // Return the generated value on success
+            Ok(SetVersionstampedValueResponse::new(
+                result.generated_values[0].clone(),
+                true,
+                None
+            ))
+        } else {
+            // Return error response
+            Ok(SetVersionstampedValueResponse::new(
+                Vec::new(),
+                false,
+                if result.error.is_empty() { Some("Failed to generate versionstamped value".to_string()) } else { Some(result.error) }
+            ))
+        }
     }
 
     // Fault injection for testing
