@@ -307,7 +307,7 @@ async fn test_versionstamped_operations_integration() {
         assert!(vs_key_resp.error.is_none(), "Should have no error message");
         assert!(!vs_key_resp.generated_key.is_empty(), "Should have generated key");
         assert!(vs_key_resp.generated_key.starts_with("user_score_".as_bytes()), "Generated key should start with prefix");
-        assert_eq!(vs_key_resp.generated_key.len(), "user_score_".len() + 8, "Generated key should be prefix + 8 bytes");
+        assert_eq!(vs_key_resp.generated_key.len(), "user_score_".len() + 10, "Generated key should be prefix + 10 bytes");
         
         // Verify the versionstamped key can be read back
         let generated_key = vs_key_resp.generated_key.clone();

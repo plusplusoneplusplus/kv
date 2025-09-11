@@ -253,6 +253,7 @@ impl TransactionalKvDatabase {
         // Pre-allocate the commit version for versionstamped operations
         let commit_version = self.current_version.load(std::sync::atomic::Ordering::SeqCst) + 1;
         let mut generated_keys = Vec::new();
+        let mut batch_order: u16 = 0; // 2-byte counter for operations within transaction
         
         // Apply all operations atomically
         for operation in &request.operations {
@@ -276,8 +277,11 @@ impl TransactionalKvDatabase {
                         // Generate a unique key by appending the commit version to the key prefix
                         let mut versionstamped_key = operation.key.clone();
                         
-                        // Append the 8-byte commit version in big-endian format (similar to FoundationDB)
+                        // Append 8-byte commit version + 2-byte batch order (10 bytes total, FoundationDB-compatible)
                         versionstamped_key.extend_from_slice(&commit_version.to_be_bytes());
+                        versionstamped_key.extend_from_slice(&batch_order.to_be_bytes());
+                        
+                        batch_order += 1; // Increment for next versionstamped operation
                         
                         // Store the generated key for returning to client
                         generated_keys.push(versionstamped_key.clone());
@@ -744,7 +748,7 @@ mod tests {
         
         let generated_key = &commit_result.generated_keys[0];
         assert!(generated_key.starts_with(b"user_score_"), "Generated key should start with prefix");
-        assert_eq!(generated_key.len(), b"user_score_".len() + 8, "Generated key should be prefix + 8 bytes for version");
+        assert_eq!(generated_key.len(), b"user_score_".len() + 10, "Generated key should be prefix + 10 bytes for version");
         
         // Test 2: Verify the versionstamped key was actually stored
         let new_read_version = db.get_read_version();
@@ -787,14 +791,23 @@ mod tests {
         assert!(multi_commit_result.success, "Multi-operation commit should succeed: {}", multi_commit_result.error);
         assert_eq!(multi_commit_result.generated_keys.len(), 2, "Should have two generated keys");
         
-        // Verify both versionstamped keys have the same commit version (same transaction)
+        // Verify both versionstamped keys have the same commit version but different batch order
         let key1 = &multi_commit_result.generated_keys[0];
         let key2 = &multi_commit_result.generated_keys[1];
         
-        // Extract version bytes (last 8 bytes) from each key
-        let version1 = &key1[key1.len() - 8..];
-        let version2 = &key2[key2.len() - 8..];
-        assert_eq!(version1, version2, "Keys from same transaction should have same version");
+        // Extract version bytes (last 10 bytes) from each key
+        let version1 = &key1[key1.len() - 10..];
+        let version2 = &key2[key2.len() - 10..];
+        
+        // Extract commit version (first 8 bytes of version stamp)
+        let commit_version1 = &version1[..8];
+        let commit_version2 = &version2[..8];
+        assert_eq!(commit_version1, commit_version2, "Keys from same transaction should have same commit version");
+        
+        // Extract batch order (last 2 bytes of version stamp) 
+        let batch_order1 = &version1[8..];
+        let batch_order2 = &version2[8..];
+        assert_ne!(batch_order1, batch_order2, "Keys from same transaction should have different batch order for uniqueness");
         
         // Verify regular key was also stored
         let final_read_version = db.get_read_version();
