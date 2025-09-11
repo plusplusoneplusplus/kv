@@ -342,13 +342,57 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
         ))
     }
 
-    // Versionstamped operation stubs - not supported in simplified model
-    fn handle_set_versionstamped_key(&self, _req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
-        Ok(SetVersionstampedKeyResponse::new(
-            Vec::new(),
-            false,
-            Some("Versionstamped operations not supported in simplified model".to_string())
-        ))
+    // Versionstamped operation implementation
+    fn handle_set_versionstamped_key(&self, req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
+        if self.verbose {
+            debug!("Set versionstamped key: key_prefix={:?}, value_len={}, column_family={:?}", 
+                   req.key_prefix, req.value.len(), req.column_family);
+        }
+        
+        // Get current read version for the transaction
+        let read_version = self.database.get_read_version();
+        
+        // Create a single versionstamped operation
+        let versionstamp_operation = rocksdb_server::lib::db::AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_KEY".to_string(),
+            key: req.key_prefix,
+            value: Some(req.value),
+            column_family: req.column_family,
+        };
+        
+        // Create atomic commit request with this single operation
+        let atomic_request = rocksdb_server::lib::db::AtomicCommitRequest {
+            read_version,
+            operations: vec![versionstamp_operation],
+            read_conflict_keys: vec![], // No read conflicts for single versionstamp operation
+            timeout_seconds: 60, // Default timeout
+        };
+        
+        let result = self.database.atomic_commit(atomic_request);
+        
+        if self.verbose {
+            debug!("Versionstamped key result: success={}, generated_keys_count={}, committed_version={:?}", 
+                   result.success, result.generated_keys.len(), result.committed_version);
+            if !result.error.is_empty() {
+                warn!("Versionstamped key error: {}", result.error);
+            }
+        }
+        
+        if result.success && !result.generated_keys.is_empty() {
+            // Return the generated key on success
+            Ok(SetVersionstampedKeyResponse::new(
+                result.generated_keys[0].clone(),
+                true,
+                None
+            ))
+        } else {
+            // Return error response
+            Ok(SetVersionstampedKeyResponse::new(
+                Vec::new(),
+                false,
+                if result.error.is_empty() { Some("Failed to generate versionstamped key".to_string()) } else { Some(result.error) }
+            ))
+        }
     }
 
     fn handle_set_versionstamped_value(&self, _req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
