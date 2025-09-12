@@ -327,7 +327,7 @@ add_custom_target(clean_all
     COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_CURRENT_SOURCE_DIR}/nodejs/thrift/TransactionalKV.js" || true
     
     # Clean Rust build artifacts
-    COMMAND ${CARGO_EXECUTABLE} clean --workspace || true
+    COMMAND ${CARGO_EXECUTABLE} clean || true
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     COMMENT "Cleaning all build artifacts and generated files"
 )

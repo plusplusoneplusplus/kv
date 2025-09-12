@@ -217,18 +217,40 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     // Range operations
     fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
-        let start_key_str = String::from_utf8_lossy(&req.start_key);
-        let end_key_str = req.end_key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
         if self.verbose {
             debug!("Get range: start_key={:?}, end_key={:?}, limit={}, column_family={:?}",
                    req.start_key, req.end_key, req.limit.unwrap_or(1000), req.column_family);
         }
         
+        // When end_key is None, create an appropriate upper bound for prefix matching
+        // For start_key "key", we want to find all keys starting with "key"
+        // So we increment the last byte to get the next prefix: "key" -> "kez"
+        let default_end_key = {
+            let mut end_key = req.start_key.clone();
+            // Try to increment the last byte
+            if let Some(last_byte) = end_key.last_mut() {
+                if *last_byte < 0xFF {
+                    *last_byte += 1;
+                } else {
+                    // If last byte is 0xFF, append 0x00 to get next prefix
+                    end_key.push(0x00);
+                }
+            } else {
+                // Empty start key - use [0xFF] as end
+                end_key = vec![0xFF];
+            }
+            end_key
+        };
+        let end_key_slice = req.end_key.as_deref().unwrap_or(&default_end_key);
+        
         let result = self.database.get_range(
-            &start_key_str,
-            end_key_str.as_deref(),
-            req.limit,
-            req.column_family.as_deref()
+            &req.start_key,
+            end_key_slice,
+            0,  // begin_offset
+            true,  // begin_or_equal
+            0,  // end_offset 
+            false,  // end_or_equal
+            req.limit
         );
         
         if self.verbose {
@@ -279,12 +301,35 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
                    req.start_key, req.end_key, req.read_version, req.limit.unwrap_or(1000), req.column_family);
         }
         
+        // When end_key is None, create an appropriate upper bound for prefix matching
+        // Same logic as regular get_range
+        let default_end_key = {
+            let mut end_key = req.start_key.clone();
+            // Try to increment the last byte
+            if let Some(last_byte) = end_key.last_mut() {
+                if *last_byte < 0xFF {
+                    *last_byte += 1;
+                } else {
+                    // If last byte is 0xFF, append 0x00 to get next prefix
+                    end_key.push(0x00);
+                }
+            } else {
+                // Empty start key - use [0xFF] as end
+                end_key = vec![0xFF];
+            }
+            end_key
+        };
+        let end_key_slice = req.end_key.as_deref().unwrap_or(&default_end_key);
+        
         let result = self.database.snapshot_get_range(
             &req.start_key,
-            req.end_key.as_deref(),
+            end_key_slice,
+            0,  // begin_offset
+            true,  // begin_or_equal
+            0,  // end_offset
+            false,  // end_or_equal
             req.read_version as u64,
-            req.limit,
-            req.column_family.as_deref()
+            req.limit
         );
         
         if self.verbose {
