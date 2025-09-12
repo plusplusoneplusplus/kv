@@ -49,14 +49,14 @@ inline int wait_for_future_c(KvFutureHandle future) {
     int max_polls = 1000;  // Maximum number of polls
     for (int i = 0; i < max_polls; i++) {
         int status = kv_future_poll(future);
-        if (status == 1) {
-            return 1;  // Ready
-        } else if (status == -1) {
-            return -1;  // Error
+        if (status == KV_FUNCTION_SUCCESS) {
+            return KV_FUNCTION_SUCCESS;  // Ready
+        } else if (status == KV_FUNCTION_ERROR) {
+            return KV_FUNCTION_ERROR;  // Error
         }
         usleep(1000);  // Sleep 1ms
     }
-    return 0;  // Timeout
+    return KV_FUNCTION_FAILURE;  // Timeout
 }
 
 // Helper function to wait for future completion (C++-style)
@@ -64,9 +64,9 @@ inline bool wait_for_future_cpp(KvFutureHandle future, int timeout_ms = 5000) {
     auto start = std::chrono::steady_clock::now();
     while (true) {
         int status = kv_future_poll(future);
-        if (status == 1) {
+        if (status == KV_FUNCTION_SUCCESS) {
             return true;  // Ready
-        } else if (status == -1) {
+        } else if (status == KV_FUNCTION_ERROR) {
             return false;  // Error
         }
         

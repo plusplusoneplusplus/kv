@@ -36,7 +36,7 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedKey) {
         nullptr  // no column family
     );
     
-    EXPECT_EQ(result, 1) << "versionstamped key operation should succeed";
+    EXPECT_EQ(result, KV_FUNCTION_SUCCESS) << "versionstamped key operation should succeed";
     
     // Commit with results to get generated keys
     KvFutureHandle commit_future = kv_transaction_commit_with_results(tx.get());
@@ -45,7 +45,7 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedKey) {
     
     // Get commit result
     KvCommitResult commit_result = kv_future_get_commit_result(commit_future);
-    EXPECT_EQ(commit_result.success, 1) << "commit should succeed";
+    EXPECT_EQ(commit_result.success, KV_FUNCTION_SUCCESS) << "commit should succeed";
     EXPECT_EQ(commit_result.generated_keys.count, 1) << "should have one generated key";
     EXPECT_EQ(commit_result.generated_values.count, 0) << "should have no generated values for key operation";
     
@@ -70,7 +70,7 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedValue) {
         nullptr  // no column family
     );
     
-    EXPECT_EQ(result, 1) << "versionstamped value operation should succeed";
+    EXPECT_EQ(result, KV_FUNCTION_SUCCESS) << "versionstamped value operation should succeed";
     
     // Commit with results to get generated values
     KvFutureHandle commit_future = kv_transaction_commit_with_results(tx.get());
@@ -79,7 +79,7 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedValue) {
     
     // Get commit result
     KvCommitResult commit_result = kv_future_get_commit_result(commit_future);
-    EXPECT_EQ(commit_result.success, 1) << "commit should succeed";
+    EXPECT_EQ(commit_result.success, KV_FUNCTION_SUCCESS) << "commit should succeed";
     EXPECT_EQ(commit_result.generated_keys.count, 0) << "should have no generated keys for value operation";
     EXPECT_EQ(commit_result.generated_values.count, 1) << "should have one generated value";
     

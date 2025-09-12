@@ -31,6 +31,12 @@ typedef enum {
     KV_ERROR_UNKNOWN = 9999
 } KvErrorCode;
 
+// Function return codes (for direct function returns, not KvResult.error_code)
+// NOTE: These are different from typical C conventions where 0 = success
+#define KV_FUNCTION_SUCCESS 1    // Function succeeded
+#define KV_FUNCTION_FAILURE 0    // Function failed
+#define KV_FUNCTION_ERROR -1     // Function error (usually null pointer)
+
 // Result structure
 typedef struct {
     int success;           // 1 for success, 0 for failure
@@ -94,7 +100,7 @@ KvFutureHandle kv_transaction_begin(KvClientHandle client, int timeout_seconds);
 KvFutureHandle kv_read_transaction_begin(KvClientHandle client, int64_t read_version);
 
 // Future operations
-int kv_future_poll(KvFutureHandle future);  // Returns: 1=ready, 0=pending, -1=error
+int kv_future_poll(KvFutureHandle future);  // Returns: KV_FUNCTION_SUCCESS=ready, KV_FUNCTION_FAILURE=pending, KV_FUNCTION_ERROR=error
 KvTransactionHandle kv_future_get_transaction(KvFutureHandle future);
 KvReadTransactionHandle kv_future_get_read_transaction(KvFutureHandle future);
 KvResult kv_future_get_void_result(KvFutureHandle future);

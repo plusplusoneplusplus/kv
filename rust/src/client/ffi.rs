@@ -12,6 +12,11 @@ use super::{KvStoreClient, Transaction, ReadTransaction, KvError, KvFuture, Clie
 use super::error::KvErrorCode;
 use super::future::KvFuturePtr;
 
+// Function return code constants (matching kvstore_client.h)
+const KV_FUNCTION_SUCCESS: c_int = 1;
+const KV_FUNCTION_FAILURE: c_int = 0;
+const KV_FUNCTION_ERROR: c_int = -1;
+
 // Global runtime for async operations
 #[allow(dead_code)]
 pub static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
@@ -161,7 +166,7 @@ pub extern "C" fn kv_config_create_with_debug() -> KvConfigHandle {
 #[no_mangle]
 pub extern "C" fn kv_config_enable_debug(config: KvConfigHandle) -> c_int {
     if config.is_null() {
-        return -1;
+        return KV_FUNCTION_ERROR;
     }
     
     let id = config as usize;
@@ -169,9 +174,9 @@ pub extern "C" fn kv_config_enable_debug(config: KvConfigHandle) -> c_int {
     
     if let Some(cfg) = configs.get_mut(&id) {
         *cfg = cfg.clone().enable_debug();
-        0
+        KV_FUNCTION_SUCCESS
     } else {
-        -1
+        KV_FUNCTION_ERROR
     }
 }
 
@@ -179,7 +184,7 @@ pub extern "C" fn kv_config_enable_debug(config: KvConfigHandle) -> c_int {
 #[no_mangle]
 pub extern "C" fn kv_config_set_connection_timeout(config: KvConfigHandle, timeout_seconds: u64) -> c_int {
     if config.is_null() {
-        return -1;
+        return KV_FUNCTION_ERROR;
     }
     
     let id = config as usize;
@@ -187,9 +192,9 @@ pub extern "C" fn kv_config_set_connection_timeout(config: KvConfigHandle, timeo
     
     if let Some(cfg) = configs.get_mut(&id) {
         *cfg = cfg.clone().with_connection_timeout(timeout_seconds);
-        0
+        KV_FUNCTION_SUCCESS
     } else {
-        -1
+        KV_FUNCTION_ERROR
     }
 }
 
@@ -197,7 +202,7 @@ pub extern "C" fn kv_config_set_connection_timeout(config: KvConfigHandle, timeo
 #[no_mangle]
 pub extern "C" fn kv_config_set_request_timeout(config: KvConfigHandle, timeout_seconds: u64) -> c_int {
     if config.is_null() {
-        return -1;
+        return KV_FUNCTION_ERROR;
     }
     
     let id = config as usize;
@@ -205,9 +210,9 @@ pub extern "C" fn kv_config_set_request_timeout(config: KvConfigHandle, timeout_
     
     if let Some(cfg) = configs.get_mut(&id) {
         *cfg = cfg.clone().with_request_timeout(timeout_seconds);
-        0
+        KV_FUNCTION_SUCCESS
     } else {
-        -1
+        KV_FUNCTION_ERROR
     }
 }
 
@@ -215,7 +220,7 @@ pub extern "C" fn kv_config_set_request_timeout(config: KvConfigHandle, timeout_
 #[no_mangle]
 pub extern "C" fn kv_config_set_max_retries(config: KvConfigHandle, retries: u32) -> c_int {
     if config.is_null() {
-        return -1;
+        return KV_FUNCTION_ERROR;
     }
     
     let id = config as usize;
@@ -223,9 +228,9 @@ pub extern "C" fn kv_config_set_max_retries(config: KvConfigHandle, retries: u32
     
     if let Some(cfg) = configs.get_mut(&id) {
         *cfg = cfg.clone().with_max_retries(retries);
-        0
+        KV_FUNCTION_SUCCESS
     } else {
-        -1
+        KV_FUNCTION_ERROR
     }
 }
 
@@ -343,7 +348,7 @@ pub extern "C" fn kv_read_transaction_begin(
 #[no_mangle]
 pub extern "C" fn kv_future_poll(future: KvFutureHandle) -> c_int {
     if future.is_null() {
-        return -1;
+        return KV_FUNCTION_ERROR;
     }
     
     let future_id = future as usize;
@@ -352,28 +357,28 @@ pub extern "C" fn kv_future_poll(future: KvFutureHandle) -> c_int {
     if let Some(boxed_future) = futures.get(&future_id) {
         // Try to downcast to different future types
         if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Transaction>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<ReadTransaction>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<()>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<Vec<u8>>>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<String>>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(Vec<u8>, Vec<u8>)>>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(String, String)>>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<String>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<CommitResult>>() {
-            if future_ptr.poll() { 1 } else { 0 }
+            if future_ptr.poll() { KV_FUNCTION_SUCCESS } else { KV_FUNCTION_FAILURE }
         } else {
-            -1
+            KV_FUNCTION_ERROR
         }
     } else {
-        -1
+        KV_FUNCTION_ERROR
     }
 }
 
@@ -1335,18 +1340,18 @@ pub extern "C" fn kv_transaction_set_versionstamped_key(
     column_family: *const c_char,
 ) -> c_int {
     if transaction.is_null() || key_prefix_data.is_null() || key_prefix_length < 0 || value_length < 0 {
-        return 0; // Error
+        return KV_FUNCTION_FAILURE; // Error
     }
     
     // Allow NULL value_data only if value_length is 0 (empty value)
     if value_data.is_null() && value_length != 0 {
-        return 0; // Error
+        return KV_FUNCTION_FAILURE; // Error
     }
     
     let tx_id = transaction as usize;
     let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
         Some(tx) => tx,
-        None => return 0, // Error
+        None => return KV_FUNCTION_FAILURE, // Error
     };
     
     let key_prefix_bytes = unsafe {
@@ -1364,12 +1369,12 @@ pub extern "C" fn kv_transaction_set_versionstamped_key(
     // Convert to string (assuming UTF-8)
     let key_prefix_str = match std::str::from_utf8(key_prefix_bytes) {
         Ok(s) => s,
-        Err(_) => return 0, // Error
+        Err(_) => return KV_FUNCTION_FAILURE, // Error
     };
     
     let value_str = match std::str::from_utf8(value_bytes) {
         Ok(s) => s,
-        Err(_) => return 0, // Error
+        Err(_) => return KV_FUNCTION_FAILURE, // Error
     };
     
     let cf_name = if column_family.is_null() {
@@ -1378,14 +1383,14 @@ pub extern "C" fn kv_transaction_set_versionstamped_key(
         unsafe {
             match CStr::from_ptr(column_family).to_str() {
                 Ok(s) => Some(s),
-                Err(_) => return 0, // Error
+                Err(_) => return KV_FUNCTION_FAILURE, // Error
             }
         }
     };
     
     let result = tx_arc.lock().set_versionstamped_key(key_prefix_str, value_str, cf_name);
     match result {
-        Ok(_) => 1, // Success
+        Ok(_) => KV_FUNCTION_SUCCESS, // Success
         Err(_) => 0, // Error
     }
 }
@@ -1401,18 +1406,18 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
     column_family: *const c_char,
 ) -> c_int {
     if transaction.is_null() || key_data.is_null() || key_length < 0 || value_prefix_length < 0 {
-        return 0; // Error
+        return KV_FUNCTION_FAILURE; // Error
     }
     
     // Allow NULL value_prefix_data only if value_prefix_length is 0 (empty prefix)
     if value_prefix_data.is_null() && value_prefix_length != 0 {
-        return 0; // Error
+        return KV_FUNCTION_FAILURE; // Error
     }
     
     let tx_id = transaction as usize;
     let tx_arc = match TRANSACTIONS.lock().get(&tx_id).cloned() {
         Some(tx) => tx,
-        None => return 0, // Error
+        None => return KV_FUNCTION_FAILURE, // Error
     };
     
     let key_bytes = unsafe {
@@ -1430,12 +1435,12 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
     // Convert to string (assuming UTF-8)
     let key_str = match std::str::from_utf8(key_bytes) {
         Ok(s) => s,
-        Err(_) => return 0, // Error
+        Err(_) => return KV_FUNCTION_FAILURE, // Error
     };
     
     let value_prefix_str = match std::str::from_utf8(value_prefix_bytes) {
         Ok(s) => s,
-        Err(_) => return 0, // Error
+        Err(_) => return KV_FUNCTION_FAILURE, // Error
     };
     
     let cf_name = if column_family.is_null() {
@@ -1444,14 +1449,14 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
         unsafe {
             match CStr::from_ptr(column_family).to_str() {
                 Ok(s) => Some(s),
-                Err(_) => return 0, // Error
+                Err(_) => return KV_FUNCTION_FAILURE, // Error
             }
         }
     };
     
     let result = tx_arc.lock().set_versionstamped_value(key_str, value_prefix_str, cf_name);
     match result {
-        Ok(_) => 1, // Success
+        Ok(_) => KV_FUNCTION_SUCCESS, // Success
         Err(_) => 0, // Error
     }
 }
