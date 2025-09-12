@@ -42,10 +42,30 @@ app.get('/api/keys', async (req, res) => {
         const client = createThriftClient();
         const limit = parseInt(req.query.limit) || 1000;
         const startKey = req.query.startKey || '';
+        const prefix = req.query.prefix || '';
+        
+        // Calculate range for prefix filtering
+        let actualStartKey = startKey;
+        let endKey = null;
+        
+        if (prefix) {
+            actualStartKey = prefix;
+            // Calculate lexicographically next string after prefix
+            // by incrementing the last byte
+            if (prefix.length > 0) {
+                const prefixBytes = Buffer.from(prefix, 'utf8');
+                const lastByte = prefixBytes[prefixBytes.length - 1];
+                if (lastByte < 255) {
+                    const endKeyBytes = Buffer.from(prefixBytes);
+                    endKeyBytes[endKeyBytes.length - 1] = lastByte + 1;
+                    endKey = endKeyBytes;
+                }
+            }
+        }
         
         const getRangeRequest = new kvstore_types.GetRangeRequest({
-            start_key: startKey,
-            end_key: null, // Get all keys from start_key onwards
+            start_key: actualStartKey,
+            end_key: endKey,
             limit: limit
         });
         
@@ -59,7 +79,7 @@ app.get('/api/keys', async (req, res) => {
                 return res.status(500).json({ error: 'Range query failed', details: result.error });
             }
             
-            const keyValues = result.key_values.map(kv => {
+            let keyValues = result.key_values.map(kv => {
                 return {
                     key: Buffer.isBuffer(kv.key) ? kv.key.toString('base64') : kv.key,
                     value: Buffer.isBuffer(kv.value) ? kv.value.toString('base64') : kv.value,
@@ -67,6 +87,14 @@ app.get('/api/keys', async (req, res) => {
                     valueIsBuffer: Buffer.isBuffer(kv.value)
                 };
             });
+            
+            // Apply client-side prefix filtering as backup
+            if (prefix) {
+                keyValues = keyValues.filter(kv => {
+                    const keyStr = kv.keyIsBuffer ? Buffer.from(kv.key, 'base64').toString('utf8') : kv.key;
+                    return keyStr.startsWith(prefix);
+                });
+            }
             
             res.json({
                 success: true,

@@ -125,6 +125,7 @@ async function testConnection() {
 async function loadKeys() {
     const startKey = document.getElementById('startKey').value;
     const limit = document.getElementById('limitInput').value;
+    const prefix = document.getElementById('prefixFilter').value;
     
     showLoading(true);
     hideMessages();
@@ -133,6 +134,7 @@ async function loadKeys() {
         const params = new URLSearchParams();
         if (startKey) params.append('startKey', startKey);
         if (limit) params.append('limit', limit);
+        if (prefix) params.append('prefix', prefix);
         
         const response = await fetch(`/api/keys?${params}`);
         const result = await response.json();
