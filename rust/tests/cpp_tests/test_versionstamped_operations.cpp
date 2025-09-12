@@ -25,13 +25,13 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedKey) {
     KvClientWrapper client("localhost:9090");
     KvTransactionWrapper tx(client);
     
-    // Set a versionstamped key - key prefix will be appended with version
-    std::string key_prefix = "user_score_";
+    // Set a versionstamped key - key buffer with placeholder for 10-byte versionstamp
+    std::vector<uint8_t> key_buffer = {'u','s','e','r','_','s','c','o','r','e','_',0,0,0,0,0,0,0,0,0,0}; // 11 prefix + 10 placeholder bytes
     std::string value = "100";
     
     int result = kv_transaction_set_versionstamped_key(
         tx.get(),
-        KV_STR(key_prefix.c_str()),
+        key_buffer.data(), key_buffer.size(),
         KV_STR(value.c_str()),
         nullptr  // no column family
     );
@@ -59,14 +59,14 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedValue) {
     KvClientWrapper client("localhost:9090");
     KvTransactionWrapper tx(client);
     
-    // Set a versionstamped value - value prefix will be appended with version
+    // Set a versionstamped value - value buffer with placeholder for 10-byte versionstamp
     std::string key = "user_session";
-    std::string value_prefix = "session_";
+    std::vector<uint8_t> value_buffer = {'s','e','s','s','i','o','n','_',0,0,0,0,0,0,0,0,0,0}; // 8 prefix + 10 placeholder bytes
     
     int result = kv_transaction_set_versionstamped_value(
         tx.get(),
         KV_STR(key.c_str()),
-        KV_STR(value_prefix.c_str()),
+        value_buffer.data(), value_buffer.size(),
         nullptr  // no column family
     );
     

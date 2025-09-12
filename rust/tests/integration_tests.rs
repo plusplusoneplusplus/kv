@@ -303,13 +303,14 @@ async fn test_versionstamped_operations_integration() {
         // Test that versionstamped operations now work correctly
         
         // Test versionstamped key - should succeed and return generated key
-        let vs_key_req = SetVersionstampedKeyRequest::new("user_score_".as_bytes().to_vec(), "100".as_bytes().to_vec(), None::<String>);
+        let key_buffer = b"user_score_\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(); // 11 prefix + 10 placeholder bytes
+        let vs_key_req = SetVersionstampedKeyRequest::new(key_buffer, "100".as_bytes().to_vec(), None::<String>);
         let vs_key_resp = client.set_versionstamped_key(vs_key_req).expect("Failed to call set versionstamped key");
         assert!(vs_key_resp.success, "Versionstamped key should be supported: {:?}", vs_key_resp.error);
         assert!(vs_key_resp.error.is_none(), "Should have no error message");
         assert!(!vs_key_resp.generated_key.is_empty(), "Should have generated key");
         assert!(vs_key_resp.generated_key.starts_with("user_score_".as_bytes()), "Generated key should start with prefix");
-        assert_eq!(vs_key_resp.generated_key.len(), "user_score_".len() + 10, "Generated key should be prefix + 10 bytes");
+        assert_eq!(vs_key_resp.generated_key.len(), 21, "Generated key should be 21 bytes total");
         
         // Verify the versionstamped key can be read back
         let generated_key = vs_key_resp.generated_key.clone();
@@ -319,19 +320,21 @@ async fn test_versionstamped_operations_integration() {
         assert_eq!(get_resp.value, "100".as_bytes().to_vec(), "Value should match what was stored");
         
         // Test another versionstamped key with same prefix - should get different key
-        let vs_key_req2 = SetVersionstampedKeyRequest::new("user_score_".as_bytes().to_vec(), "200".as_bytes().to_vec(), None::<String>);
+        let key_buffer2 = b"user_score_\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(); // 11 prefix + 10 placeholder bytes
+        let vs_key_req2 = SetVersionstampedKeyRequest::new(key_buffer2, "200".as_bytes().to_vec(), None::<String>);
         let vs_key_resp2 = client.set_versionstamped_key(vs_key_req2).expect("Failed to call second set versionstamped key");
         assert!(vs_key_resp2.success, "Second versionstamped key should succeed");
         assert_ne!(vs_key_resp.generated_key, vs_key_resp2.generated_key, "Different transactions should generate different keys");
         
         // Test versionstamped value - should now work with the implemented functionality
-        let vs_value_req = SetVersionstampedValueRequest::new("test_key".as_bytes().to_vec(), "value_prefix_".as_bytes().to_vec(), None::<String>);
+        let value_buffer = b"value_prefix_\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(); // 13 prefix + 10 placeholder bytes
+        let vs_value_req = SetVersionstampedValueRequest::new("test_key".as_bytes().to_vec(), value_buffer, None::<String>);
         let vs_value_resp = client.set_versionstamped_value(vs_value_req).expect("Failed to call set versionstamped value");
         assert!(vs_value_resp.success, "Versionstamped value should now be supported: {:?}", vs_value_resp.error);
         assert!(vs_value_resp.error.is_none(), "Should have no error message");
         assert!(!vs_value_resp.generated_value.is_empty(), "Should have generated value");
         assert!(vs_value_resp.generated_value.starts_with("value_prefix_".as_bytes()), "Generated value should start with prefix");
-        assert_eq!(vs_value_resp.generated_value.len(), "value_prefix_".len() + 10, "Generated value should be prefix + 10 bytes");
+        assert_eq!(vs_value_resp.generated_value.len(), 23, "Generated value should be 23 bytes total");
         
         // Verify the versionstamped value can be read back
         let generated_value = vs_value_resp.generated_value.clone();
