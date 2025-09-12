@@ -11,7 +11,7 @@ async fn test_versionstamped_key_operations() -> Result<(), Box<dyn std::error::
     let mut tx = tx_future.await_result().await?;
     
     // Set a versionstamped key
-    tx.set_versionstamped_key("user_score_", "100", None)?;
+    tx.set_versionstamped_key(b"user_score_", b"100", None)?;
     
     // Commit with results to get generated keys
     let commit_future = tx.commit_with_results();
@@ -46,7 +46,7 @@ async fn test_versionstamped_value_operations() -> Result<(), Box<dyn std::error
     let mut tx = tx_future.await_result().await?;
     
     // Set a versionstamped value
-    tx.set_versionstamped_value("user_session", "session_", None)?;
+    tx.set_versionstamped_value(b"user_session", b"session_", None)?;
     
     // Commit with results to get generated values
     let commit_future = tx.commit_with_results();
@@ -81,8 +81,8 @@ async fn test_mixed_versionstamped_operations() -> Result<(), Box<dyn std::error
     let mut tx = tx_future.await_result().await?;
     
     // Set both versionstamped key and value, plus regular operation
-    tx.set_versionstamped_key("log_entry_", "event_data", None)?;
-    tx.set_versionstamped_value("event_value", "data_", None)?;
+    tx.set_versionstamped_key(b"log_entry_", b"event_data", None)?;
+    tx.set_versionstamped_value(b"event_value", b"data_", None)?;
     tx.set(b"regular_key", b"regular_value", None)?;
     
     // Commit with results
@@ -129,14 +129,14 @@ async fn test_versionstamp_uniqueness() -> Result<(), Box<dyn std::error::Error>
     // First transaction
     let tx1_future = client.begin_transaction(None, Some(30));
     let mut tx1 = tx1_future.await_result().await?;
-    tx1.set_versionstamped_key("test_", "value1", None)?;
+    tx1.set_versionstamped_key(b"test_", b"value1", None)?;
     let commit1_future = tx1.commit_with_results();
     let result1 = commit1_future.await_result().await?;
     
     // Second transaction
     let tx2_future = client.begin_transaction(None, Some(30));
     let mut tx2 = tx2_future.await_result().await?;
-    tx2.set_versionstamped_key("test_", "value2", None)?;
+    tx2.set_versionstamped_key(b"test_", b"value2", None)?;
     let commit2_future = tx2.commit_with_results();
     let result2 = commit2_future.await_result().await?;
     
@@ -161,7 +161,7 @@ async fn test_backward_compatibility_commit() -> Result<(), Box<dyn std::error::
     let mut tx = tx_future.await_result().await?;
     
     // Set a versionstamped key
-    tx.set_versionstamped_key("compat_test_", "data", None)?;
+    tx.set_versionstamped_key(b"compat_test_", b"data", None)?;
     
     // Use the old commit method (should still work)
     let commit_future = tx.commit();

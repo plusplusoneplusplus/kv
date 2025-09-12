@@ -1366,17 +1366,6 @@ pub extern "C" fn kv_transaction_set_versionstamped_key(
         }
     };
     
-    // Convert to string (assuming UTF-8)
-    let key_prefix_str = match std::str::from_utf8(key_prefix_bytes) {
-        Ok(s) => s,
-        Err(_) => return KV_FUNCTION_FAILURE, // Error
-    };
-    
-    let value_str = match std::str::from_utf8(value_bytes) {
-        Ok(s) => s,
-        Err(_) => return KV_FUNCTION_FAILURE, // Error
-    };
-    
     let cf_name = if column_family.is_null() {
         None
     } else {
@@ -1388,10 +1377,10 @@ pub extern "C" fn kv_transaction_set_versionstamped_key(
         }
     };
     
-    let result = tx_arc.lock().set_versionstamped_key(key_prefix_str, value_str, cf_name);
+    let result = tx_arc.lock().set_versionstamped_key(key_prefix_bytes, value_bytes, cf_name);
     match result {
         Ok(_) => KV_FUNCTION_SUCCESS, // Success
-        Err(_) => 0, // Error
+        Err(_) => KV_FUNCTION_FAILURE, // Error
     }
 }
 
@@ -1432,16 +1421,6 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
         }
     };
     
-    // Convert to string (assuming UTF-8)
-    let key_str = match std::str::from_utf8(key_bytes) {
-        Ok(s) => s,
-        Err(_) => return KV_FUNCTION_FAILURE, // Error
-    };
-    
-    let value_prefix_str = match std::str::from_utf8(value_prefix_bytes) {
-        Ok(s) => s,
-        Err(_) => return KV_FUNCTION_FAILURE, // Error
-    };
     
     let cf_name = if column_family.is_null() {
         None
@@ -1454,10 +1433,10 @@ pub extern "C" fn kv_transaction_set_versionstamped_value(
         }
     };
     
-    let result = tx_arc.lock().set_versionstamped_value(key_str, value_prefix_str, cf_name);
+    let result = tx_arc.lock().set_versionstamped_value(key_bytes, value_prefix_bytes, cf_name);
     match result {
         Ok(_) => KV_FUNCTION_SUCCESS, // Success
-        Err(_) => 0, // Error
+        Err(_) => KV_FUNCTION_FAILURE, // Error
     }
 }
 

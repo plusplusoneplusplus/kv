@@ -275,15 +275,15 @@ impl Transaction {
     
     /// Set a versionstamped key (buffered for atomic commit)
     /// Note: The actual key will be generated during commit
-    pub fn set_versionstamped_key(&mut self, key_prefix: &str, value: &str, column_family: Option<&str>) -> KvResult<()> {
+    pub fn set_versionstamped_key(&mut self, key_prefix: &[u8], value: &[u8], column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
         let operation = Operation::new(
             "SET_VERSIONSTAMPED_KEY".to_string(),
-            key_prefix.as_bytes().to_vec(),
-            Some(value.as_bytes().to_vec()),
+            key_prefix.to_vec(),
+            Some(value.to_vec()),
             column_family.map(|s| s.to_string()),
         );
         
@@ -293,15 +293,15 @@ impl Transaction {
 
     /// Set a versionstamped value (buffered for atomic commit)
     /// Note: The actual value will be generated during commit
-    pub fn set_versionstamped_value(&mut self, key: &str, value_prefix: &str, column_family: Option<&str>) -> KvResult<()> {
+    pub fn set_versionstamped_value(&mut self, key: &[u8], value_prefix: &[u8], column_family: Option<&str>) -> KvResult<()> {
         if self.committed || self.aborted {
             return Err(KvError::TransactionNotFound("Transaction already finished".to_string()));
         }
         
         let operation = Operation::new(
             "SET_VERSIONSTAMPED_VALUE".to_string(),
-            key.as_bytes().to_vec(),
-            Some(value_prefix.as_bytes().to_vec()),
+            key.to_vec(),
+            Some(value_prefix.to_vec()),
             column_family.map(|s| s.to_string()),
         );
         
