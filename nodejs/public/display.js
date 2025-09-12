@@ -14,8 +14,10 @@ function applySorting() {
             case 'size-desc':
                 return b.valueLength - a.valueLength;
             case 'duplicates':
-                const aCount = dataStats.keyGroups[a.key] ? dataStats.keyGroups[a.key].length : 1;
-                const bCount = dataStats.keyGroups[b.key] ? dataStats.keyGroups[b.key].length : 1;
+                const aUniqueKey = a.originalKey || a.key;
+                const bUniqueKey = b.originalKey || b.key;
+                const aCount = dataStats.keyGroups[aUniqueKey] ? dataStats.keyGroups[aUniqueKey].length : 1;
+                const bCount = dataStats.keyGroups[bUniqueKey] ? dataStats.keyGroups[bUniqueKey].length : 1;
                 if (aCount !== bCount) {
                     return bCount - aCount; // Show duplicates first
                 }
@@ -36,14 +38,16 @@ function applyFilter() {
             filteredData = [...currentData];
             break;
         case 'duplicates':
-            filteredData = currentData.filter(item => 
-                dataStats.keyGroups[item.key] && dataStats.keyGroups[item.key].length > 1
-            );
+            filteredData = currentData.filter(item => {
+                const uniqueKey = item.originalKey || item.key;
+                return dataStats.keyGroups[uniqueKey] && dataStats.keyGroups[uniqueKey].length > 1;
+            });
             break;
         case 'unique':
-            filteredData = currentData.filter(item => 
-                !dataStats.keyGroups[item.key] || dataStats.keyGroups[item.key].length === 1
-            );
+            filteredData = currentData.filter(item => {
+                const uniqueKey = item.originalKey || item.key;
+                return !dataStats.keyGroups[uniqueKey] || dataStats.keyGroups[uniqueKey].length === 1;
+            });
             break;
         case 'binary':
             filteredData = currentData.filter(item => item.hasBinary);
@@ -107,7 +111,8 @@ function displayData(data, groupDuplicates = false) {
 function displayFlatData(data, tableBody) {
     data.forEach(item => {
         const row = tableBody.insertRow();
-        const duplicateCount = dataStats.keyGroups[item.key] ? dataStats.keyGroups[item.key].length : 1;
+        const uniqueKey = item.originalKey || item.key;
+        const duplicateCount = dataStats.keyGroups[uniqueKey] ? dataStats.keyGroups[uniqueKey].length : 1;
         const duplicateIndicator = duplicateCount > 1 ? `<span class="duplicate-indicator">×${duplicateCount}</span>` : '';
         const binaryIndicator = item.hasBinary ? '<span class="binary-indicator">BINARY</span>' : '';
         const displayValue = item.hasBinary ? 

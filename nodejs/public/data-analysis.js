@@ -8,13 +8,15 @@ function analyzeData(data) {
     let binaryCount = 0;
     
     data.forEach(item => {
-        if (!keyGroups[item.key]) {
-            keyGroups[item.key] = [];
+        // Use original key (base64) for proper uniqueness, fallback to display key
+        const uniqueKey = item.originalKey || item.key;
+        if (!keyGroups[uniqueKey]) {
+            keyGroups[uniqueKey] = [];
         }
-        keyGroups[item.key].push(item);
+        keyGroups[uniqueKey].push(item);
         
         // Also group by hex representation to detect subtle differences
-        const hexKey = stringToHex(item.key);
+        const hexKey = stringToHex(uniqueKey);
         if (!hexKeyGroups[hexKey]) {
             hexKeyGroups[hexKey] = [];
         }

@@ -7,17 +7,43 @@ let dataStats = {};
 let currentPage = 1;
 let itemsPerPage = 50;
 
+// Helper function to create a display-safe string from binary data
+function createDisplayString(bytes) {
+    let result = '';
+    for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
+        // Check if byte represents printable ASCII (32-126)
+        if (byte >= 32 && byte <= 126) {
+            result += String.fromCharCode(byte);
+        } else if (byte === 9) {
+            result += '\\t';
+        } else if (byte === 10) {
+            result += '\\n';
+        } else if (byte === 13) {
+            result += '\\r';
+        } else {
+            // Non-printable characters - show as hex
+            result += '\\x' + byte.toString(16).padStart(2, '0').toUpperCase();
+        }
+    }
+    return result;
+}
+
 // Process base64 encoded data from server into displayable format
 function processRawData(rawKeyValues) {
     return rawKeyValues.map(kv => {
         // Handle key
-        let keyString;
+        let keyString, keyBytes;
         if (kv.keyIsBuffer && typeof kv.key === 'string') {
-            // Decode base64 to bytes, then to string
-            const keyBytes = Uint8Array.from(atob(kv.key), c => c.charCodeAt(0));
-            keyString = new TextDecoder('utf-8').decode(keyBytes);
+            // Decode base64 to bytes
+            keyBytes = Uint8Array.from(atob(kv.key), c => c.charCodeAt(0));
+            // Use the original base64 as unique identifier, but create display string
+            keyString = createDisplayString(keyBytes);
+            // Store the original base64 for uniqueness
+            keyString._originalBase64 = kv.key;
         } else {
             keyString = kv.key || '';
+            keyBytes = new TextEncoder().encode(keyString);
         }
         
         // Handle value
@@ -39,6 +65,7 @@ function processRawData(rawKeyValues) {
         
         return {
             key: keyString,
+            originalKey: kv.keyIsBuffer ? kv.key : keyString, // Use original base64 for uniqueness
             value: valueString,
             valueLength: valueLength,
             hexValue: hexValue,
