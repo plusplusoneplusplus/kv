@@ -367,6 +367,8 @@ pub extern "C" fn kv_future_poll(future: KvFutureHandle) -> c_int {
             if future_ptr.poll() { 1 } else { 0 }
         } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<String>>() {
             if future_ptr.poll() { 1 } else { 0 }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<CommitResult>>() {
+            if future_ptr.poll() { 1 } else { 0 }
         } else {
             -1
         }
