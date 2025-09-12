@@ -29,11 +29,3 @@ async fn test_client_connectivity() -> Result<(), Box<dyn std::error::Error>> {
 
 // Include all the individual client tests by reference
 // This allows them to be discovered and run by cargo test
-
-// Versionstamped tests
-pub use client::versionstamped_test::*;
-
-// Other client tests  
-pub use client::integration_test::*;
-pub use client::abort_test::*;
-pub use client::binary_key_test::*;

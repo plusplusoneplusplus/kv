@@ -3,6 +3,7 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::Duration;
 
+#[allow(dead_code)]
 pub struct ThriftTestServer {
     child: Option<Child>,
     port: Option<u16>,
@@ -10,6 +11,7 @@ pub struct ThriftTestServer {
 }
 
 impl ThriftTestServer {
+    #[allow(dead_code)]
     pub async fn new() -> Self {
         // Create temporary directory for test configuration
         let config_dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -70,6 +72,7 @@ block_based = true
         }
     }
     
+    #[allow(dead_code)]
     pub async fn start(&mut self) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
         // Find available port
         let port = find_available_port()?;
@@ -108,6 +111,7 @@ block_based = true
         Ok(port)
     }
     
+    #[allow(dead_code)]
     pub async fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
@@ -125,6 +129,7 @@ impl Drop for ThriftTestServer {
     }
 }
 
+#[allow(dead_code)]
 fn find_available_port() -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     // Try to bind to port 0 to get an available port
     let listener = TcpListener::bind("127.0.0.1:0")?;
