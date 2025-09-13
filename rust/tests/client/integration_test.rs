@@ -108,7 +108,7 @@ async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
     let range_tx = range_tx_future.await_result().await?;
     
     // Get range
-    let range_future = range_tx.get_range(b"range_test:", Some(b"range_test:z"), Some(10), None);
+    let range_future = range_tx.get_range(Some(b"range_test:"), Some(b"range_test:z"), Some(0), Some(true), Some(0), Some(false), Some(10), None);
     let results = range_future.await_result().await?;
     
     assert_eq!(results.len(), 5);

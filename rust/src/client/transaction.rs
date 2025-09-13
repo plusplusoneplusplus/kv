@@ -226,17 +226,21 @@ impl Transaction {
         Ok(())
     }
     
-    /// Get a range of key-value pairs as binary data
-    pub fn get_range(&self, start_key: &[u8], end_key: Option<&[u8]>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
+    /// Get a range of key-value pairs as binary data with FoundationDB-aligned parameters
+    pub fn get_range(&self, begin_key: Option<&[u8]>, end_key: Option<&[u8]>, begin_offset: Option<i32>, begin_or_equal: Option<bool>, end_offset: Option<i32>, end_or_equal: Option<bool>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
         if self.committed || self.aborted {
             return KvFuture::new(async { Err(KvError::TransactionNotFound("Transaction already finished".to_string())) });
         }
         
         let client = Arc::clone(&self.client);
         let request = GetRangeRequest::new(
-            start_key.to_vec(),
-            end_key.map(|k| k.to_vec()),
-            limit.map(|l| l as i32),
+            begin_key.map(|k| k.to_vec()), // Optional - Thrift server will apply FoundationDB defaults
+            end_key.map(|k| k.to_vec()),   // Optional - Thrift server will apply FoundationDB defaults  
+            begin_offset.unwrap_or(0),
+            begin_or_equal.unwrap_or(true),
+            end_offset.unwrap_or(0),
+            end_or_equal.unwrap_or(false),
+            limit.map(|l| l as i32).unwrap_or(1000),
             column_family.map(|s| s.to_string()),
         );
         
@@ -603,15 +607,19 @@ impl ReadTransaction {
         })
     }
     
-    /// Get a range of key-value pairs at the snapshot version
-    pub fn snapshot_get_range(&self, start_key: &[u8], end_key: Option<&[u8]>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
+    /// Get a range of key-value pairs at the snapshot version with FoundationDB-aligned parameters
+    pub fn snapshot_get_range(&self, begin_key: Option<&[u8]>, end_key: Option<&[u8]>, begin_offset: Option<i32>, begin_or_equal: Option<bool>, end_offset: Option<i32>, end_or_equal: Option<bool>, limit: Option<u32>, column_family: Option<&str>) -> KvFuture<Vec<(Vec<u8>, Vec<u8>)>> {
         let read_version = self.read_version;
         let client = Arc::clone(&self.client);
         let request = SnapshotGetRangeRequest::new(
-            start_key.to_vec(),
-            end_key.map(|k| k.to_vec()),
+            begin_key.map(|k| k.to_vec()), // Optional - Thrift server will apply FoundationDB defaults
+            end_key.map(|k| k.to_vec()),   // Optional - Thrift server will apply FoundationDB defaults
+            begin_offset.unwrap_or(0),
+            begin_or_equal.unwrap_or(true),
+            end_offset.unwrap_or(0),
+            end_or_equal.unwrap_or(false),
             read_version,
-            limit.map(|l| l as i32),
+            limit.map(|l| l as i32).unwrap_or(1000),
             column_family.map(|s| s.to_string()),
         );
         

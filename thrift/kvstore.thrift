@@ -35,12 +35,16 @@ struct DeleteResponse {
     3: optional string error_code
 }
 
-// Range operations (simplified)
+// Range operations (FoundationDB-aligned)
 struct GetRangeRequest {
-    1: required binary start_key,
-    2: optional binary end_key,
-    3: optional i32 limit = 1000,
-    4: optional string column_family
+    1: optional binary begin_key,      // Default: empty string (beginning of keyspace)
+    2: optional binary end_key,        // Default: single 0xFF byte (end of keyspace) 
+    3: optional i32 begin_offset = 0,
+    4: optional bool begin_or_equal = true,
+    5: optional i32 end_offset = 0,
+    6: optional bool end_or_equal = false,
+    7: optional i32 limit = 1000,
+    8: optional string column_family
 }
 
 struct KeyValue {
@@ -68,11 +72,15 @@ struct SnapshotGetResponse {
 }
 
 struct SnapshotGetRangeRequest {
-    1: required binary start_key,
-    2: optional binary end_key,
-    3: required i64 read_version,
-    4: optional i32 limit = 1000,
-    5: optional string column_family
+    1: optional binary begin_key,      // Default: empty string (beginning of keyspace)
+    2: optional binary end_key,        // Default: single 0xFF byte (end of keyspace)
+    3: optional i32 begin_offset = 0,
+    4: optional bool begin_or_equal = true,
+    5: optional i32 end_offset = 0,
+    6: optional bool end_or_equal = false,
+    7: required i64 read_version,
+    8: optional i32 limit = 1000,
+    9: optional string column_family
 }
 
 struct SnapshotGetRangeResponse {

@@ -276,18 +276,26 @@ public:
         }
     }
     
-    std::vector<std::pair<std::string, std::string>> get_range(const std::string& start_key, 
-                                                                const std::string* end_key = nullptr, 
+    std::vector<std::pair<std::string, std::string>> get_range(const std::string* start_key = nullptr,
+                                                                const std::string* end_key = nullptr,
+                                                                int begin_offset = 0,
+                                                                bool begin_or_equal = true,
+                                                                int end_offset = 0,
+                                                                bool end_or_equal = false,
                                                                 int limit = -1,
                                                                 const std::string* column_family = nullptr) {
         const char* cf = column_family ? column_family->c_str() : nullptr;
         
+        const uint8_t* start_key_data = start_key ? (const uint8_t*)start_key->data() : nullptr;
+        int start_key_len = start_key ? start_key->size() : 0;
         const uint8_t* end_key_data = end_key ? (const uint8_t*)end_key->data() : nullptr;
         int end_key_len = end_key ? end_key->size() : 0;
         
         KvFutureHandle future = kv_transaction_get_range(handle,
-                                                         (const uint8_t*)start_key.data(), start_key.size(),
+                                                         start_key_data, start_key_len,
                                                          end_key_data, end_key_len,
+                                                         begin_offset, begin_or_equal ? 1 : 0,
+                                                         end_offset, end_or_equal ? 1 : 0,
                                                          limit, cf);
         if (!future) {
             throw std::runtime_error("Failed to create get_range future");

@@ -122,6 +122,10 @@ KvFutureHandle kv_transaction_delete(KvTransactionHandle transaction,
 KvFutureHandle kv_transaction_get_range(KvTransactionHandle transaction,
                                         const uint8_t* start_key_data, int start_key_length,
                                         const uint8_t* end_key_data, int end_key_length,
+                                        int begin_offset,
+                                        int begin_or_equal,    // 1 for true, 0 for false
+                                        int end_offset,
+                                        int end_or_equal,      // 1 for true, 0 for false
                                         int limit, const char* column_family);
 KvFutureHandle kv_transaction_commit(KvTransactionHandle transaction);
 KvFutureHandle kv_transaction_commit_with_results(KvTransactionHandle transaction);
@@ -134,6 +138,10 @@ KvFutureHandle kv_read_transaction_get(KvReadTransactionHandle transaction,
 KvFutureHandle kv_read_transaction_get_range(KvReadTransactionHandle transaction,
                                              const uint8_t* start_key_data, int start_key_length,
                                              const uint8_t* end_key_data, int end_key_length,
+                                             int begin_offset,
+                                             int begin_or_equal,    // 1 for true, 0 for false
+                                             int end_offset,
+                                             int end_or_equal,      // 1 for true, 0 for false
                                              int limit, const char* column_family);
 void kv_read_transaction_destroy(KvReadTransactionHandle transaction);
 

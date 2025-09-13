@@ -943,10 +943,14 @@ pub extern "C" fn kv_read_transaction_get_range(
     start_key_length: c_int,
     end_key_data: *const u8,
     end_key_length: c_int,
+    begin_offset: c_int,
+    begin_or_equal: c_int,  // 1 for true, 0 for false
+    end_offset: c_int,
+    end_or_equal: c_int,    // 1 for true, 0 for false
     limit: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || start_key_data.is_null() || start_key_length < 0 {
+    if transaction.is_null() {
         return ptr::null_mut();
     }
     
@@ -956,11 +960,16 @@ pub extern "C" fn kv_read_transaction_get_range(
         None => return ptr::null_mut(),
     };
     
-    let start_key_bytes = unsafe {
-        slice::from_raw_parts(start_key_data, start_key_length as usize)
+    let start_key_opt = if start_key_data.is_null() || start_key_length <= 0 {
+        None
+    } else {
+        let start_key_bytes = unsafe {
+            slice::from_raw_parts(start_key_data, start_key_length as usize)
+        };
+        if start_key_bytes.is_empty() { None } else { Some(start_key_bytes) }
     };
     
-    let end_key_bytes = if end_key_data.is_null() || end_key_length <= 0 {
+    let end_key_opt = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
         Some(unsafe {
@@ -979,9 +988,18 @@ pub extern "C" fn kv_read_transaction_get_range(
         }
     };
     
-    let limit_val = if limit > 0 { Some(limit as usize) } else { None };
+    let limit_val = if limit > 0 { Some(limit as u32) } else { None };
     
-    let future = tx_arc.snapshot_get_range(start_key_bytes, end_key_bytes, limit_val.map(|l| l as u32), cf_str);
+    let future = tx_arc.snapshot_get_range(
+        start_key_opt, 
+        end_key_opt, 
+        Some(begin_offset), 
+        Some(begin_or_equal != 0), 
+        Some(end_offset), 
+        Some(end_or_equal != 0), 
+        limit_val, 
+        cf_str
+    );
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -1042,10 +1060,14 @@ pub extern "C" fn kv_transaction_get_range(
     start_key_length: c_int,
     end_key_data: *const u8,
     end_key_length: c_int,
+    begin_offset: c_int,
+    begin_or_equal: c_int,  // 1 for true, 0 for false
+    end_offset: c_int,
+    end_or_equal: c_int,    // 1 for true, 0 for false
     limit: c_int,
     column_family: *const c_char,
 ) -> KvFutureHandle {
-    if transaction.is_null() || start_key_data.is_null() || start_key_length < 0 {
+    if transaction.is_null() {
         return ptr::null_mut();
     }
     
@@ -1055,11 +1077,16 @@ pub extern "C" fn kv_transaction_get_range(
         None => return ptr::null_mut(),
     };
     
-    let start_key_bytes = unsafe {
-        slice::from_raw_parts(start_key_data, start_key_length as usize)
+    let start_key_opt = if start_key_data.is_null() || start_key_length <= 0 {
+        None
+    } else {
+        let start_key_bytes = unsafe {
+            slice::from_raw_parts(start_key_data, start_key_length as usize)
+        };
+        if start_key_bytes.is_empty() { None } else { Some(start_key_bytes) }
     };
     
-    let end_key_bytes = if end_key_data.is_null() || end_key_length <= 0 {
+    let end_key_opt = if end_key_data.is_null() || end_key_length <= 0 {
         None
     } else {
         Some(unsafe {
@@ -1080,7 +1107,16 @@ pub extern "C" fn kv_transaction_get_range(
     
     let limit_val = if limit > 0 { Some(limit as u32) } else { None };
     
-    let future = tx_arc.lock().get_range(start_key_bytes, end_key_bytes, limit_val, cf_str);
+    let future = tx_arc.lock().get_range(
+        start_key_opt, 
+        end_key_opt, 
+        Some(begin_offset), 
+        Some(begin_or_equal != 0), 
+        Some(end_offset), 
+        Some(end_or_equal != 0), 
+        limit_val, 
+        cf_str
+    );
     let future_ptr = KvFuturePtr::new(future);
     
     let future_id = next_id();
@@ -1626,6 +1662,7 @@ pub extern "C" fn kv_transaction_abort(transaction: KvTransactionHandle) -> KvFu
     
     future_id as KvFutureHandle
 }
+
 
 /// Cleanup and shutdown the library
 #[no_mangle]

@@ -470,7 +470,9 @@ async fn test_range_operations_integration() {
         assert!(commit_resp.success, "Setting up test data should succeed: {:?}", commit_resp.error);
         
         // Test 1: Basic range query with prefix
-        let range_req = GetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, Some(10), None::<String>);
+        let mut end_key = "key".as_bytes().to_vec();
+        end_key.push(0xFF);
+        let range_req = GetRangeRequest::new(Some("key".as_bytes().to_vec()), Some(end_key), Some(0), Some(true), Some(0), Some(false), Some(10), None::<String>);
         let range_resp = client.get_range(range_req).expect("Failed to get range");
         assert!(range_resp.success, "Range query should succeed: {:?}", range_resp.error);
         assert_eq!(range_resp.key_values.len(), 4, "Should find 4 keys starting with 'key'");
@@ -483,7 +485,7 @@ async fn test_range_operations_integration() {
         }
         
         // Test 2: Range query with start and end key (exclusive end)
-        let bounded_range_req = GetRangeRequest::new("key001".as_bytes().to_vec(), Some("key003".as_bytes().to_vec()), Some(10), None::<String>);
+        let bounded_range_req = GetRangeRequest::new(Some("key001".as_bytes().to_vec()), Some("key003".as_bytes().to_vec()), Some(0), Some(true), Some(0), Some(false), Some(10), None::<String>);
         let bounded_range_resp = client.get_range(bounded_range_req).expect("Failed to get bounded range");
         assert!(bounded_range_resp.success, "Bounded range query should succeed: {:?}", bounded_range_resp.error);
         assert_eq!(bounded_range_resp.key_values.len(), 2, "Should find 2 keys between key001 and key003 (exclusive)");
@@ -491,7 +493,9 @@ async fn test_range_operations_integration() {
         assert_eq!(bounded_range_resp.key_values[1].key, "key002".as_bytes().to_vec());
         
         // Test 3: Range query with limit
-        let limited_range_req = GetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, Some(2), None::<String>);
+        let mut limited_end_key = "key".as_bytes().to_vec();
+        limited_end_key.push(0xFF);
+        let limited_range_req = GetRangeRequest::new(Some("key".as_bytes().to_vec()), Some(limited_end_key), Some(0), Some(true), Some(0), Some(false), Some(2), None::<String>);
         let limited_range_resp = client.get_range(limited_range_req).expect("Failed to get limited range");
         assert!(limited_range_resp.success, "Limited range query should succeed: {:?}", limited_range_resp.error);
         assert_eq!(limited_range_resp.key_values.len(), 2, "Should respect limit of 2");
@@ -503,13 +507,17 @@ async fn test_range_operations_integration() {
         let new_read_version_resp = client.get_read_version(new_read_version_req).expect("Failed to get new read version");
         let new_read_version = new_read_version_resp.read_version;
         
-        let snapshot_range_req = SnapshotGetRangeRequest::new("key".as_bytes().to_vec(), None::<Vec<u8>>, new_read_version, Some(10), None::<String>);
+        let mut snapshot_end_key = "key".as_bytes().to_vec();
+        snapshot_end_key.push(0xFF);
+        let snapshot_range_req = SnapshotGetRangeRequest::new(Some("key".as_bytes().to_vec()), Some(snapshot_end_key), Some(0), Some(true), Some(0), Some(false), new_read_version, Some(10), None::<String>);
         let snapshot_range_resp = client.snapshot_get_range(snapshot_range_req).expect("Failed to get snapshot range");
         assert!(snapshot_range_resp.success, "Snapshot range query should succeed: {:?}", snapshot_range_resp.error);
         assert_eq!(snapshot_range_resp.key_values.len(), 4, "Should find 4 keys in snapshot");
         
         // Test 5: Empty range query (no matching keys)
-        let empty_range_req = GetRangeRequest::new("nonexistent".as_bytes().to_vec(), None::<Vec<u8>>, Some(10), None::<String>);
+        let mut empty_end_key = "nonexistent".as_bytes().to_vec();
+        empty_end_key.push(0xFF);
+        let empty_range_req = GetRangeRequest::new(Some("nonexistent".as_bytes().to_vec()), Some(empty_end_key), Some(0), Some(true), Some(0), Some(false), Some(10), None::<String>);
         let empty_range_resp = client.get_range(empty_range_req).expect("Failed to get empty range");
         assert!(empty_range_resp.success, "Empty range query should succeed");
         assert_eq!(empty_range_resp.key_values.len(), 0, "Should find no keys with nonexistent prefix");

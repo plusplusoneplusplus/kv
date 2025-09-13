@@ -217,39 +217,23 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
 
     // Range operations
     fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
+        // Apply FoundationDB-style defaults for missing keys
+        let begin_key = req.begin_key.as_deref().unwrap_or(b""); // Empty string = beginning of keyspace
+        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]); // Single 0xFF = end of keyspace
+        
         if self.verbose {
-            debug!("Get range: start_key={:?}, end_key={:?}, limit={}, column_family={:?}",
-                   req.start_key, req.end_key, req.limit.unwrap_or(1000), req.column_family);
+            debug!("Get range: begin_key={:?}, end_key={:?}, begin_offset={}, begin_or_equal={}, end_offset={}, end_or_equal={}, limit={}, column_family={:?}",
+                   begin_key, end_key, req.begin_offset.unwrap_or(0), req.begin_or_equal.unwrap_or(true), 
+                   req.end_offset.unwrap_or(0), req.end_or_equal.unwrap_or(false), req.limit.unwrap_or(1000), req.column_family);
         }
         
-        // When end_key is None, create an appropriate upper bound for prefix matching
-        // For start_key "key", we want to find all keys starting with "key"
-        // So we increment the last byte to get the next prefix: "key" -> "kez"
-        let default_end_key = {
-            let mut end_key = req.start_key.clone();
-            // Try to increment the last byte
-            if let Some(last_byte) = end_key.last_mut() {
-                if *last_byte < 0xFF {
-                    *last_byte += 1;
-                } else {
-                    // If last byte is 0xFF, append 0x00 to get next prefix
-                    end_key.push(0x00);
-                }
-            } else {
-                // Empty start key - use [0xFF] as end
-                end_key = vec![0xFF];
-            }
-            end_key
-        };
-        let end_key_slice = req.end_key.as_deref().unwrap_or(&default_end_key);
-        
         let result = self.database.get_range(
-            &req.start_key,
-            end_key_slice,
-            0,  // begin_offset
-            true,  // begin_or_equal
-            0,  // end_offset 
-            false,  // end_or_equal
+            begin_key,
+            end_key,
+            req.begin_offset.unwrap_or(0),
+            req.begin_or_equal.unwrap_or(true),
+            req.end_offset.unwrap_or(0),
+            req.end_or_equal.unwrap_or(false),
             req.limit
         );
         
@@ -296,38 +280,23 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
     }
 
     fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
+        // Apply FoundationDB-style defaults for missing keys
+        let begin_key = req.begin_key.as_deref().unwrap_or(b""); // Empty string = beginning of keyspace
+        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]); // Single 0xFF = end of keyspace
+        
         if self.verbose {
-            debug!("Snapshot get range: start_key={:?}, end_key={:?}, read_version={}, limit={}, column_family={:?}",
-                   req.start_key, req.end_key, req.read_version, req.limit.unwrap_or(1000), req.column_family);
+            debug!("Snapshot get range: begin_key={:?}, end_key={:?}, begin_offset={}, begin_or_equal={}, end_offset={}, end_or_equal={}, read_version={}, limit={}, column_family={:?}",
+                   begin_key, end_key, req.begin_offset.unwrap_or(0), req.begin_or_equal.unwrap_or(true), 
+                   req.end_offset.unwrap_or(0), req.end_or_equal.unwrap_or(false), req.read_version, req.limit.unwrap_or(1000), req.column_family);
         }
         
-        // When end_key is None, create an appropriate upper bound for prefix matching
-        // Same logic as regular get_range
-        let default_end_key = {
-            let mut end_key = req.start_key.clone();
-            // Try to increment the last byte
-            if let Some(last_byte) = end_key.last_mut() {
-                if *last_byte < 0xFF {
-                    *last_byte += 1;
-                } else {
-                    // If last byte is 0xFF, append 0x00 to get next prefix
-                    end_key.push(0x00);
-                }
-            } else {
-                // Empty start key - use [0xFF] as end
-                end_key = vec![0xFF];
-            }
-            end_key
-        };
-        let end_key_slice = req.end_key.as_deref().unwrap_or(&default_end_key);
-        
         let result = self.database.snapshot_get_range(
-            &req.start_key,
-            end_key_slice,
-            0,  // begin_offset
-            true,  // begin_or_equal
-            0,  // end_offset
-            false,  // end_or_equal
+            begin_key,
+            end_key,
+            req.begin_offset.unwrap_or(0),
+            req.begin_or_equal.unwrap_or(true),
+            req.end_offset.unwrap_or(0),
+            req.end_or_equal.unwrap_or(false),
             req.read_version as u64,
             req.limit
         );
