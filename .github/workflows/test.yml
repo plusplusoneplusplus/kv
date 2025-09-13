@@ -10,22 +10,43 @@ jobs:
   test-rust:
     name: Test Rust
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Cache system dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /var/cache/apt/archives
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: system-deps-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+        restore-keys: |
+          system-deps-${{ runner.os }}-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
         cache: true
-        cache-directories: rust/target
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+    - name: Cache CMake build directory
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          rust/src/generated
+          nodejs/generated
+        key: cmake-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'thrift/**', 'proto/**') }}
+        restore-keys: |
+          cmake-build-${{ runner.os }}-
 
     - name: Generate protocol files
       run: |
@@ -55,25 +76,51 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+
+    - name: Cache system dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /var/cache/apt/archives
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: system-deps-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+        restore-keys: |
+          system-deps-${{ runner.os }}-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
         components: rustfmt, clippy
         cache: true
-        cache-directories: rust/target
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+
+    - name: Cache CMake build directory
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          rust/src/generated
+          nodejs/generated
+        key: cmake-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'thrift/**', 'proto/**') }}
+        restore-keys: |
+          cmake-build-${{ runner.os }}-
+
     - name: Generate protocol files
       run: |
         cmake -B build -S .
         cmake --build build --target generate_thrift
+
     - name: Build Thrift server (debug)
       run: |
         cd rust
         cargo build --bin thrift-server
+
     - name: Run benchmark crate tests
       env:
         THRIFT_SERVER_BIN: ./rust/target/debug/thrift-server
