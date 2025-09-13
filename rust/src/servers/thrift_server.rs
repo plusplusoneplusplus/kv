@@ -250,13 +250,15 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
             Ok(GetRangeResponse::new(
                 key_values,
                 true,
-                None
+                None,
+                result.has_more
             ))
         } else {
             Ok(GetRangeResponse::new(
                 Vec::new(),
                 false,
-                Some(result.error)
+                Some(result.error),
+                false
             ))
         }
     }
@@ -314,13 +316,15 @@ impl TransactionalKVSyncHandler for TransactionalKvStoreThriftHandler {
             Ok(SnapshotGetRangeResponse::new(
                 key_values,
                 true,
-                None
+                None,
+                result.has_more
             ))
         } else {
             Ok(SnapshotGetRangeResponse::new(
                 Vec::new(),
                 false,
-                Some(result.error)
+                Some(result.error),
+                false
             ))
         }
     }

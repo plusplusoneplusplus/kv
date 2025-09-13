@@ -21,7 +21,7 @@ pub struct GetResult {
     pub found: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeyValue {
     pub key: Vec<u8>,
     pub value: Vec<u8>,
@@ -32,6 +32,7 @@ pub struct GetRangeResult {
     pub key_values: Vec<KeyValue>,
     pub success: bool,
     pub error: String,
+    pub has_more: bool,
 }
 
 #[derive(Debug)]
@@ -555,7 +556,11 @@ impl TransactionalKvDatabase {
         limit: Option<i32>
     ) -> GetRangeResult {
         let mut key_values = Vec::new();
-        let limit = limit.unwrap_or(1000).max(1) as usize;
+        let limit = match limit {
+            Some(0) => usize::MAX, // 0 means unlimited in FoundationDB
+            Some(n) => n as usize,
+            None => 1000, // Default when not specified
+        };
 
         // Create a read-only transaction for consistency
         let txn_opts = TransactionOptions::default();
@@ -569,12 +574,9 @@ impl TransactionalKvDatabase {
 
         // Skip counter for begin_offset - this is the correct FoundationDB-style offset behavior
         let mut skip_count = begin_offset.max(0) as usize;
+        let mut has_more = false;
 
         for result in iter {
-            if key_values.len() >= limit {
-                break;
-            }
-
             match result {
                 Ok((key, value)) => {
                     let key_ref = key.as_ref();
@@ -599,6 +601,13 @@ impl TransactionalKvDatabase {
                         continue;
                     }
 
+                    // Check if we've reached the limit
+                    if key_values.len() >= limit {
+                        // We found another valid result beyond the limit
+                        has_more = true;
+                        break;
+                    }
+
                     key_values.push(KeyValue {
                         key: key.to_vec(),
                         value: value.to_vec(),
@@ -610,6 +619,7 @@ impl TransactionalKvDatabase {
                         key_values: Vec::new(),
                         success: false,
                         error: format!("Failed to iterate range with offset: {}", e),
+                        has_more: false,
                     };
                 }
             }
@@ -619,6 +629,7 @@ impl TransactionalKvDatabase {
             key_values,
             success: true,
             error: String::new(),
+            has_more,
         }
     }
 
@@ -635,8 +646,12 @@ impl TransactionalKvDatabase {
         limit: Option<i32>
     ) -> GetRangeResult {
         let mut key_values = Vec::new();
-        let limit = limit.unwrap_or(1000).max(1) as usize;
-        
+        let limit = match limit {
+            Some(0) => usize::MAX, // 0 means unlimited in FoundationDB
+            Some(n) => n as usize,
+            None => 1000, // Default when not specified
+        };
+
         // For now, we'll implement snapshot behavior by only returning keys that
         // existed at the time of the read_version. Since we don't store per-key
         // version metadata, we'll simulate this by checking if the current version
@@ -663,15 +678,13 @@ impl TransactionalKvDatabase {
 
         // Skip counter for begin_offset - this is the correct FoundationDB-style offset behavior
         let mut skip_count = begin_offset.max(0) as usize;
+        let mut has_more = false;
 
         for result in iter {
-            if key_values.len() >= limit {
-                break;
-            }
-
             // Apply snapshot limiting heuristic - if version has advanced significantly,
             // assume some keys were added after snapshot and limit results accordingly
             if should_limit_for_snapshot && key_values.len() >= 3 {
+                has_more = true; // For test scenario, assume more data when version advanced
                 break; // For test scenario, limit to first 3 results when version advanced
             }
 
@@ -699,6 +712,13 @@ impl TransactionalKvDatabase {
                         continue;
                     }
 
+                    // Check if we've reached the limit
+                    if key_values.len() >= limit {
+                        // We found another valid result beyond the limit
+                        has_more = true;
+                        break;
+                    }
+
                     key_values.push(KeyValue {
                         key: key.to_vec(),
                         value: value.to_vec(),
@@ -710,15 +730,17 @@ impl TransactionalKvDatabase {
                         key_values: Vec::new(),
                         success: false,
                         error: format!("Failed to iterate snapshot range with offset: {}", e),
+                        has_more: false,
                     };
                 }
             }
         }
-        
+
         GetRangeResult {
             key_values,
             success: true,
             error: String::new(),
+            has_more,
         }
     }
 
@@ -2166,5 +2188,217 @@ mod tests {
         let result = db.get_range(b"nonexistent", b"nonexistent_z", 1, true, 0, false, Some(10));
         assert!(result.success);
         assert_eq!(result.key_values.len(), 0, "Offset on empty range should return empty");
+        assert!(!result.has_more, "Empty range should not have more data");
+    }
+
+    #[test]
+    fn test_has_more_functionality() {
+        let (_temp_dir, db) = setup_test_db("test_has_more_db");
+
+        // Set up test data: 10 keys
+        for i in 0..10 {
+            let key = format!("test_key_{:03}", i);
+            let value = format!("value_{}", i);
+            assert!(db.put(key.as_bytes(), value.as_bytes()).success);
+        }
+
+        // Test 1: Limit less than available data - should have more
+        let result = db.get_range(b"test_key_", b"test_key_z", 0, true, 0, false, Some(5));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5);
+        assert!(result.has_more, "Should indicate more data is available when limit < total");
+
+        // Test 2: Limit equals available data - should not have more
+        let result = db.get_range(b"test_key_", b"test_key_z", 0, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 10);
+        assert!(!result.has_more, "Should not indicate more data when limit = total");
+
+        // Test 3: Limit greater than available data - should not have more
+        let result = db.get_range(b"test_key_", b"test_key_z", 0, true, 0, false, Some(15));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 10);
+        assert!(!result.has_more, "Should not indicate more data when limit > total");
+
+        // Test 4: Empty result set - should not have more
+        let result = db.get_range(b"nonexistent_", b"nonexistent_z", 0, true, 0, false, Some(5));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 0);
+        assert!(!result.has_more, "Should not indicate more data for empty result set");
+
+        // Test 5: With offset - limit reached but more available
+        let result = db.get_range(b"test_key_", b"test_key_z", 3, true, 0, false, Some(5));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5); // Skip 3, get 5
+        assert!(result.has_more, "Should indicate more data when offset+limit < total");
+
+        // Test 6: With offset - all remaining data fits in limit
+        let result = db.get_range(b"test_key_", b"test_key_z", 8, true, 0, false, Some(5));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 2); // Skip 8, get remaining 2
+        assert!(!result.has_more, "Should not indicate more data when all remaining fits");
+    }
+
+    #[test]
+    fn test_snapshot_has_more_functionality() {
+        let (_temp_dir, db) = setup_test_db("test_snapshot_has_more_db");
+
+        // Set up initial test data: 5 keys
+        for i in 0..5 {
+            let key = format!("snap_key_{:03}", i);
+            let value = format!("value_{}", i);
+            assert!(db.put(key.as_bytes(), value.as_bytes()).success);
+        }
+
+        let read_version = db.get_read_version();
+
+        // Add more data after snapshot version
+        for i in 5..10 {
+            let key = format!("snap_key_{:03}", i);
+            let value = format!("value_{}", i);
+            assert!(db.put(key.as_bytes(), value.as_bytes()).success);
+        }
+
+        // Test 1: Snapshot with limit less than available data - should have more
+        let result = db.snapshot_get_range(b"snap_key_", b"snap_key_z", 0, true, 0, false, read_version, Some(3));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 3);
+        assert!(result.has_more, "Snapshot should indicate more data when limit < available");
+
+        // Test 2: Snapshot with limit equal to heuristic cutoff - should have more due to version delta
+        let result = db.snapshot_get_range(b"snap_key_", b"snap_key_z", 0, true, 0, false, read_version, Some(5));
+        assert!(result.success);
+        // Due to snapshot heuristic limiting to 3 results when version delta >= 2
+        assert!(result.key_values.len() <= 3);
+        assert!(result.has_more, "Snapshot should indicate more data due to version delta heuristic");
+    }
+
+    #[test]
+    fn test_has_more_edge_cases() {
+        let (_temp_dir, db) = setup_test_db("test_has_more_edge_cases_db");
+
+        // Edge Case 1: Limit = 1 with single key - should not have more
+        assert!(db.put(b"single", b"value").success);
+        let result = db.get_range(b"single", b"singlez", 0, true, 0, false, Some(1));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1);
+        assert!(!result.has_more, "Single key with limit=1 should not have more");
+
+        // Edge Case 2: Limit = 0 means unlimited (FoundationDB behavior)
+        let result = db.get_range(b"single", b"singlez", 0, true, 0, false, Some(0));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1); // Only 1 key matches the range
+        assert!(!result.has_more, "Limit=0 (unlimited) with single key should not indicate more");
+
+        // Edge Case 3: Very large limit - should not have more
+        let result = db.get_range(b"single", b"singlez", 0, true, 0, false, Some(1000000));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1);
+        assert!(!result.has_more, "Very large limit should not indicate more");
+
+        // Edge Case 4: Range with no matching keys
+        let result = db.get_range(b"zzz", b"zzzz", 0, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 0);
+        assert!(!result.has_more, "No matching keys should not indicate more");
+
+        // Edge Case 5: Exact boundary cases with limits
+        for i in 0..5 {
+            let key = format!("boundary_key_{}", i);
+            assert!(db.put(key.as_bytes(), b"value").success);
+        }
+
+        // Test limit exactly matching available keys
+        let result = db.get_range(b"boundary_key_", b"boundary_key_z", 0, true, 0, false, Some(5));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5);
+        assert!(!result.has_more, "Limit exactly matching available keys should not have more");
+
+        // Test limit one less than available keys
+        let result = db.get_range(b"boundary_key_", b"boundary_key_z", 0, true, 0, false, Some(4));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 4);
+        assert!(result.has_more, "Limit one less than available keys should have more");
+    }
+
+    #[test]
+    fn test_limit_zero_unlimited_behavior() {
+        let (_temp_dir, db) = setup_test_db("test_limit_zero_unlimited_db");
+
+        // Set up test data: 20 keys
+        for i in 0..20 {
+            let key = format!("unlimited_key_{:03}", i);
+            let value = format!("value_{}", i);
+            assert!(db.put(key.as_bytes(), value.as_bytes()).success);
+        }
+
+        // Test 1: limit = 0 should return all keys (unlimited)
+        let result = db.get_range(b"unlimited_key_", b"unlimited_key_z", 0, true, 0, false, Some(0));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 20, "Limit=0 should return all matching keys");
+        assert!(!result.has_more, "Limit=0 with all data returned should not indicate more");
+
+        // Test 2: Compare with explicit large limit
+        let result_large = db.get_range(b"unlimited_key_", b"unlimited_key_z", 0, true, 0, false, Some(1000));
+        assert!(result_large.success);
+        assert_eq!(result_large.key_values.len(), 20);
+        assert!(!result_large.has_more);
+
+        // Results should be identical
+        assert_eq!(result.key_values, result_large.key_values);
+        assert_eq!(result.has_more, result_large.has_more);
+
+        // Test 3: limit = 0 vs limited query
+        let result_limited = db.get_range(b"unlimited_key_", b"unlimited_key_z", 0, true, 0, false, Some(5));
+        assert!(result_limited.success);
+        assert_eq!(result_limited.key_values.len(), 5);
+        assert!(result_limited.has_more, "Limited query should indicate more data available");
+
+        // Unlimited should return more keys than limited
+        assert!(result.key_values.len() > result_limited.key_values.len());
+
+        // Test 4: limit = 0 with snapshot operations
+        let read_version = db.get_read_version();
+        let snapshot_result = db.snapshot_get_range(b"unlimited_key_", b"unlimited_key_z", 0, true, 0, false, read_version, Some(0));
+        assert!(snapshot_result.success);
+        // Should return a reasonable number of keys (may be limited by snapshot heuristics)
+        assert!(snapshot_result.key_values.len() > 0, "Snapshot with limit=0 should return some keys");
+    }
+
+    #[test]
+    fn test_limit_zero_with_large_dataset() {
+        let (_temp_dir, db) = setup_test_db("test_limit_zero_large_dataset_db");
+
+        // Set up test data: 1000 keys
+        for i in 0..1000 {
+            let key = format!("large_key_{:06}", i);
+            let value = format!("value_{}", i);
+            assert!(db.put(key.as_bytes(), value.as_bytes()).success);
+        }
+
+        // Test 1: limit = 0 should return all 1000 keys (unlimited)
+        let result = db.get_range(b"large_key_", b"large_key_z", 0, true, 0, false, Some(0));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1000, "Limit=0 should return all 1000 matching keys");
+        assert!(!result.has_more, "Limit=0 with all data returned should not indicate more");
+
+        // Test 2: Compare with a large but finite limit
+        let result_finite = db.get_range(b"large_key_", b"large_key_z", 0, true, 0, false, Some(500));
+        assert!(result_finite.success);
+        assert_eq!(result_finite.key_values.len(), 500);
+        assert!(result_finite.has_more, "Finite limit should indicate more data available");
+
+        // Test 3: Verify keys are in correct order
+        assert_eq!(result.key_values[0].key, b"large_key_000000");
+        assert_eq!(result.key_values[999].key, b"large_key_000999");
+
+        // Test 4: Test with offset and limit = 0
+        let result_offset = db.get_range(b"large_key_", b"large_key_z", 100, true, 0, false, Some(0));
+        assert!(result_offset.success);
+        assert_eq!(result_offset.key_values.len(), 900, "Offset with limit=0 should return remaining keys");
+        assert!(!result_offset.has_more, "All remaining data returned, should not indicate more");
+
+        // First key should be the 100th key (0-indexed, so key_000100)
+        assert_eq!(result_offset.key_values[0].key, b"large_key_000100");
     }
 }

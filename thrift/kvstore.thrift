@@ -55,7 +55,8 @@ struct KeyValue {
 struct GetRangeResponse {
     1: required list<KeyValue> key_values,
     2: required bool success,
-    3: optional string error
+    3: optional string error,
+    4: required bool has_more = false
 }
 
 // Legacy snapshot operations (for backward compatibility)
@@ -86,7 +87,8 @@ struct SnapshotGetRangeRequest {
 struct SnapshotGetRangeResponse {
     1: required list<KeyValue> key_values,
     2: required bool success,
-    3: optional string error
+    3: optional string error,
+    4: required bool has_more = false
 }
 
 // Legacy stub structures (for backward compatibility - return errors)
