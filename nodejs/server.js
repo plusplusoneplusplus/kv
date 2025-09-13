@@ -226,10 +226,10 @@ app.delete('/api/admin/clear-all', async (req, res) => {
         const { confirmation } = req.body;
         
         // Require explicit confirmation
-        if (confirmation !== 'DELETE_ALL_DATA') {
-            return res.status(400).json({ 
-                error: 'Missing confirmation', 
-                details: 'You must send {"confirmation": "DELETE_ALL_DATA"} in the request body' 
+        if (confirmation !== 'DELETE ALL DATA') {
+            return res.status(400).json({
+                error: 'Missing confirmation',
+                details: 'You must send {"confirmation": "DELETE ALL DATA"} in the request body'
             });
         }
         

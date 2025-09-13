@@ -119,7 +119,7 @@ async function executeClearAll() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ confirmation: 'DELETE_ALL_DATA' })
+            body: JSON.stringify({ confirmation: confirmationInput.value })
         });
         
         const result = await response.json();
