@@ -10,53 +10,66 @@ jobs:
   build-rust:
     name: Build Rust
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Cache system dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /var/cache/apt/archives
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: system-deps-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+        restore-keys: |
+          system-deps-${{ runner.os }}-
+
+    - name: Install Protocol Buffers and Thrift
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler thrift-compiler build-essential netcat-openbsd librocksdb-dev cmake libc6-dev
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
         cache: true
-        cache-directories: |
-          rust/target
-          rust/client/target
 
-    - name: Install Protocol Buffers and Thrift
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler thrift-compiler
+    - name: Cache CMake build directory
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          rust/src/generated
+          nodejs/generated
+        key: cmake-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'thrift/**', 'proto/**') }}
+        restore-keys: |
+          cmake-build-${{ runner.os }}-
+
+    - name: Cache GoogleTest
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/_deps/googletest-*
+        key: googletest-${{ runner.os }}-release-1.12.1
+        restore-keys: |
+          googletest-${{ runner.os }}-
 
     - name: Generate protocol files
       run: |
         cmake -B build -S .
         cmake --build build --target generate_thrift
 
-    - name: Build Rust server
+    - name: Build Rust components
       run: |
         cd rust
-        cargo build --bin server
+        cargo build --bin server --bin thrift-server
 
-    - name: Build Rust Thrift server
+    - name: Build FFI library and tests
       run: |
-        cd rust
-        cargo build --bin thrift-server
-
-    - name: Install system dependencies for FFI tests
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential netcat-openbsd librocksdb-dev cmake thrift-compiler libc6-dev
-
-    - name: Clean build cache
-      run: |
-        rm -rf build/
-
-    - name: Build FFI tests
-      run: |
-        cmake -B build -S .
-        cmake --build build --target cpp_ffi_test --verbose
+        cmake --build build --target rust_client_lib cpp_ffi_test
 
     - name: Start Thrift server for tests
       run: |
@@ -75,3 +88,8 @@ jobs:
       run: |
         cd build/bin
         ./cpp_ffi_test
+
+    - name: Run Rust tests
+      run: |
+        cd rust
+        cargo test --workspace
