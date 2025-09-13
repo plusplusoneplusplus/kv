@@ -545,9 +545,9 @@ impl TransactionalKvDatabase {
 
 
     /// FoundationDB-style range query with offset-based bounds and inclusive/exclusive controls
-    pub fn get_range(&self, 
+    pub fn get_range(&self,
         begin_key: &[u8],
-        end_key: &[u8], 
+        end_key: &[u8],
         begin_offset: i32,
         begin_or_equal: bool,
         end_offset: i32,
@@ -556,33 +556,35 @@ impl TransactionalKvDatabase {
     ) -> GetRangeResult {
         let mut key_values = Vec::new();
         let limit = limit.unwrap_or(1000).max(1) as usize;
-        
+
         // Create a read-only transaction for consistency
         let txn_opts = TransactionOptions::default();
         let txn = self.db.transaction_opt(&Default::default(), &txn_opts);
-        
-        // Calculate effective begin and end keys based on offsets
-        let effective_begin = self.calculate_offset_key(begin_key, begin_offset);
+
+        // Calculate effective end key based on end_offset (still needed for end boundary)
         let effective_end = self.calculate_offset_key(end_key, end_offset);
-        
-        // Use iterator starting from the effective begin key
-        let iter = txn.iterator(rocksdb::IteratorMode::From(&effective_begin, rocksdb::Direction::Forward));
-        
+
+        // Use iterator starting from the original begin key (not offset-modified)
+        let iter = txn.iterator(rocksdb::IteratorMode::From(begin_key, rocksdb::Direction::Forward));
+
+        // Skip counter for begin_offset - this is the correct FoundationDB-style offset behavior
+        let mut skip_count = begin_offset.max(0) as usize;
+
         for result in iter {
             if key_values.len() >= limit {
                 break;
             }
-            
+
             match result {
                 Ok((key, value)) => {
                     let key_ref = key.as_ref();
-                    
+
                     // Check begin boundary
-                    let begin_comparison = key_ref.cmp(&effective_begin);
+                    let begin_comparison = key_ref.cmp(begin_key);
                     if !begin_or_equal && begin_comparison == std::cmp::Ordering::Equal {
                         continue; // Skip if begin is exclusive and key equals begin
                     }
-                    
+
                     // Check end boundary
                     let end_comparison = key_ref.cmp(&effective_end);
                     match end_comparison {
@@ -590,7 +592,13 @@ impl TransactionalKvDatabase {
                         std::cmp::Ordering::Equal if !end_or_equal => break, // Key equals end but end is exclusive
                         _ => {} // Key is within range
                     }
-                    
+
+                    // FoundationDB-style offset: skip the first N matching results
+                    if skip_count > 0 {
+                        skip_count -= 1;
+                        continue;
+                    }
+
                     key_values.push(KeyValue {
                         key: key.to_vec(),
                         value: value.to_vec(),
@@ -606,7 +614,7 @@ impl TransactionalKvDatabase {
                 }
             }
         }
-        
+
         GetRangeResult {
             key_values,
             success: true,
@@ -647,34 +655,36 @@ impl TransactionalKvDatabase {
         let mut read_opts = ReadOptions::default();
         read_opts.set_snapshot(&snapshot);
         
-        // Calculate effective begin and end keys based on offsets
-        let effective_begin = self.calculate_offset_key(begin_key, begin_offset);
+        // Calculate effective end key based on end_offset (still needed for end boundary)
         let effective_end = self.calculate_offset_key(end_key, end_offset);
-        
-        // Use iterator with snapshot for consistent range read
-        let iter = self.db.iterator_opt(rocksdb::IteratorMode::From(&effective_begin, rocksdb::Direction::Forward), read_opts);
-        
+
+        // Use iterator with snapshot for consistent range read, starting from original begin key
+        let iter = self.db.iterator_opt(rocksdb::IteratorMode::From(begin_key, rocksdb::Direction::Forward), read_opts);
+
+        // Skip counter for begin_offset - this is the correct FoundationDB-style offset behavior
+        let mut skip_count = begin_offset.max(0) as usize;
+
         for result in iter {
             if key_values.len() >= limit {
                 break;
             }
-            
+
             // Apply snapshot limiting heuristic - if version has advanced significantly,
             // assume some keys were added after snapshot and limit results accordingly
             if should_limit_for_snapshot && key_values.len() >= 3 {
                 break; // For test scenario, limit to first 3 results when version advanced
             }
-            
+
             match result {
                 Ok((key, value)) => {
                     let key_ref = key.as_ref();
-                    
+
                     // Check begin boundary
-                    let begin_comparison = key_ref.cmp(&effective_begin);
+                    let begin_comparison = key_ref.cmp(begin_key);
                     if !begin_or_equal && begin_comparison == std::cmp::Ordering::Equal {
                         continue; // Skip if begin is exclusive and key equals begin
                     }
-                    
+
                     // Check end boundary
                     let end_comparison = key_ref.cmp(&effective_end);
                     match end_comparison {
@@ -682,7 +692,13 @@ impl TransactionalKvDatabase {
                         std::cmp::Ordering::Equal if !end_or_equal => break, // Key equals end but end is exclusive
                         _ => {} // Key is within range
                     }
-                    
+
+                    // FoundationDB-style offset: skip the first N matching results
+                    if skip_count > 0 {
+                        skip_count -= 1;
+                        continue;
+                    }
+
                     key_values.push(KeyValue {
                         key: key.to_vec(),
                         value: value.to_vec(),
@@ -1989,5 +2005,261 @@ mod tests {
         let result = db.get_range(b"a", b"e", 0, true, 0, true, None);
         assert!(result.success);
         assert_eq!(result.key_values.len(), 5, "No limit should return all matching keys");
+    }
+
+    #[test]
+    fn test_get_range_with_offset() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_offset_db");
+        let config = Config::default();
+
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+
+        // Set up test data with a consistent prefix
+        let test_keys = vec![
+            b"prefix:a".to_vec(),
+            b"prefix:b".to_vec(),
+            b"prefix:c".to_vec(),
+            b"prefix:d".to_vec(),
+            b"prefix:e".to_vec(),
+        ];
+
+        for (i, key) in test_keys.iter().enumerate() {
+            let value = format!("value_{}", i);
+            let put_result = db.put(key, value.as_bytes());
+            assert!(put_result.success, "Failed to put key: {:?}", key);
+        }
+
+        // Test 1: No offset (offset = 0) should return all results
+        let result = db.get_range(b"prefix:", b"prefix:z", 0, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5, "No offset should return all 5 keys");
+        assert_eq!(result.key_values[0].key, b"prefix:a");
+        assert_eq!(result.key_values[4].key, b"prefix:e");
+
+        // Test 2: Offset = 1 should skip first result
+        let result = db.get_range(b"prefix:", b"prefix:z", 1, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 4, "Offset 1 should return 4 keys (5 - 1)");
+        assert_eq!(result.key_values[0].key, b"prefix:b", "Should start from second key");
+        assert_eq!(result.key_values[3].key, b"prefix:e");
+
+        // Test 3: Offset = 3 should skip first three results
+        let result = db.get_range(b"prefix:", b"prefix:z", 3, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 2, "Offset 3 should return 2 keys (5 - 3)");
+        assert_eq!(result.key_values[0].key, b"prefix:d", "Should start from fourth key");
+        assert_eq!(result.key_values[1].key, b"prefix:e");
+
+        // Test 4: Offset greater than available keys should return empty
+        let result = db.get_range(b"prefix:", b"prefix:z", 10, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 0, "Large offset should return no keys");
+
+        // Test 5: Offset + limit combination
+        let result = db.get_range(b"prefix:", b"prefix:z", 1, true, 0, false, Some(2));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 2, "Offset 1 + limit 2 should return 2 keys");
+        assert_eq!(result.key_values[0].key, b"prefix:b");
+        assert_eq!(result.key_values[1].key, b"prefix:c");
+    }
+
+    #[test]
+    fn test_get_range_with_binary_data_and_offset() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_binary_offset_db");
+        let config = Config::default();
+
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+
+        // Set up binary test data with null bytes
+        let binary_prefix = b"binary_test:\x00\x01";
+        for i in 0u8..5u8 {
+            let mut key = binary_prefix.to_vec();
+            key.push(i);
+            let value = format!("binary_value_{}", i);
+            let put_result = db.put(&key, value.as_bytes());
+            assert!(put_result.success, "Failed to put binary key");
+        }
+
+        // Create end key for prefix range
+        let mut end_key = binary_prefix.to_vec();
+        end_key.push(0xFF);
+
+        // Test 1: No offset with binary data
+        let result = db.get_range(binary_prefix, &end_key, 0, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5, "No offset should return all 5 binary keys");
+
+        // Test 2: Offset = 2 with binary data
+        let result = db.get_range(binary_prefix, &end_key, 2, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 3, "Offset 2 should return 3 binary keys (5 - 2)");
+
+        // Verify the correct keys are returned (should start from third key)
+        let mut expected_key = binary_prefix.to_vec();
+        expected_key.push(2); // Third key (index 2)
+        assert_eq!(result.key_values[0].key, expected_key);
+        assert_eq!(result.key_values[0].value, b"binary_value_2");
+    }
+
+    #[test]
+    fn test_get_range_with_u64_keys_and_offset() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_u64_offset_db");
+        let config = Config::default();
+
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+
+        // Set up u64 test data
+        let base_prefix = b"u64_test:";
+        for i in 0u64..10u64 {
+            let mut key = base_prefix.to_vec();
+            key.extend_from_slice(&i.to_be_bytes()); // 8-byte big-endian
+            let value = format!("u64_value_{}", i);
+            let put_result = db.put(&key, value.as_bytes());
+            assert!(put_result.success, "Failed to put u64 key");
+        }
+
+        // Create end key for prefix range
+        let mut end_key = base_prefix.to_vec();
+        end_key.push(0xFF);
+
+        // Test 1: No offset with u64 keys
+        let result = db.get_range(base_prefix, &end_key, 0, true, 0, false, Some(20));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 10, "No offset should return all 10 u64 keys");
+
+        // Test 2: Offset = 3 with u64 keys
+        let result = db.get_range(base_prefix, &end_key, 3, true, 0, false, Some(20));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 7, "Offset 3 should return 7 u64 keys (10 - 3)");
+
+        // Verify the correct keys are returned (should start from fourth key)
+        let mut expected_key = base_prefix.to_vec();
+        expected_key.extend_from_slice(&3u64.to_be_bytes()); // Fourth key (index 3)
+        assert_eq!(result.key_values[0].key, expected_key);
+        assert_eq!(result.key_values[0].value, b"u64_value_3");
+
+        // Test 3: Offset + limit with u64 keys
+        let result = db.get_range(base_prefix, &end_key, 2, true, 0, false, Some(4));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 4, "Offset 2 + limit 4 should return 4 u64 keys");
+
+        // Verify ordering: should be keys for indices 2, 3, 4, 5
+        for (i, kv) in result.key_values.iter().enumerate() {
+            let expected_u64 = (i + 2) as u64; // +2 due to offset
+            let mut expected_key = base_prefix.to_vec();
+            expected_key.extend_from_slice(&expected_u64.to_be_bytes());
+            let expected_value = format!("u64_value_{}", i + 2);
+
+            assert_eq!(kv.key, expected_key, "Key {} should match expected u64 key", i);
+            assert_eq!(kv.value, expected_value.as_bytes(), "Value {} should match expected u64 value", i);
+        }
+    }
+
+    #[test]
+    fn test_snapshot_get_range_with_offset() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_snapshot_offset_db");
+        let config = Config::default();
+
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+
+        // Set up test data
+        let test_keys = vec![
+            b"snap_prefix:a".to_vec(),
+            b"snap_prefix:b".to_vec(),
+            b"snap_prefix:c".to_vec(),
+            b"snap_prefix:d".to_vec(),
+            b"snap_prefix:e".to_vec(),
+        ];
+
+        for (i, key) in test_keys.iter().enumerate() {
+            let value = format!("snap_value_{}", i);
+            let put_result = db.put(key, value.as_bytes());
+            assert!(put_result.success, "Failed to put snapshot key: {:?}", key);
+        }
+
+        let read_version = db.get_read_version();
+
+        // Test 1: Snapshot with no offset
+        let result = db.snapshot_get_range(
+            b"snap_prefix:",
+            b"snap_prefix:z",
+            0, true, 0, false,
+            read_version,
+            Some(10)
+        );
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 5, "Snapshot no offset should return all 5 keys");
+
+        // Test 2: Snapshot with offset = 2
+        let result = db.snapshot_get_range(
+            b"snap_prefix:",
+            b"snap_prefix:z",
+            2, true, 0, false,
+            read_version,
+            Some(10)
+        );
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 3, "Snapshot offset 2 should return 3 keys (5 - 2)");
+        assert_eq!(result.key_values[0].key, b"snap_prefix:c", "Should start from third key");
+
+        // Test 3: Snapshot with offset + limit
+        let result = db.snapshot_get_range(
+            b"snap_prefix:",
+            b"snap_prefix:z",
+            1, true, 0, false,
+            read_version,
+            Some(2)
+        );
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 2, "Snapshot offset 1 + limit 2 should return 2 keys");
+        assert_eq!(result.key_values[0].key, b"snap_prefix:b");
+        assert_eq!(result.key_values[1].key, b"snap_prefix:c");
+    }
+
+    #[test]
+    fn test_offset_edge_cases() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_offset_edge_db");
+        let config = Config::default();
+
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+
+        // Set up minimal test data
+        let put_result = db.put(b"single_key", b"single_value");
+        assert!(put_result.success);
+
+        // Test 1: Negative offset should be treated as 0
+        let result = db.get_range(b"single", b"single_z", -5, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1, "Negative offset should be treated as 0");
+
+        // Test 2: Zero offset with single key
+        let result = db.get_range(b"single", b"single_z", 0, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 1, "Zero offset should return the key");
+
+        // Test 3: Offset equal to number of results
+        let result = db.get_range(b"single", b"single_z", 1, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 0, "Offset equal to result count should return empty");
+
+        // Test 4: Empty key range with offset
+        let result = db.get_range(b"nonexistent", b"nonexistent_z", 1, true, 0, false, Some(10));
+        assert!(result.success);
+        assert_eq!(result.key_values.len(), 0, "Offset on empty range should return empty");
     }
 }
