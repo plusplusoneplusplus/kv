@@ -645,3 +645,45 @@ impl ReadTransaction {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_commit_result_new() {
+        let keys = vec![b"key1".to_vec(), b"key2".to_vec()];
+        let values = vec![b"value1".to_vec(), b"value2".to_vec()];
+        let result = CommitResult::new(keys.clone(), values.clone());
+
+        assert_eq!(result.generated_keys, keys);
+        assert_eq!(result.generated_values, values);
+    }
+
+    #[test]
+    fn test_commit_result_empty() {
+        let result = CommitResult::empty();
+        assert!(result.generated_keys.is_empty());
+        assert!(result.generated_values.is_empty());
+    }
+
+    #[test]
+    fn test_commit_result_debug() {
+        let result = CommitResult::new(vec![b"test".to_vec()], vec![b"value".to_vec()]);
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("generated_keys"));
+        assert!(debug_str.contains("generated_values"));
+    }
+
+    #[test]
+    fn test_commit_result_clone() {
+        let original = CommitResult::new(vec![b"key".to_vec()], vec![b"val".to_vec()]);
+        let cloned = original.clone();
+
+        assert_eq!(original.generated_keys, cloned.generated_keys);
+        assert_eq!(original.generated_values, cloned.generated_values);
+    }
+
+    // Since Transaction has complex network dependencies, we'll test the
+    // parts we can test without mocking the entire Thrift stack
+}

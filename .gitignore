@@ -1,5 +1,4 @@
 data/
-kvstore/
 bin/
 *.log
 server

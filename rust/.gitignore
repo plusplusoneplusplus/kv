@@ -28,6 +28,3 @@ Cargo.lock
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Protobuf generated files (if we want to ignore them)
-src/kvstore.rs
