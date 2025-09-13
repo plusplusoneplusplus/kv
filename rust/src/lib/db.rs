@@ -1953,10 +1953,10 @@ mod tests {
         assert!(result.success);
         // Should capture some of our test keys since negative offset brings the start key back
         
-        // Test 6: Zero limit should be treated as at least 1
+        // Test 6: Zero limit should return all matching keys (unlimited)
         let result = db.get_range(b"a", b"e", 0, true, 0, true, Some(0));
         assert!(result.success);
-        assert_eq!(result.key_values.len(), 1, "Zero limit should be treated as 1");
+        assert_eq!(result.key_values.len(), 5, "Zero limit should return all matching keys");
         
         // Test 7: No limit (None) should use default
         let result = db.get_range(b"a", b"e", 0, true, 0, true, None);
