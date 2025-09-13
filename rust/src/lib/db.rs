@@ -888,15 +888,20 @@ impl TransactionalKvDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
+
+    fn setup_test_db(db_name: &str) -> (TempDir, TransactionalKvDatabase) {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join(db_name);
+        let config = Config::default();
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        (temp_dir, db)
+    }
+
 
     #[test]
     fn test_foundationdb_style_transactions() {
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_db");
         
         // Test get read version
         let read_version = db.get_read_version();
@@ -937,11 +942,7 @@ mod tests {
 
     #[test]
     fn test_range_operations() {
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_range_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_range_db");
         
         // Insert some test data
         let put_result = db.put(b"key001", b"value1");
@@ -972,13 +973,7 @@ mod tests {
 
     #[test]
     fn test_versionstamped_key_operations() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_versionstamp_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_versionstamp_db");
         let initial_read_version = db.get_read_version();
         
         // Test 1: Single versionstamped key operation
@@ -1145,13 +1140,7 @@ mod tests {
 
     #[test]
     fn test_versionstamped_value_operations() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_versionstamp_value_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_versionstamp_value_db");
         let initial_read_version = db.get_read_version();
         
         // Test 1: Single versionstamped value operation
@@ -1316,13 +1305,7 @@ mod tests {
 
     #[test]
     fn test_versionstamp_buffer_size_validation() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_buffer_validation_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_buffer_validation_db");
         let initial_read_version = db.get_read_version();
         
         // Test 1: Key buffer too small (< 10 bytes) should fail at database level
@@ -1409,13 +1392,7 @@ mod tests {
 
     #[test]
     fn test_offset_based_range_queries() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_offset_range_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_offset_range_db");
         
         // Insert test data in specific order
         let test_keys = [
@@ -1485,13 +1462,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_offset_based_range_queries() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_snapshot_offset_range_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_snapshot_offset_range_db");
         
         // Insert initial test data
         let initial_keys = [
@@ -1551,13 +1522,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_offset_range_binary_keys() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_snapshot_binary_offset_range_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_snapshot_binary_offset_range_db");
         
         // Insert binary keys before snapshot
         let pre_snapshot_keys: Vec<Vec<u8>> = vec![
@@ -1674,13 +1639,7 @@ mod tests {
 
     #[test]
     fn test_calculate_offset_key() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_offset_key_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_offset_key_db");
         
         // Test 1: Zero offset should return the same key
         let base_key = b"test_key";
@@ -1723,13 +1682,7 @@ mod tests {
 
     #[test]
     fn test_increment_key() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_increment_key_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_increment_key_db");
 
         // Test 1: Empty key increment
         let result = db.increment_key(b"");
@@ -1789,13 +1742,7 @@ mod tests {
 
     #[test]
     fn test_decrement_key() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_decrement_key_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_decrement_key_db");
 
         // Test 1: Empty key decrement (should remain empty)
         let result = db.decrement_key(b"");
@@ -1870,13 +1817,7 @@ mod tests {
 
     #[test]
     fn test_offset_range_binary_keys() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_binary_offset_range_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_binary_offset_range_db");
         
         // Insert binary keys with various byte patterns
         let binary_keys: Vec<Vec<u8>> = vec![
@@ -1954,13 +1895,7 @@ mod tests {
 
     #[test]
     fn test_offset_range_edge_cases() {
-        use tempfile::tempdir;
-        
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_offset_edge_db");
-        let config = Config::default();
-        
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_offset_edge_db");
         
         // Insert some test data
         let keys = [b"a", b"b", b"c", b"d", b"e"];
@@ -2009,13 +1944,7 @@ mod tests {
 
     #[test]
     fn test_get_range_with_offset() {
-        use tempfile::tempdir;
-
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_offset_db");
-        let config = Config::default();
-
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_offset_db");
 
         // Set up test data with a consistent prefix
         let test_keys = vec![
@@ -2068,13 +1997,7 @@ mod tests {
 
     #[test]
     fn test_get_range_with_binary_data_and_offset() {
-        use tempfile::tempdir;
-
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_binary_offset_db");
-        let config = Config::default();
-
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_binary_offset_db");
 
         // Set up binary test data with null bytes
         let binary_prefix = b"binary_test:\x00\x01";
@@ -2109,13 +2032,7 @@ mod tests {
 
     #[test]
     fn test_get_range_with_u64_keys_and_offset() {
-        use tempfile::tempdir;
-
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_u64_offset_db");
-        let config = Config::default();
-
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_u64_offset_db");
 
         // Set up u64 test data
         let base_prefix = b"u64_test:";
@@ -2166,13 +2083,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_get_range_with_offset() {
-        use tempfile::tempdir;
-
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_snapshot_offset_db");
-        let config = Config::default();
-
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_snapshot_offset_db");
 
         // Set up test data
         let test_keys = vec![
@@ -2230,13 +2141,7 @@ mod tests {
 
     #[test]
     fn test_offset_edge_cases() {
-        use tempfile::tempdir;
-
-        let temp_dir = tempdir().unwrap();
-        let db_path = temp_dir.path().join("test_offset_edge_db");
-        let config = Config::default();
-
-        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        let (_temp_dir, db) = setup_test_db("test_offset_edge_db");
 
         // Set up minimal test data
         let put_result = db.put(b"single_key", b"single_value");
