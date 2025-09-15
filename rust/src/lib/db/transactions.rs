@@ -91,3 +91,61 @@ impl Transactions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::{tempdir, TempDir};
+    use crate::lib::config::Config;
+    use crate::TransactionalKvDatabase;
+    use crate::lib::db::types::{AtomicOperation, AtomicCommitRequest};
+
+    fn setup_test_db(db_name: &str) -> (TempDir, TransactionalKvDatabase) {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join(db_name);
+        let config = Config::default();
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn test_foundationdb_style_transactions() {
+        let (_temp_dir, db) = setup_test_db("test_db");
+
+        // Test get read version
+        let read_version = db.get_read_version();
+        assert!(read_version > 0);
+
+        // Test snapshot read on non-existent key
+        let result = db.snapshot_read(b"test_key", read_version, None);
+        assert!(result.is_ok());
+        assert!(!result.unwrap().found);
+
+        // Test atomic commit with write operation
+        let operations = vec![AtomicOperation {
+            op_type: "set".to_string(),
+            key: b"test_key".to_vec(),
+            value: Some(b"test_value".to_vec()),
+            column_family: None,
+        }];
+
+        let commit_request = AtomicCommitRequest {
+            read_version,
+            operations,
+            read_conflict_keys: vec![],
+            timeout_seconds: 60,
+        };
+
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(commit_result.success);
+        assert!(commit_result.committed_version.is_some());
+
+        // Test snapshot read on existing key
+        let new_read_version = db.get_read_version();
+        let result = db.snapshot_read(b"test_key", new_read_version, None);
+        assert!(result.is_ok());
+        let get_result = result.unwrap();
+        assert!(get_result.found);
+        assert_eq!(get_result.value, b"test_value".to_vec());
+    }
+}

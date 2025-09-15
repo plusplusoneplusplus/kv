@@ -227,3 +227,86 @@ impl Operations {
         Ok(keys)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::{tempdir, TempDir};
+    use crate::lib::config::Config;
+    use crate::TransactionalKvDatabase;
+
+    fn setup_test_db(db_name: &str) -> (TempDir, TransactionalKvDatabase) {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join(db_name);
+        let config = Config::default();
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn test_mvcc_basic_operations() {
+        let (_temp_dir, db) = setup_test_db("mvcc_basic");
+
+        // Test basic put and get with MVCC backend
+        let key = b"user:alice";
+        let value1 = b"alice_v1";
+        let value2 = b"alice_v2";
+
+        // Put first value
+        let result = db.put(key, value1);
+        assert!(result.success, "First put should succeed");
+
+        // Put second value (will get a newer version)
+        let result = db.put(key, value2);
+        assert!(result.success, "Second put should succeed");
+
+        // Get should return the latest value
+        let result = db.get(key).unwrap();
+        assert!(result.found, "Should find value");
+        assert_eq!(result.value, value2, "Should get latest value");
+    }
+
+    #[test]
+    fn test_mvcc_delete_operations() {
+        let (_temp_dir, db) = setup_test_db("mvcc_delete");
+
+        let key = b"test_key";
+        let value = b"test_value";
+
+        // Put a value
+        let result = db.put(key, value);
+        assert!(result.success, "Put should succeed");
+
+        // Verify it exists
+        let result = db.get(key).unwrap();
+        assert!(result.found, "Should find value");
+        assert_eq!(result.value, value, "Should get correct value");
+
+        // Delete the key
+        let result = db.delete(key);
+        assert!(result.success, "Delete should succeed");
+
+        // Verify it's gone
+        let result = db.get(key).unwrap();
+        assert!(!result.found, "Should not find deleted value");
+    }
+
+    #[test]
+    fn test_mvcc_key_isolation() {
+        let (_temp_dir, db) = setup_test_db("mvcc_isolation");
+
+        // Test that different keys don't interfere with each other
+        db.put(b"user", b"admin");
+        db.put(b"user:", b"separator");
+        db.put(b"user:alice", b"alice_data");
+        db.put(b"user:alice:profile", b"profile_data");
+        db.put(b"users", b"users_table");
+
+        // Each key should be completely isolated
+        assert_eq!(db.get(b"user").unwrap().value, b"admin");
+        assert_eq!(db.get(b"user:").unwrap().value, b"separator");
+        assert_eq!(db.get(b"user:alice").unwrap().value, b"alice_data");
+        assert_eq!(db.get(b"user:alice:profile").unwrap().value, b"profile_data");
+        assert_eq!(db.get(b"users").unwrap().value, b"users_table");
+    }
+}

@@ -88,3 +88,72 @@ impl Versioning {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::{tempdir, TempDir};
+    use crate::lib::config::Config;
+    use crate::TransactionalKvDatabase;
+    use super::super::types::{AtomicOperation, AtomicCommitRequest};
+
+    fn setup_test_db(db_name: &str) -> (TempDir, TransactionalKvDatabase) {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join(db_name);
+        let config = Config::default();
+        let db = TransactionalKvDatabase::new(db_path.to_str().unwrap(), &config, &[]).unwrap();
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn test_mvcc_integration_with_get_read_version() {
+        let (_temp_dir, db) = setup_test_db("test_mvcc_integration_db");
+
+        // Simulate client workflow: commit a versionstamped key, then read it back
+        let vs_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_KEY".to_string(),
+            key: b"client_test_\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(),
+            value: Some(b"test_value".to_vec()),
+            column_family: None,
+        };
+
+        let initial_read_version = db.get_read_version();
+        let commit_request = AtomicCommitRequest {
+            read_version: initial_read_version,
+            operations: vec![vs_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+
+        // Perform atomic commit
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(commit_result.success, "Atomic commit should succeed: {}", commit_result.error);
+        assert_eq!(commit_result.generated_keys.len(), 1, "Should have one generated key");
+
+        let generated_key = &commit_result.generated_keys[0];
+
+        // Simulate what the client does: get a NEW read version after commit
+        let post_commit_read_version = db.get_read_version();
+        println!("Initial read version: {}", initial_read_version);
+        println!("Commit version: {:?}", commit_result.committed_version);
+        println!("Post-commit read version: {}", post_commit_read_version);
+
+        // Ensure read version has advanced
+        assert!(post_commit_read_version > initial_read_version,
+            "Read version should advance after commit. Initial: {}, Post: {}",
+            initial_read_version, post_commit_read_version);
+
+        // Now try to read the data back using get() (which uses current read version)
+        let get_result = db.get(generated_key);
+        assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result);
+        let get_result = get_result.unwrap();
+
+        println!("Get result found: {}", get_result.found);
+        if get_result.found {
+            println!("Get result value: {:?}", get_result.value);
+        }
+
+        assert!(get_result.found, "Generated key should be found after commit");
+        assert_eq!(get_result.value, b"test_value", "Value should match what was stored");
+    }
+}
