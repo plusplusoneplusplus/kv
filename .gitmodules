@@ -1,3 +1,6 @@
 [submodule "third_party/YCSB"]
 	path = third_party/YCSB
 	url = https://github.com/brianfrankcooper/YCSB.git
+[submodule "third_party/RSML"]
+	path = third_party/RSML
+	url = https://github.com/zfhuang99/RSML.git
