@@ -12,6 +12,8 @@ mod operations;
 mod range;
 mod versioning;
 mod transactions;
+mod fault_injection;
+mod core;
 pub use types::*;
 
 pub struct TransactionalKvDatabase {
@@ -675,14 +677,11 @@ impl TransactionalKvDatabase {
 
     // Fault injection for testing
     pub fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
-        let mut fault_injection = self.fault_injection.write().unwrap();
-        *fault_injection = config;
-        OpResult::success()
+        fault_injection::FaultInjection::set_fault_injection(&self.fault_injection, config)
     }
 
     pub fn clear_fault_injection(&self) {
-        let mut fault_injection = self.fault_injection.write().unwrap();
-        *fault_injection = None;
+        fault_injection::FaultInjection::clear_fault_injection(&self.fault_injection)
     }
 
 
