@@ -20,7 +20,7 @@ impl MockVersionedDB {
 
     /// Store a versioned key-value pair
     fn put_versioned(&mut self, key: &[u8], value: &[u8], version: u64) {
-        let versioned_key = VersionedKey::new(key.to_vec(), version);
+        let versioned_key = VersionedKey::new_u64(key.to_vec(), version);
         let encoded_key = versioned_key.encode();
         self.data.insert(encoded_key, value.to_vec());
     }
@@ -35,8 +35,9 @@ impl MockVersionedDB {
             if encoded_key.starts_with(&mce_prefix) {
                 if let Ok(versioned_key) = VersionedKey::decode(encoded_key) {
                     // Verify exact key match (MCE prefix matching should guarantee this)
-                    if versioned_key.original_key == key && versioned_key.version <= read_version {
-                        results.push((versioned_key.version, value.clone()));
+                    let version_u64 = versioned_key.version;
+                    if versioned_key.original_key == key && version_u64 <= read_version {
+                        results.push((version_u64, value.clone()));
                     }
                 }
             }
@@ -62,17 +63,17 @@ impl MockVersionedDB {
         for (encoded_key, value) in &self.data {
             if let Ok(versioned_key) = VersionedKey::decode(encoded_key) {
                 if versioned_key.version <= read_version {
+                    let version_u64 = versioned_key.version;
                     let original_key = versioned_key.original_key;
-                    let version = versioned_key.version;
 
                     // Keep only the latest version for each key
                     match key_latest_version.get(&original_key) {
-                        Some((existing_version, _)) if *existing_version >= version => {
+                        Some((existing_version, _)) if *existing_version >= version_u64 => {
                             // Keep existing newer version
                         }
                         _ => {
                             // This is newer or first version for this key
-                            key_latest_version.insert(original_key, (version, value.clone()));
+                            key_latest_version.insert(original_key, (version_u64, value.clone()));
                         }
                     }
                 }
@@ -232,9 +233,9 @@ fn test_mce_boundary_detection_in_practice() {
     // Test that MCE boundary detection works correctly when versioned keys
     // are concatenated with other data (simulating RocksDB storage)
 
-    let vk1 = VersionedKey::new(b"key1".to_vec(), 100);
-    let vk2 = VersionedKey::new(b"key22".to_vec(), 200);  // Longer key
-    let vk3 = VersionedKey::new(b"key333".to_vec(), 300); // Even longer key
+    let vk1 = VersionedKey::new_u64(b"key1".to_vec(), 100);
+    let vk2 = VersionedKey::new_u64(b"key22".to_vec(), 200);  // Longer key
+    let vk3 = VersionedKey::new_u64(b"key333".to_vec(), 300); // Even longer key
 
     let encoded1 = vk1.encode();
     let encoded2 = vk2.encode();
@@ -262,7 +263,7 @@ fn test_mce_boundary_detection_in_practice() {
         // Verify the boundary calculation
         let (mce_key, mce_end) = decode_mce(encoded).unwrap();
         assert_eq!(mce_key, vk.original_key);
-        assert_eq!(mce_end + 8, encoded.len()); // MCE + 8 bytes for version
+        assert_eq!(mce_end + rocksdb_server::VERSION_SIZE, encoded.len()); // MCE + version bytes
 
         // Verify that the extra data starts where we expect
         assert_eq!(&combined[encoded.len()..], extra_data);

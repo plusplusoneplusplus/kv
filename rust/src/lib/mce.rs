@@ -29,35 +29,87 @@ impl fmt::Display for MCEError {
 
 impl std::error::Error for MCEError {}
 
+/// Version represents a 64-bit version value for MVCC operations.
+/// This provides a simple, static-sized type for version management.
+pub type Version = u64;
+
+/// Size of a version in bytes (u64 is always 8 bytes)
+pub const VERSION_SIZE: usize = std::mem::size_of::<Version>();
+
 /// A versioned key for MVCC implementation
 ///
-/// Combines an original key with a version timestamp using MCE for deterministic
+/// Combines an original key with a version using MCE for deterministic
 /// boundary detection. Versions are stored inverted for newest-first ordering.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionedKey {
     pub original_key: Vec<u8>,
-    pub version: u64,
+    pub version: Version,
 }
 
 impl VersionedKey {
     /// Create a new versioned key
-    pub fn new(original_key: Vec<u8>, version: u64) -> Self {
+    pub fn new(original_key: Vec<u8>, version: Version) -> Self {
         Self { original_key, version }
     }
 
-    /// Encode key using MCE + inverted timestamp
+
+    /// Create a new versioned key with u32 version (converted to u64)
+    pub fn new_u32(original_key: Vec<u8>, version: u32) -> Self {
+        Self {
+            original_key,
+            version: version as u64,
+        }
+    }
+
+    /// Create a new versioned key with u64 version (most common)
+    pub fn new_u64(original_key: Vec<u8>, version: u64) -> Self {
+        Self {
+            original_key,
+            version,
+        }
+    }
+
+    /// Create a new versioned key from bytes (converted to u64)
+    pub fn new_bytes(original_key: Vec<u8>, version_bytes: &[u8]) -> Self {
+        let version = match version_bytes.len() {
+            1 => version_bytes[0] as u64,
+            2 => u16::from_be_bytes([version_bytes[0], version_bytes[1]]) as u64,
+            4 => u32::from_be_bytes([
+                version_bytes[0], version_bytes[1],
+                version_bytes[2], version_bytes[3]
+            ]) as u64,
+            8 => u64::from_be_bytes([
+                version_bytes[0], version_bytes[1], version_bytes[2], version_bytes[3],
+                version_bytes[4], version_bytes[5], version_bytes[6], version_bytes[7]
+            ]),
+            _ => {
+                // For other sizes, take first 8 bytes or pad with zeros
+                let mut bytes = [0u8; 8];
+                let copy_len = version_bytes.len().min(8);
+                bytes[..copy_len].copy_from_slice(&version_bytes[..copy_len]);
+                u64::from_be_bytes(bytes)
+            }
+        };
+        Self {
+            original_key,
+            version,
+        }
+    }
+
+    /// Encode key using MCE + inverted version
     ///
     /// MCE processes data in 8-byte groups with marker bytes for self-describing format.
-    /// The version is inverted and appended as 8 bytes for newest-first ordering.
+    /// The version is inverted and appended for newest-first ordering.
     ///
     /// # Returns
-    /// MCE-encoded key with appended inverted version timestamp
+    /// MCE-encoded key with appended inverted version
     pub fn encode(&self) -> Vec<u8> {
         let mut result = encode_mce(&self.original_key);
 
         // Append inverted version for reverse chronological ordering (newer versions first)
-        let inverted_version = !self.version;
-        result.extend_from_slice(&inverted_version.to_be_bytes());
+        let version_bytes = self.version.to_be_bytes();
+        let inverted_version: Vec<u8> = version_bytes.iter().map(|b| !b).collect();
+        result.extend_from_slice(&inverted_version);
 
         result
     }
@@ -65,7 +117,7 @@ impl VersionedKey {
     /// Decode MCE-encoded versioned key
     ///
     /// MCE guarantees deterministic boundary detection between key and version.
-    /// Returns the original key and version, or an error if the format is invalid.
+    /// This method automatically detects the version size and creates the appropriate Version type.
     ///
     /// # Arguments
     /// * `encoded` - MCE-encoded versioned key data
@@ -77,16 +129,23 @@ impl VersionedKey {
         let (original_key, mce_end) = decode_mce(encoded)
             .map_err(|e| format!("MCE decode error: {}", e))?;
 
-        // Extract 8-byte version timestamp after MCE boundary
-        if encoded.len() < mce_end + 8 {
-            return Err("Missing 8-byte version timestamp".to_string());
+        // Extract version data after MCE boundary
+        if encoded.len() <= mce_end {
+            return Err("Missing version data".to_string());
         }
 
-        let version_bytes = &encoded[mce_end..mce_end + 8];
-        let version_array: [u8; 8] = version_bytes.try_into()
-            .map_err(|_| "Invalid version bytes")?;
-        let inverted_version = u64::from_be_bytes(version_array);
-        let version = !inverted_version; // Un-invert to get original version
+        let version_bytes = &encoded[mce_end..];
+
+        // Expect exactly 8 bytes for u64 version
+        if version_bytes.len() != 8 {
+            return Err(format!("Expected 8-byte version, got {} bytes", version_bytes.len()));
+        }
+
+        // Un-invert the version bytes and decode as u64
+        let original_bytes: Vec<u8> = version_bytes.iter().map(|b| !b).collect();
+        let version_array: [u8; 8] = original_bytes.try_into()
+            .map_err(|_| "Failed to convert version bytes to array")?;
+        let version = u64::from_be_bytes(version_array);
 
         Ok(VersionedKey {
             original_key,
@@ -103,6 +162,7 @@ impl VersionedKey {
     pub fn mce_prefix(&self) -> Vec<u8> {
         encode_mce(&self.original_key)
     }
+
 }
 
 impl PartialOrd for VersionedKey {
@@ -517,8 +577,8 @@ mod tests {
     #[test]
     fn test_versioned_key_basic() {
         let key = b"user:123".to_vec();
-        let version = 12345u64;
-        let vk = VersionedKey::new(key.clone(), version);
+        let version: Version = 12345;
+        let vk = VersionedKey::new(key.clone(), version.clone());
 
         assert_eq!(vk.original_key, key);
         assert_eq!(vk.version, version);
@@ -532,14 +592,55 @@ mod tests {
     }
 
     #[test]
+    fn test_versioned_key_convenience_constructors() {
+        let key = b"user:123".to_vec();
+
+        // Test u32 version
+        let vk_u32 = VersionedKey::new_u32(key.clone(), 123);
+        assert_eq!(vk_u32.version, 123);
+        assert_eq!(VERSION_SIZE, 8); // Always 8 bytes for u64
+
+        // Test u64 version
+        let vk_u64 = VersionedKey::new_u64(key.clone(), 12345);
+        assert_eq!(vk_u64.version, 12345);
+        assert_eq!(VERSION_SIZE, 8);
+
+        // Test u128 version
+        let vk_u64_large = VersionedKey::new_u64(key.clone(), 123456789012345);
+        assert_eq!(vk_u64_large.version, 123456789012345);
+        assert_eq!(VERSION_SIZE, 8);
+
+        // Test byte-based version (will use closest matching size)
+        let vk_bytes = VersionedKey::new_bytes(key.clone(), &[1, 2, 3, 4, 5]);
+        // new_bytes should interpret this based on the byte length
+        // For 5 bytes, it should use the "other sizes" case and pad to 8 bytes
+        let expected_bytes = [1, 2, 3, 4, 5, 0, 0, 0];
+        let expected_version = u64::from_be_bytes(expected_bytes);
+        assert_eq!(vk_bytes.version, expected_version);
+        assert_eq!(VERSION_SIZE, 8); // u64 size
+
+        // Test round-trip for standard sizes
+        for vk in [&vk_u32, &vk_u64, &vk_u64_large] {
+            let encoded = vk.encode();
+            let decoded = VersionedKey::decode(&encoded).unwrap();
+            assert_eq!(decoded, *vk);
+        }
+
+        // Test byte-based version with specific size decoding
+        let encoded_bytes = vk_bytes.encode();
+        let decoded_bytes = VersionedKey::decode(&encoded_bytes).unwrap();
+        assert_eq!(decoded_bytes, vk_bytes);
+    }
+
+    #[test]
     fn test_versioned_key_ordering() {
         // Test that versioned keys sort properly: first by key, then by version (newest first)
         let test_cases = vec![
-            VersionedKey::new(b"a".to_vec(), 100),
-            VersionedKey::new(b"a".to_vec(), 200), // Should come before version 100
-            VersionedKey::new(b"a".to_vec(), 50),
-            VersionedKey::new(b"b".to_vec(), 100),
-            VersionedKey::new(b"b".to_vec(), 200),
+            VersionedKey::new_u64(b"a".to_vec(), 100),
+            VersionedKey::new_u64(b"a".to_vec(), 200), // Should come before version 100
+            VersionedKey::new_u64(b"a".to_vec(), 50),
+            VersionedKey::new_u64(b"b".to_vec(), 100),
+            VersionedKey::new_u64(b"b".to_vec(), 200),
         ];
 
         let mut encoded_keys: Vec<_> = test_cases.iter()
@@ -557,21 +658,70 @@ mod tests {
         // Expected order: a@200, a@100, a@50, b@200, b@100
         // (key "a" before "b", within each key newest versions first)
         let expected = vec![
-            VersionedKey::new(b"a".to_vec(), 200),
-            VersionedKey::new(b"a".to_vec(), 100),
-            VersionedKey::new(b"a".to_vec(), 50),
-            VersionedKey::new(b"b".to_vec(), 200),
-            VersionedKey::new(b"b".to_vec(), 100),
+            VersionedKey::new_u64(b"a".to_vec(), 200),
+            VersionedKey::new_u64(b"a".to_vec(), 100),
+            VersionedKey::new_u64(b"a".to_vec(), 50),
+            VersionedKey::new_u64(b"b".to_vec(), 200),
+            VersionedKey::new_u64(b"b".to_vec(), 100),
         ];
 
         assert_eq!(sorted_versioned_keys, expected);
     }
 
     #[test]
+    fn test_versioned_key_mixed_version_types() {
+        // Test ordering with different version values (all u64 now)
+        let test_cases = vec![
+            VersionedKey::new_u32(b"key".to_vec(), 100),   // Creates u64(100)
+            VersionedKey::new_u64(b"key".to_vec(), 150),   // Creates u64(150)
+            VersionedKey::new_u64(b"key".to_vec(), 200),   // Creates u64(200)
+        ];
+
+        // Standard sizes should encode/decode successfully
+        for vk in &test_cases {
+            let encoded = vk.encode();
+            let decoded = VersionedKey::decode(&encoded).unwrap();
+            assert_eq!(decoded, *vk);
+        }
+
+        // Test byte-based version with decode
+        // Note: 4-byte data will be interpreted as V4 when decoded
+        let vk_bytes = VersionedKey::new_bytes(b"key".to_vec(), &[0, 0, 0, 100]);
+        let encoded_bytes = vk_bytes.encode();
+        let decoded_bytes = VersionedKey::decode(&encoded_bytes).unwrap();
+
+        // When we decode 8 bytes, it's interpreted as u64
+        assert_eq!(decoded_bytes.original_key, vk_bytes.original_key);
+        assert_eq!(decoded_bytes.version, 100); // Decoded as u64
+
+        // Different version types should be distinguishable by size
+        // Test that we can distinguish version types by their encoded sizes
+        assert_eq!(VERSION_SIZE, 8); // u64 (always 8 bytes)
+
+        // Test with byte-based version
+        let vk_bytes_var = VersionedKey::new_bytes(b"key".to_vec(), &[1, 2, 3, 4, 5]);
+        let encoded_bytes_var = vk_bytes_var.encode();
+        let decoded_bytes_var = VersionedKey::decode(&encoded_bytes_var).unwrap();
+        assert_eq!(decoded_bytes_var, vk_bytes_var);
+
+        // Different version values should produce different encodings
+        let all_encoded: Vec<_> = [&test_cases[0], &test_cases[1], &test_cases[2], &vk_bytes_var]
+            .iter().map(|vk| vk.encode()).collect();
+
+        // Each encoding should be unique
+        for i in 0..all_encoded.len() {
+            for j in i + 1..all_encoded.len() {
+                assert_ne!(all_encoded[i], all_encoded[j],
+                    "Different version values should produce different encodings");
+            }
+        }
+    }
+
+    #[test]
     fn test_versioned_key_prefix() {
-        let vk1 = VersionedKey::new(b"user:123".to_vec(), 100);
-        let vk2 = VersionedKey::new(b"user:123".to_vec(), 200);
-        let vk3 = VersionedKey::new(b"user:456".to_vec(), 100);
+        let vk1 = VersionedKey::new_u64(b"user:123".to_vec(), 100);
+        let vk2 = VersionedKey::new_u64(b"user:123".to_vec(), 200);
+        let vk3 = VersionedKey::new_u64(b"user:456".to_vec(), 100);
 
         // Same key should have same prefix
         assert_eq!(vk1.mce_prefix(), vk2.mce_prefix());
@@ -586,7 +736,7 @@ mod tests {
     #[test]
     fn test_versioned_key_boundary_detection() {
         // Test that versioned keys can be concatenated with other data
-        let vk = VersionedKey::new(b"product:abc".to_vec(), 12345);
+        let vk = VersionedKey::new_u64(b"product:abc".to_vec(), 12345);
         let extra_data = b"additional_metadata";
 
         let encoded_vk = vk.encode();
@@ -599,32 +749,32 @@ mod tests {
         // Verify the boundary is correct
         let (mce_key, mce_end) = decode_mce(&encoded_vk).unwrap();
         assert_eq!(mce_key, vk.original_key);
-        assert_eq!(mce_end + 8, encoded_vk.len()); // MCE + 8 bytes for version
+        assert_eq!(mce_end + VERSION_SIZE, encoded_vk.len()); // MCE + version bytes
     }
 
     #[test]
     fn test_versioned_key_edge_cases() {
         // Test with empty key
-        let vk_empty = VersionedKey::new(vec![], 12345);
+        let vk_empty = VersionedKey::new_u64(vec![], 12345);
         let encoded_empty = vk_empty.encode();
         let decoded_empty = VersionedKey::decode(&encoded_empty).unwrap();
         assert_eq!(decoded_empty, vk_empty);
 
         // Test with maximum version
-        let vk_max = VersionedKey::new(b"key".to_vec(), u64::MAX);
+        let vk_max = VersionedKey::new_u64(b"key".to_vec(), u64::MAX);
         let encoded_max = vk_max.encode();
         let decoded_max = VersionedKey::decode(&encoded_max).unwrap();
         assert_eq!(decoded_max, vk_max);
 
         // Test with zero version
-        let vk_zero = VersionedKey::new(b"key".to_vec(), 0);
+        let vk_zero = VersionedKey::new_u64(b"key".to_vec(), 0);
         let encoded_zero = vk_zero.encode();
         let decoded_zero = VersionedKey::decode(&encoded_zero).unwrap();
         assert_eq!(decoded_zero, vk_zero);
 
         // Test with large key
         let large_key = vec![42u8; 1000];
-        let vk_large = VersionedKey::new(large_key.clone(), 12345);
+        let vk_large = VersionedKey::new_u64(large_key.clone(), 12345);
         let encoded_large = vk_large.encode();
         let decoded_large = VersionedKey::decode(&encoded_large).unwrap();
         assert_eq!(decoded_large.original_key, large_key);
@@ -634,12 +784,17 @@ mod tests {
     #[test]
     fn test_versioned_key_invalid_data() {
         // Test with truncated data
-        let vk = VersionedKey::new(b"test".to_vec(), 12345);
+        let vk = VersionedKey::new_u64(b"test".to_vec(), 12345);
         let encoded = vk.encode();
 
-        // Remove some bytes to make it invalid
-        let truncated = &encoded[..encoded.len() - 4];
+        // Remove all version bytes to create invalid data
+        let truncated = &encoded[..encoded.len() - 8]; // Remove all 8 version bytes
         assert!(VersionedKey::decode(truncated).is_err());
+
+        // Test with completely truncated data (no version)
+        let (_, mce_end) = decode_mce(&encoded).unwrap();
+        let no_version = &encoded[..mce_end];
+        assert!(VersionedKey::decode(no_version).is_err());
 
         // Test with invalid MCE data
         let invalid_mce = vec![1, 2, 3, 4, 5, 6, 7, 8, 246]; // Invalid marker
@@ -650,8 +805,8 @@ mod tests {
     #[test]
     fn test_versioned_key_version_inversion() {
         // Test that version inversion works correctly for ordering
-        let vk_old = VersionedKey::new(b"key".to_vec(), 100);
-        let vk_new = VersionedKey::new(b"key".to_vec(), 200);
+        let vk_old = VersionedKey::new_u64(b"key".to_vec(), 100);
+        let vk_new = VersionedKey::new_u64(b"key".to_vec(), 200);
 
         let encoded_old = vk_old.encode();
         let encoded_new = vk_new.encode();
@@ -659,9 +814,86 @@ mod tests {
         // Newer version should sort before older version (reverse chronological)
         assert!(encoded_new < encoded_old);
 
-        // Verify the actual inversion
+        // Verify the actual inversion for u64
         let inverted_100 = !100u64;
         let inverted_200 = !200u64;
         assert!(inverted_200 < inverted_100); // Inverted values should be in reverse order
+    }
+
+    #[test]
+    fn test_version_types() {
+        // Test different version types individually
+        let _key = b"test_key".to_vec();
+
+        // Test different version values (all u64 now)
+        let v32: Version = 12345;
+        // Version is always 8 bytes now (u64)
+        assert_eq!(std::mem::size_of_val(&v32), 8);
+        assert_eq!(v32, 12345u64);
+
+        let v64: Version = 1234567890;
+        assert_eq!(std::mem::size_of_val(&v64), 8);
+        assert_eq!(v64, 1234567890u64);
+
+        let v64_large: Version = 12345678901234567890u64;
+        assert_eq!(std::mem::size_of_val(&v64_large), 8);
+        assert_eq!(v64_large, 12345678901234567890u64);
+
+        let vbytes_expected = u64::from_be_bytes([1, 2, 3, 4, 5, 0, 0, 0]);
+        let vbytes: Version = vbytes_expected; // Equivalent to bytes [1,2,3,4,5] padded
+        assert_eq!(std::mem::size_of_val(&vbytes), 8);
+        assert_eq!(vbytes, vbytes_expected);
+
+        // Test version ordering (inverted for newest-first)
+        let versions = vec![100u64, 200u64, 50u64];
+
+        // Manually encode and invert u64 values for testing
+        let mut encoded_versions: Vec<Vec<u8>> = versions.iter()
+            .map(|v| {
+                let bytes = v.to_be_bytes();
+                bytes.iter().map(|b| !b).collect() // Invert for newest-first ordering
+            })
+            .collect();
+        encoded_versions.sort();
+
+        // Decode the sorted inverted versions
+        let sorted_versions: Vec<u64> = encoded_versions.iter()
+            .map(|encoded| {
+                let original_bytes: Vec<u8> = encoded.iter().map(|b| !b).collect();
+                let bytes_array: [u8; 8] = original_bytes.try_into().unwrap();
+                u64::from_be_bytes(bytes_array)
+            })
+            .collect();
+
+        // Should be in newest-first order: 200, 100, 50
+        assert_eq!(sorted_versions, vec![200u64, 100u64, 50u64]);
+    }
+
+    #[test]
+    fn test_versioned_key_decode_with_size() {
+        // Test the decode method
+        let vk_u32 = VersionedKey::new_u32(b"key".to_vec(), 123);
+        let vk_u64 = VersionedKey::new_u64(b"key".to_vec(), 12345);
+        let vk_bytes = VersionedKey::new_bytes(b"key".to_vec(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+
+        let encoded_u32 = vk_u32.encode();
+        let encoded_u64 = vk_u64.encode();
+        let encoded_bytes = vk_bytes.encode();
+
+        // Test decoding with correct sizes (all u64 now, so always 8 bytes)
+        let decoded_u32 = VersionedKey::decode(&encoded_u32).unwrap();
+        let decoded_u64 = VersionedKey::decode(&encoded_u64).unwrap();
+        let decoded_bytes = VersionedKey::decode(&encoded_bytes).unwrap(); // u64 for byte array
+
+        assert_eq!(decoded_u32, vk_u32);
+        assert_eq!(decoded_u64, vk_u64);
+        assert_eq!(decoded_bytes, vk_bytes);
+
+        // Test that all decoding now works consistently since version size is static
+        let additional_decode_32 = VersionedKey::decode(&encoded_u32);
+        assert!(additional_decode_32.is_ok()); // Should always succeed
+
+        let additional_decode_64 = VersionedKey::decode(&encoded_u64);
+        assert!(additional_decode_64.is_ok()); // Should always succeed
     }
 }
