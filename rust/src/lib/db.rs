@@ -10,6 +10,8 @@ mod types;
 mod utils;
 mod operations;
 mod range;
+mod versioning;
+mod transactions;
 pub use types::*;
 
 pub struct TransactionalKvDatabase {
@@ -92,7 +94,7 @@ impl TransactionalKvDatabase {
     
     /// Get current read version for transaction consistency
     pub fn get_read_version(&self) -> u64 {
-        self.current_version.load(std::sync::atomic::Ordering::SeqCst)
+        versioning::Versioning::get_read_version(&self.current_version)
     }
     
     /// Snapshot read at specific version (used by client for consistent reads)
@@ -163,47 +165,18 @@ impl TransactionalKvDatabase {
     /// Atomic commit of client-buffered operations with conflict detection
     pub fn atomic_commit(&self, request: AtomicCommitRequest) -> AtomicCommitResult {
         // Check for fault injection
-        if let Some(error_code) = utils::should_inject_fault(&self.fault_injection.read().unwrap(), "commit") {
-            let error_msg = match error_code.as_str() {
-                "TIMEOUT" => "Operation timeout",
-                "CONFLICT" => "Transaction conflict",
-                _ => "Fault injected",
-            };
-            return AtomicCommitResult {
-                success: false,
-                error: error_msg.to_string(),
-                error_code: Some(error_code),
-                committed_version: None,
-                generated_keys: Vec::new(),
-                generated_values: Vec::new(),
-            };
+        if let Some(result) = transactions::Transactions::check_fault_injection(&self.fault_injection, "commit") {
+            return result;
         }
 
         // Conflict detection: check if any read keys were modified since read_version
         let current_version = self.get_read_version();
-        if request.read_version < current_version {
-            // In a real implementation, we'd check if specific read keys were modified
-            // For now, we'll do a simplified version check
-            for read_key in &request.read_conflict_keys {
-                // Simplified conflict check - in reality this would check key-specific versions
-                if self.has_key_been_modified_since(read_key, request.read_version) {
-                    return AtomicCommitResult {
-                        success: false,
-                        error: format!("Conflict detected on key: {:?}", read_key),
-                        error_code: Some("CONFLICT".to_string()),
-                        committed_version: None,
-                        generated_keys: Vec::new(),
-                        generated_values: Vec::new(),
-                    };
-                }
-            }
+        if let Some(result) = transactions::Transactions::check_conflicts(&request, current_version) {
+            return result;
         }
 
-        // Create atomic RocksDB transaction 
-        let write_opts = WriteOptions::default();
-        let mut txn_opts = TransactionOptions::default();
-        txn_opts.set_snapshot(true);
-        let rocksdb_txn = self.db.transaction_opt(&write_opts, &txn_opts);
+        // Create atomic RocksDB transaction
+        let rocksdb_txn = transactions::Transactions::create_transaction(&self.db);
 
         // Pre-allocate the commit version for versionstamped operations
         let commit_version = self.current_version.load(std::sync::atomic::Ordering::SeqCst) + 1;
