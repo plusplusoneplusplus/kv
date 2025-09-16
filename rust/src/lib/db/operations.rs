@@ -2,7 +2,7 @@ use std::sync::Arc;
 use rocksdb::{TransactionDB, TransactionOptions, WriteOptions};
 use tracing::error;
 use super::super::mce::{VersionedKey, encode_mce};
-use super::types::{GetResult, OpResult};
+use super::types::{GetResult, OpResult, TOMBSTONE_MARKER};
 
 /// Basic CRUD operations for the database
 pub struct Operations;
@@ -56,7 +56,7 @@ impl Operations {
         match latest_value {
             Some(value) => {
                 // Check if the value is a tombstone (deletion marker)
-                if value == b"__DELETED__" {
+                if value == TOMBSTONE_MARKER {
                     Ok(GetResult {
                         value: Vec::new(),
                         found: false, // Treat tombstones as "not found"
@@ -139,7 +139,7 @@ impl Operations {
         }
 
         // Use a special tombstone value to mark deletion
-        const TOMBSTONE_VALUE: &[u8] = b"__DELETED__";
+        const TOMBSTONE_VALUE: &[u8] = TOMBSTONE_MARKER;
 
         // Assign version automatically
         let version = current_version.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -205,7 +205,7 @@ impl Operations {
                             // Only include if we haven't seen this logical key yet
                             if !seen_keys.contains(&versioned_key.original_key) {
                                 // Skip tombstones
-                                if value.as_ref() != b"__DELETED__" {
+                                if value.as_ref() != TOMBSTONE_MARKER {
                                     keys.push(versioned_key.original_key.clone());
                                     seen_keys.insert(versioned_key.original_key);
 

@@ -5,6 +5,7 @@ use tracing::error;
 use std::time::Duration;
 use super::config::Config;
 use super::mce::{VersionedKey, Version, encode_mce};
+use self::types::TOMBSTONE_MARKER;
 
 mod types;
 mod utils;
@@ -149,7 +150,7 @@ impl TransactionalKvDatabase {
         match latest_value {
             Some(value) => {
                 // Check if the value is a tombstone (deletion marker)
-                if value == b"__DELETED__" {
+                if value == TOMBSTONE_MARKER {
                     Ok(GetResult {
                         value: Vec::new(),
                         found: false, // Treat tombstones as "not found"
@@ -446,7 +447,7 @@ impl TransactionalKvDatabase {
             .into_iter()
             .filter_map(|(key, (_, value))| {
                 // Skip tombstones
-                if value == b"__DELETED__" {
+                if value == TOMBSTONE_MARKER {
                     return None;
                 }
 
@@ -587,7 +588,7 @@ impl TransactionalKvDatabase {
             .into_iter()
             .filter_map(|(key, (_, value))| {
                 // Skip tombstones
-                if value == b"__DELETED__" {
+                if value == TOMBSTONE_MARKER {
                     return None;
                 }
 
