@@ -2,7 +2,7 @@ use std::sync::Arc;
 use rocksdb::{TransactionDB, TransactionOptions};
 use tracing::error;
 use super::super::mce::{VersionedKey, Version, encode_mce};
-use super::types::GetResult;
+use super::types::{GetResult, TOMBSTONE_MARKER};
 
 /// Versioning operations for MVCC support
 pub struct Versioning;
@@ -61,7 +61,7 @@ impl Versioning {
         match latest_value {
             Some(value) => {
                 // Check if the value is a tombstone (deletion marker)
-                if value == b"__DELETED__" {
+                if value == TOMBSTONE_MARKER {
                     Ok(GetResult {
                         value: Vec::new(),
                         found: false, // Treat tombstones as "not found"

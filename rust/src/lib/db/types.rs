@@ -1,5 +1,8 @@
 use std::sync::mpsc;
 
+/// Tombstone marker for deleted keys - uses null bytes to avoid collision with user data
+pub const TOMBSTONE_MARKER: &[u8] = b"\x00__TOMBSTONE__\x00";
+
 #[derive(Debug)]
 pub struct GetResult {
     pub value: Vec<u8>,
