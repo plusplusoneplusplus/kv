@@ -132,6 +132,7 @@ mod tests {
     use tempfile::{tempdir, TempDir};
     use crate::lib::config::Config;
     use crate::TransactionalKvDatabase;
+    use crate::lib::db::types::{AtomicOperation, AtomicCommitRequest};
 
     fn setup_test_db(db_name: &str) -> (TempDir, TransactionalKvDatabase) {
         let temp_dir = tempdir().unwrap();
@@ -317,5 +318,51 @@ mod tests {
         // Test 15: Complex borrow scenario
         let result = decrement_key(b"abc\x00");
         assert_eq!(result, b"abb\xFF", "Should decrement 'c' and set zero to 0xFF");
+    }
+
+    #[test]
+    fn test_versionstamp_buffer_size_validation() {
+        let (_temp_dir, db) = setup_test_db("test_buffer_validation_db");
+        let initial_read_version = db.get_read_version();
+
+        // Test 1: Key buffer too small (< 10 bytes) should fail at database level
+        let small_key_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_KEY".to_string(),
+            key: b"short".to_vec(),  // Only 5 bytes
+            value: Some(b"test_value".to_vec()),
+            column_family: None,
+        };
+
+        let commit_request = AtomicCommitRequest {
+            read_version: initial_read_version,
+            operations: vec![small_key_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(!commit_result.success, "Should fail with buffer too small");
+        assert!(commit_result.error.contains("at least 10 bytes"), "Error should mention buffer size requirement");
+        assert_eq!(commit_result.error_code, Some("INVALID_OPERATION".to_string()));
+
+        // Test 2: Value buffer too small (< 10 bytes) should fail at database level
+        let small_value_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
+            key: b"test_key".to_vec(),
+            value: Some(b"short".to_vec()),  // Only 5 bytes
+            column_family: None,
+        };
+
+        let commit_request = AtomicCommitRequest {
+            read_version: initial_read_version,
+            operations: vec![small_value_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(!commit_result.success, "Should fail with value buffer too small");
+        assert!(commit_result.error.contains("at least 10 bytes"), "Error should mention value buffer size requirement");
+        assert_eq!(commit_result.error_code, Some("INVALID_OPERATION".to_string()));
     }
 }

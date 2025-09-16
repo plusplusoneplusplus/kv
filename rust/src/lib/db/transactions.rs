@@ -148,4 +148,41 @@ mod tests {
         assert!(get_result.found);
         assert_eq!(get_result.value, b"test_value".to_vec());
     }
+
+    #[test]
+    fn test_versionstamped_key_operations() {
+        let (_temp_dir, db) = setup_test_db("test_versionstamp_db");
+        let initial_read_version = db.get_read_version();
+
+        // Test 1: Single versionstamped key operation
+        let versionstamp_op = AtomicOperation {
+            op_type: "SET_VERSIONSTAMPED_KEY".to_string(),
+            key: b"user_score_\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(),
+            value: Some(b"100".to_vec()),
+            column_family: None,
+        };
+
+        let commit_request = AtomicCommitRequest {
+            read_version: initial_read_version,
+            operations: vec![versionstamp_op],
+            read_conflict_keys: vec![],
+            timeout_seconds: 30,
+        };
+
+        let commit_result = db.atomic_commit(commit_request);
+        assert!(commit_result.success, "Versionstamp commit should succeed: {}", commit_result.error);
+        assert!(commit_result.committed_version.is_some(), "Should have committed version");
+        assert_eq!(commit_result.generated_keys.len(), 1, "Should have one generated key");
+
+        let generated_key = &commit_result.generated_keys[0];
+        assert!(generated_key.starts_with(b"user_score_"), "Generated key should start with prefix");
+        assert_eq!(generated_key.len(), 21, "Generated key should be 21 bytes total");
+
+        // Test 2: Verify the versionstamped key was actually stored
+        let get_result = db.get(generated_key);
+        assert!(get_result.is_ok(), "Should be able to get versionstamped key: {:?}", get_result);
+        let get_result = get_result.unwrap();
+        assert!(get_result.found, "Versionstamped key should be found");
+        assert_eq!(get_result.value, b"100", "Value should match");
+    }
 }
