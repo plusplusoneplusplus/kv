@@ -61,41 +61,6 @@ public:
     }
 };
 
-// Helper function to wait for future completion (C-style)
-inline int wait_for_future_c(KvFutureHandle future) {
-    int max_polls = 1000;  // Maximum number of polls
-    for (int i = 0; i < max_polls; i++) {
-        int status = kv_future_poll(future);
-        if (status == KV_FUNCTION_SUCCESS) {
-            return KV_FUNCTION_SUCCESS;  // Ready
-        } else if (status == KV_FUNCTION_ERROR) {
-            return KV_FUNCTION_ERROR;  // Error
-        }
-        usleep(1000);  // Sleep 1ms
-    }
-    return KV_FUNCTION_FAILURE;  // Timeout
-}
-
-// Helper function to wait for future completion (C++-style)
-inline bool wait_for_future_cpp(KvFutureHandle future, int timeout_ms = 5000) {
-    auto start = std::chrono::steady_clock::now();
-    while (true) {
-        int status = kv_future_poll(future);
-        if (status == KV_FUNCTION_SUCCESS) {
-            return true;  // Ready
-        } else if (status == KV_FUNCTION_ERROR) {
-            return false;  // Error
-        }
-        
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        if (elapsed > timeout_ms) {
-            return false;  // Timeout
-        }
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-}
 
 // RAII wrapper classes
 class KvConfigWrapper {
@@ -188,6 +153,10 @@ public:
     KvClientWrapper(const KvClientWrapper&) = delete;
     KvClientWrapper& operator=(const KvClientWrapper&) = delete;
 };
+
+// Forward declarations for helper functions
+inline int wait_for_future_c(KvFutureHandle future);
+inline bool wait_for_future_cpp(KvFutureHandle future, int timeout_ms = 5000);
 
 class KvTransactionWrapper {
 private:
@@ -374,6 +343,90 @@ public:
     KvTransactionWrapper(const KvTransactionWrapper&) = delete;
     KvTransactionWrapper& operator=(const KvTransactionWrapper&) = delete;
 };
+
+// Generic callback-based future awaiter for upgrading from polling
+class FutureAwaiter {
+private:
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool completed = false;
+    bool error_occurred = false;
+
+    static void awaiter_callback(KvFutureHandle future, void* context) {
+        auto* awaiter = static_cast<FutureAwaiter*>(context);
+        awaiter->signal_completion();
+    }
+
+    void signal_completion() {
+        std::lock_guard<std::mutex> lock(mutex);
+        completed = true;
+        cv.notify_all();
+    }
+
+public:
+    void reset() {
+        std::lock_guard<std::mutex> lock(mutex);
+        completed = false;
+        error_occurred = false;
+    }
+
+    bool wait(KvFutureHandle future, int timeout_ms = 5000) {
+        reset();
+
+        // Set callback first
+        int callback_result = kv_future_set_callback(future, awaiter_callback, this);
+        if (callback_result != KV_FUNCTION_SUCCESS) {
+            // Fallback to polling if callback fails
+            return wait_with_polling_fallback(future, timeout_ms);
+        }
+
+        // Wait for callback to signal completion
+        std::unique_lock<std::mutex> lock(mutex);
+        return cv.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                          [this] { return completed; });
+    }
+
+private:
+    // Fallback to polling if callback setup fails
+    bool wait_with_polling_fallback(KvFutureHandle future, int timeout_ms) {
+        auto start = std::chrono::steady_clock::now();
+        while (true) {
+            int status = kv_future_poll(future);
+            if (status == KV_FUNCTION_SUCCESS) {
+                return true;  // Ready
+            } else if (status == KV_FUNCTION_ERROR) {
+                return false;  // Error
+            }
+
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            if (elapsed > timeout_ms) {
+                return false;  // Timeout
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+};
+
+// Helper function to wait for future completion (C-style)
+// Now uses callbacks with polling fallback for compatibility
+inline int wait_for_future_c(KvFutureHandle future) {
+    static thread_local FutureAwaiter awaiter;
+    bool success = awaiter.wait(future, 5000);  // 5 second timeout
+    if (success) {
+        return KV_FUNCTION_SUCCESS;
+    } else {
+        return KV_FUNCTION_FAILURE;  // Could be timeout or error
+    }
+}
+
+// Helper function to wait for future completion (C++-style)
+// Now uses callbacks with polling fallback for compatibility
+inline bool wait_for_future_cpp(KvFutureHandle future, int timeout_ms) {
+    static thread_local FutureAwaiter awaiter;
+    return awaiter.wait(future, timeout_ms);
+}
 
 // Callback testing utilities
 struct CallbackTestContext {
