@@ -6,6 +6,7 @@
 # Tests both Thrift server with C++ FFI bindings and Rust workspace tests
 
 set -e
+set -o pipefail
 
 # Configuration
 THRIFT_SERVER_PORT=${THRIFT_SERVER_PORT:-9097}  # Default to 9097, can be overridden with env var
@@ -127,15 +128,11 @@ test_ffi_interface() {
     log_info "Configuring FFI tests to use server port $THRIFT_SERVER_PORT"
 
     # Run the FFI tests with the correct server configuration
-    local output
-    if output=$(KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" ../build/bin/cpp_ffi_test 2>&1); then
+    if KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" ../build/bin/cpp_ffi_test; then
         log_success "FFI tests completed successfully"
-        echo "$output" | head -10  # Show first 10 lines of output
         return 0
     else
-        log_error "FFI tests failed"
-        echo "FFI test output (first 20 lines):"
-        echo "$output" | head -20
+        log_error "FFI tests failed (see output above for details)"
         return 1
     fi
 }
@@ -147,16 +144,11 @@ test_rust_workspace() {
     log_info "Running cargo test --workspace in rust/ directory"
 
     # Change to rust directory and run tests
-    local output
-    if output=$(cd ../rust && cargo test --workspace 2>&1); then
+    if (cd ../rust && cargo test --workspace); then
         log_success "Rust workspace tests completed successfully"
-        # Show summary of test results
-        echo "$output" | grep -E "(test result:|running|^test)" | tail -10
         return 0
     else
-        log_error "Rust workspace tests failed"
-        echo "Rust test output (last 30 lines):"
-        echo "$output" | tail -30
+        log_error "Rust workspace tests failed (see output above for details)"
         return 1
     fi
 }
