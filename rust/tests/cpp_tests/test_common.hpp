@@ -374,3 +374,76 @@ public:
     KvTransactionWrapper(const KvTransactionWrapper&) = delete;
     KvTransactionWrapper& operator=(const KvTransactionWrapper&) = delete;
 };
+
+// Callback testing utilities
+struct CallbackTestContext {
+    bool callback_called = false;
+    KvFutureHandle future_handle = nullptr;
+    void* user_context = nullptr;
+    std::chrono::steady_clock::time_point callback_time;
+    std::mutex mutex;
+    std::condition_variable cv;
+
+    void reset() {
+        std::lock_guard<std::mutex> lock(mutex);
+        callback_called = false;
+        future_handle = nullptr;
+        user_context = nullptr;
+    }
+
+    void notify_callback(KvFutureHandle future, void* context) {
+        std::lock_guard<std::mutex> lock(mutex);
+        callback_called = true;
+        future_handle = future;
+        user_context = context;
+        callback_time = std::chrono::steady_clock::now();
+        cv.notify_all();
+    }
+
+    bool wait_for_callback(int timeout_ms = 5000) {
+        std::unique_lock<std::mutex> lock(mutex);
+        return cv.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                          [this] { return callback_called; });
+    }
+};
+
+// Global callback test context for simple tests
+extern CallbackTestContext g_callback_context;
+
+// Simple callback function for testing
+extern "C" void test_callback_simple(KvFutureHandle future, void* user_context);
+
+// Callback with custom context
+extern "C" void test_callback_with_context(KvFutureHandle future, void* user_context);
+
+// Thread-safe callback counter for concurrency tests
+struct CallbackCounter {
+    std::atomic<int> count{0};
+    std::atomic<bool> error_occurred{false};
+
+    void reset() {
+        count.store(0);
+        error_occurred.store(false);
+    }
+
+    void increment() {
+        count.fetch_add(1);
+    }
+
+    void set_error() {
+        error_occurred.store(true);
+    }
+
+    int get_count() const {
+        return count.load();
+    }
+
+    bool has_error() const {
+        return error_occurred.load();
+    }
+};
+
+extern CallbackCounter g_callback_counter;
+
+// Counting callback for concurrency tests
+extern "C" void test_callback_counting(KvFutureHandle future, void* user_context);
