@@ -38,6 +38,7 @@ endif()
 
 # Include utilities
 include(ExternalProject)
+include(ProcessorCount)
 
 #==============================================================================
 # Protocol Generation
@@ -116,9 +117,23 @@ else()
     set(CARGO_TARGET_DIR "debug")
 endif()
 
+set(CARGO_BUILD_JOB_COUNT "" CACHE STRING "Number of parallel jobs to pass to cargo (-j). Empty uses detected processor count.")
+if(CARGO_BUILD_JOB_COUNT STREQUAL "")
+    ProcessorCount(_cargo_detected_jobs)
+    set(_cargo_jobs ${_cargo_detected_jobs})
+else()
+    set(_cargo_jobs ${CARGO_BUILD_JOB_COUNT})
+endif()
+
+if(_cargo_jobs GREATER 0)
+    set(CARGO_BUILD_JOBS_ARGS -j${_cargo_jobs})
+else()
+    set(CARGO_BUILD_JOBS_ARGS "")
+endif()
+
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin server
     COMMAND ${CMAKE_COMMAND} -E copy 
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
@@ -129,7 +144,7 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --bin thrift-server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin thrift-server
     COMMAND ${CMAKE_COMMAND} -E copy 
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
@@ -140,7 +155,7 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} -p kv-benchmark
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} -p kv-benchmark
     COMMAND ${CMAKE_COMMAND} -E copy 
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
@@ -172,7 +187,7 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} --features ffi
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --features ffi
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists
     COMMAND ls -la "${KV_LIB_DIR}/"
