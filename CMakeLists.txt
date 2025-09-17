@@ -244,6 +244,7 @@ add_executable(cpp_ffi_test
     "${CPP_TESTS_DIR}/test_concurrency.cpp"
     "${CPP_TESTS_DIR}/test_error_handling.cpp"
     "${CPP_TESTS_DIR}/test_versionstamped_operations.cpp"
+    "${CPP_TESTS_DIR}/test_async_callbacks.cpp"
 )
 
 # Link against the unified Rust library and gtest

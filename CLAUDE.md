@@ -20,7 +20,7 @@ The project has been refactored to use a unified Rust workspace structure:
 - **Rust Implementation**: See [rust/CLAUDE.md](rust/CLAUDE.md) for Rust-specific guidance including the unified workspace structure, async Tokio implementation, client SDK with C FFI bindings, and build instructions.
 
 ## Build and Test
-1. Run cmake --build build in the git root to build. Give enough timeout like 15 min.
+1. Run cmake --build build in the git root to build. **Give enough timeout like 15 min**
 2. Run ./build/bin/rocksdbserver-thrift to launch the thrift server
 3. Run cargo test --workspace under rust/ to run rust tests
 4. Run ./build/bin/cpp_ffi_test to run c++ tests
