@@ -1,8 +1,10 @@
 use rocksdb_server::client::KvStoreClient;
 
+use crate::common;
+
 #[tokio::test]
 async fn test_transaction_abort() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First, let's check if the key exists before we start
     let pre_tx_future = client.begin_transaction(None, Some(30));

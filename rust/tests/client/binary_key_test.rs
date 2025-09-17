@@ -1,8 +1,10 @@
 use rocksdb_server::client::KvStoreClient;
 
+use crate::common;
+
 #[tokio::test]
 async fn test_read_transaction_binary_keys_snapshot_get() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First, set up binary data with a regular transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -36,7 +38,7 @@ async fn test_read_transaction_binary_keys_snapshot_get() -> Result<(), Box<dyn 
 
 #[tokio::test]
 async fn test_read_transaction_binary_keys_get() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First, set up binary data with a regular transaction
     let tx_future = client.begin_transaction(None, Some(30));

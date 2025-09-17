@@ -142,13 +142,30 @@ fn find_available_port() -> Result<u16, Box<dyn std::error::Error + Send + Sync>
 pub async fn wait_for_server_ready(port: u16, timeout_secs: u64) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let timeout = Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
-    
+
     while start.elapsed() < timeout {
         if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
             return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    
+
     Err("Server did not become ready within timeout".into())
+}
+
+/// Get server address from environment or default to localhost:9090
+#[allow(dead_code)]
+pub fn get_server_address() -> String {
+    // Check for full server address first
+    if let Ok(addr) = std::env::var("KV_TEST_SERVER_ADDRESS") {
+        return addr;
+    }
+
+    // Check for port only and build address
+    if let Ok(port) = std::env::var("KV_TEST_SERVER_PORT") {
+        return format!("localhost:{}", port);
+    }
+
+    // Default fallback
+    "localhost:9090".to_string()
 }
