@@ -28,6 +28,11 @@ NC='\033[0m' # No Color
 TESTS_PASSED=0
 TESTS_FAILED=0
 
+# Test directories
+TEST_WORK_DIR=""
+TEST_SERVER_LOG=""
+TEST_DB_DIR=""
+
 # Logging functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -54,14 +59,19 @@ log_test() {
 # Cleanup function
 cleanup() {
     log_info "Cleaning up test environment..."
-    
+
     if [ ! -z "$THRIFT_SERVER_PID" ]; then
         log_info "Stopping Thrift server (PID: $THRIFT_SERVER_PID)"
         kill $THRIFT_SERVER_PID 2>/dev/null || true
         wait $THRIFT_SERVER_PID 2>/dev/null || true
     fi
-    
+
     # Note: FFI tests handle their own cleanup, no manual cleanup needed
+
+    if [ -n "$TEST_WORK_DIR" ] && [ -d "$TEST_WORK_DIR" ]; then
+        log_info "Removing test directory $TEST_WORK_DIR"
+        rm -rf "$TEST_WORK_DIR"
+    fi
 }
 
 # Set up cleanup trap
@@ -84,6 +94,23 @@ check_prerequisites() {
     log_success "Prerequisites check passed"
 }
 
+# Prepare dedicated directory for test artifacts
+setup_test_environment() {
+    log_info "Setting up dedicated test directory..."
+
+    if ! TEST_WORK_DIR=$(mktemp -d /tmp/kv_tests_XXXXXX); then
+        log_error "Failed to create temporary test directory"
+        exit 1
+    fi
+
+    TEST_SERVER_LOG="$TEST_WORK_DIR/thrift_server.log"
+    TEST_DB_DIR="$TEST_WORK_DIR/db"
+
+    mkdir -p "$TEST_DB_DIR"
+
+    log_info "Test artifacts will be stored in $TEST_WORK_DIR"
+}
+
 # Start Thrift server
 start_server() {
     log_info "Starting Thrift server on port $THRIFT_SERVER_PORT..."
@@ -101,7 +128,7 @@ start_server() {
     fi
 
     # Start the server in background with custom port
-    $thrift_server_bin --port $THRIFT_SERVER_PORT > test_server.log 2>&1 &
+    $thrift_server_bin --port $THRIFT_SERVER_PORT --db-path "$TEST_DB_DIR" > "$TEST_SERVER_LOG" 2>&1 &
     THRIFT_SERVER_PID=$!
 
     log_info "Thrift server started with PID: $THRIFT_SERVER_PID"
@@ -117,7 +144,9 @@ start_server() {
     done
 
     log_error "Thrift server failed to start within $SERVER_STARTUP_TIMEOUT seconds"
-    cat test_server.log
+    if [ -f "$TEST_SERVER_LOG" ]; then
+        cat "$TEST_SERVER_LOG"
+    fi
     exit 1
 }
 
@@ -190,6 +219,7 @@ main() {
     echo
     
     check_prerequisites
+    setup_test_environment
     start_server
     
     echo
