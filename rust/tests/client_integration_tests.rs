@@ -10,11 +10,12 @@ use rocksdb_server::client::KvStoreClient;
 #[tokio::test]
 async fn test_client_connectivity() -> Result<(), Box<dyn std::error::Error>> {
     // This test serves as an entry point to verify client connectivity
+    let server_addr = common::get_server_address();
     println!("Testing client connectivity...");
-    println!("Make sure the Thrift server is running on localhost:9090");
-    
+    println!("Make sure the Thrift server is running on {}", server_addr);
+
     // Simple connectivity test (KvStoreClient::connect is synchronous, not async)
-    match KvStoreClient::connect("localhost:9090") {
+    match KvStoreClient::connect(&server_addr) {
         Ok(_) => {
             println!("✅ Successfully connected to Thrift server");
             Ok(())

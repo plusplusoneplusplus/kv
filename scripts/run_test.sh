@@ -143,8 +143,8 @@ test_rust_workspace() {
 
     log_info "Running cargo test --workspace in rust/ directory"
 
-    # Change to rust directory and run tests
-    if (cd ../rust && cargo test --workspace); then
+    # Change to rust directory and run tests with correct server port
+    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" cargo test --workspace); then
         log_success "Rust workspace tests completed successfully"
         return 0
     else

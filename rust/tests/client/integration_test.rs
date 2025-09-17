@@ -2,9 +2,11 @@ use rocksdb_server::client::{KvStoreClient, KvError};
 use std::time::Duration;
 use tokio::time::timeout;
 
+use crate::common;
+
 #[tokio::test]
 async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -28,7 +30,7 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_transaction_conflict() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Start two transactions
     let tx1_future = client.begin_transaction(None, Some(30));
@@ -85,7 +87,7 @@ async fn test_transaction_conflict() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -130,7 +132,7 @@ async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_read_transaction() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First, set up some data with a regular transaction
     let setup_tx_future = client.begin_transaction(None, Some(30));
@@ -169,7 +171,7 @@ async fn test_read_transaction() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_read_transaction_binary_keys() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First, set up binary data with a regular transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -217,7 +219,7 @@ async fn test_read_transaction_binary_keys() -> Result<(), Box<dyn std::error::E
 
 #[tokio::test]
 async fn test_versionstamped_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -250,7 +252,7 @@ async fn test_connection_timeout() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_transaction_timeout() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction with very short timeout
     let tx_future = client.begin_transaction(None, Some(1));
@@ -288,7 +290,7 @@ async fn test_transaction_timeout() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_ping() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     let ping_future = client.ping(Some("test message".as_bytes().to_vec()));
     let response = ping_future.await_result().await?;
@@ -300,7 +302,7 @@ async fn test_ping() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_delete_operation() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
 
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -332,7 +334,7 @@ async fn test_delete_operation() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
 
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -542,7 +544,7 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
 
 #[tokio::test]
 async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
 
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));

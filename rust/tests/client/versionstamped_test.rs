@@ -1,8 +1,10 @@
 use rocksdb_server::client::KvStoreClient;
 
+use crate::common;
+
 #[tokio::test]
 async fn test_versionstamped_key_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -37,7 +39,7 @@ async fn test_versionstamped_key_operations() -> Result<(), Box<dyn std::error::
 
 #[tokio::test]
 async fn test_versionstamped_value_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -72,7 +74,7 @@ async fn test_versionstamped_value_operations() -> Result<(), Box<dyn std::error
 
 #[tokio::test]
 async fn test_mixed_versionstamped_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -122,7 +124,7 @@ async fn test_mixed_versionstamped_operations() -> Result<(), Box<dyn std::error
 
 #[tokio::test]
 async fn test_versionstamp_uniqueness() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // First transaction
     let tx1_future = client.begin_transaction(None, Some(30));
@@ -152,7 +154,7 @@ async fn test_versionstamp_uniqueness() -> Result<(), Box<dyn std::error::Error>
 
 #[tokio::test] 
 async fn test_backward_compatibility_commit() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
@@ -172,7 +174,7 @@ async fn test_backward_compatibility_commit() -> Result<(), Box<dyn std::error::
 
 #[tokio::test]
 async fn test_versionstamp_buffer_size_validation() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KvStoreClient::connect("localhost:9090")?;
+    let client = KvStoreClient::connect(&common::get_server_address())?;
     
     // Test 1: Key buffer too small (< 10 bytes)
     let tx_future = client.begin_transaction(None, Some(30));
