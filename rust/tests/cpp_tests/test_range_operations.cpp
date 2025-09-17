@@ -9,7 +9,7 @@ protected:
 
 TEST_F(RangeOperationsTest, BasicRangeQuery) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -39,7 +39,7 @@ TEST_F(RangeOperationsTest, BasicRangeQuery) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithOffsets) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -67,7 +67,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithOffsets) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithInclusiveExclusive) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -95,7 +95,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithInclusiveExclusive) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithEndOffset) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -124,7 +124,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithEndOffset) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithDefaultKeys) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data with unique prefix to avoid conflicts
@@ -173,7 +173,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithDefaultKeys) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithLimitAndOffsets) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -201,7 +201,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithLimitAndOffsets) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeWithBinaryKeys) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data with binary keys (containing null bytes) using unique prefix
@@ -234,7 +234,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeWithBinaryKeys) {
 
 TEST_F(RangeOperationsTest, EnhancedRangeEmptyResults) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data
@@ -257,7 +257,7 @@ TEST_F(RangeOperationsTest, EnhancedRangeEmptyResults) {
 
 TEST_F(RangeOperationsTest, ComprehensiveBinaryKeyTest) {
     try {
-        KvClientWrapper client("localhost:9090");
+        KvClientWrapper client;
         KvTransactionWrapper tx(client);
         
         // Setup test data with various binary key patterns

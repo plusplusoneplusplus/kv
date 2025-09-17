@@ -100,9 +100,25 @@ g++ -std=c++14 -o cpp_ffi_test \
 
 ## Prerequisites
 
-1. **KV Server Running**: Tests require a Thrift server running on `localhost:9090`
+1. **KV Server Running**: Tests require a Thrift server running (configurable port)
    ```bash
+   # Default port (9090)
    ./target/debug/thrift-server --verbose --port 9090
+
+   # Custom port (configurable via environment)
+   ./target/debug/thrift-server --verbose --port 9097
+   ```
+
+2. **Server Configuration**: Tests automatically connect to the configured server
+   ```bash
+   # Use default port (9090)
+   ./cpp_ffi_test
+
+   # Use custom port
+   KV_TEST_SERVER_PORT=9097 ./cpp_ffi_test
+
+   # Use full server address
+   KV_TEST_SERVER_ADDRESS=localhost:9099 ./cpp_ffi_test
    ```
 
 2. **Rust Client Library**: The FFI library must be built

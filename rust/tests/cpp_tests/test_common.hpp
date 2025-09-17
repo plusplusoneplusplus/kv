@@ -9,7 +9,24 @@
 #include <cstring>
 #include <functional>
 #include <unistd.h>
+#include <cstdlib>
 #include "../../src/client/kvstore_client.h"
+
+// Helper function to get server address from environment
+inline std::string get_server_address() {
+    const char* env_addr = std::getenv("KV_TEST_SERVER_ADDRESS");
+    if (env_addr) {
+        return std::string(env_addr);
+    }
+
+    const char* env_port = std::getenv("KV_TEST_SERVER_PORT");
+    if (env_port) {
+        return std::string("localhost:") + env_port;
+    }
+
+    // Default fallback
+    return "localhost:9090";
+}
 
 // Test framework macros and classes
 #define TEST_ASSERT(condition, message) \
@@ -140,15 +157,19 @@ public:
 class KvClientWrapper {
 private:
     KvClientHandle handle;
-    
+
 public:
+    // Default constructor uses environment-configured server address
+    KvClientWrapper() : KvClientWrapper(get_server_address()) {
+    }
+
     explicit KvClientWrapper(const std::string& address) {
         handle = kv_client_create(address.c_str());
         if (!handle) {
             throw std::runtime_error("Failed to create KV client");
         }
     }
-    
+
     explicit KvClientWrapper(const std::string& address, KvConfigWrapper& config) {
         handle = kv_client_create_with_config(address.c_str(), config.get());
         if (!handle) {

@@ -22,7 +22,7 @@ protected:
 // Test versionstamped key operations
 TEST_F(VersionstampedOperationsTest, BasicVersionstampedKey) {
     // Create client and transaction
-    KvClientWrapper client("localhost:9090");
+    KvClientWrapper client;
     KvTransactionWrapper tx(client);
     
     // Set a versionstamped key - key buffer with placeholder for 10-byte versionstamp
@@ -56,7 +56,7 @@ TEST_F(VersionstampedOperationsTest, BasicVersionstampedKey) {
 // Test versionstamped value operations
 TEST_F(VersionstampedOperationsTest, BasicVersionstampedValue) {
     // Create client and transaction
-    KvClientWrapper client("localhost:9090");
+    KvClientWrapper client;
     KvTransactionWrapper tx(client);
     
     // Set a versionstamped value - value buffer with placeholder for 10-byte versionstamp
