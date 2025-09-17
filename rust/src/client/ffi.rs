@@ -32,7 +32,7 @@ static CONFIGS: Lazy<Mutex<HashMap<usize, ClientConfig>>> = Lazy::new(|| Mutex::
 
 static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
-fn next_id() -> usize {
+pub fn next_id() -> usize {
     NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -380,6 +380,64 @@ pub extern "C" fn kv_future_poll(future: KvFutureHandle) -> c_int {
     } else {
         KV_FUNCTION_ERROR
     }
+}
+
+/// Set a callback to be called when a future completes
+#[no_mangle]
+pub extern "C" fn kv_future_set_callback(
+    future: KvFutureHandle,
+    callback: extern "C" fn(KvFutureHandle, *mut c_void),
+    user_context: *mut c_void,
+) -> c_int {
+    if future.is_null() {
+        return KV_FUNCTION_ERROR;
+    }
+
+    let future_id = future as usize;
+    let futures = FUTURES.lock();
+
+    if let Some(boxed_future) = futures.get(&future_id) {
+        // Try to downcast to different future types and set callback
+        if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Transaction>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<ReadTransaction>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<()>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<Vec<u8>>>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Option<String>>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(Vec<u8>, Vec<u8>)>>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<Vec<(String, String)>>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<String>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        } else if let Some(future_ptr) = boxed_future.downcast_ref::<KvFuturePtr<CommitResult>>() {
+            if future_ptr.set_callback(callback, user_context) {
+                return KV_FUNCTION_SUCCESS;
+            }
+        }
+    }
+
+    KV_FUNCTION_ERROR
 }
 
 /// Get the result of a transaction begin future

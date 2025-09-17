@@ -99,8 +99,12 @@ void kv_client_destroy(KvClientHandle client);
 KvFutureHandle kv_transaction_begin(KvClientHandle client, int timeout_seconds);
 KvFutureHandle kv_read_transaction_begin(KvClientHandle client, int64_t read_version);
 
+// Callback type for async notifications
+typedef void (*KvFutureCallback)(KvFutureHandle future, void* user_context);
+
 // Future operations
 int kv_future_poll(KvFutureHandle future);  // Returns: KV_FUNCTION_SUCCESS=ready, KV_FUNCTION_FAILURE=pending, KV_FUNCTION_ERROR=error
+int kv_future_set_callback(KvFutureHandle future, KvFutureCallback callback, void* user_context);  // Set callback for async notification
 KvTransactionHandle kv_future_get_transaction(KvFutureHandle future);
 KvReadTransactionHandle kv_future_get_read_transaction(KvFutureHandle future);
 KvResult kv_future_get_void_result(KvFutureHandle future);
