@@ -295,8 +295,18 @@ async fn main() -> Result<(), KvError> {
 
 ## Phase 1: Happy Path - Basic Working Replication (Week 2)
 
+**Status**: 🔄 **In Progress** - Foundation work completed, consensus layer implementation pending
+- ✅ Operation serialization implemented (using existing types in `rust/src/lib/db.rs`)
+- ✅ Dependencies added (bincode, serde)
+- ❌ RSML integration pending
+- ❌ Consensus components pending (executor, replica manager, router)
+
+**See**: [Phase 1 Detailed Implementation Plan](impl/phase1-implementation-plan.md) for current status
+
 ### 1.1 Simple Operation Type for Consensus
 **Goal**: Get one operation type working through Paxos.
+
+**✅ COMPLETED**: Instead of creating new types, enhanced existing `WriteOperation`, `AtomicOperation`, and `AtomicCommitRequest` with serialization support.
 
 **Start with single operation**:
 ```rust

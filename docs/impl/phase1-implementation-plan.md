@@ -12,20 +12,26 @@ This document provides a detailed implementation plan for Phase 1 of the Paxos-r
 
 ## Current State Assessment
 
-### Already Implemented (from Phase 0)
+### Already Implemented (Phase 0 + Phase 1 Foundation)
 - ✅ `KvDatabase` trait abstraction (`rust/src/lib/db_trait.rs`)
 - ✅ `KvServiceCore` for protocol-agnostic logic (`rust/src/lib/service_core.rs`)
 - ✅ `DeploymentMode` enum with Standalone/Replicated (`rust/src/lib/config.rs`)
 - ✅ Configuration structure supporting replica endpoints
 - ✅ Database factory pattern for mode-based instantiation
+- ✅ **NEW**: Operation serialization with serde (`rust/src/lib/db.rs`)
+- ✅ **NEW**: Bincode dependency added (`rust/Cargo.toml`)
+- ✅ **NEW**: Replica-aware database creation (`TransactionalKvDatabase::new_with_instance_id`)
 
-### To Be Implemented
-- ❌ RSML library integration
-- ❌ Consensus operation types and serialization
+### Currently In Progress (Phase 1)
+- 🔄 RSML library integration (foundation complete, consensus layer pending)
+- 🔄 Consensus operation types (serialization complete, consensus types pending)
+
+### To Be Implemented (Phase 1 Remaining)
 - ❌ KvStoreExecutor for applying consensus decisions
-- ❌ Three-replica manager
-- ❌ Primary routing logic
+- ❌ Three-replica manager (ReplicaManager)
+- ❌ Primary routing logic (ConsensusRouter)
 - ❌ Integration with existing Thrift/gRPC handlers
+- ❌ New replicated server executable (`thrift-replicated-server`)
 
 ## Prerequisites & Setup
 
@@ -36,9 +42,11 @@ This document provides a detailed implementation plan for Phase 1 of the Paxos-r
 # rust/Cargo.toml
 [dependencies]
 rsml = { git = "https://github.com/your-org/rsml.git", branch = "main" }
-bincode = "1.3"  # For operation serialization
-serde = { version = "1.0", features = ["derive"] }
+# ✅ COMPLETED: bincode = "1.3"  # For operation serialization
+# ✅ COMPLETED: serde = { version = "1.0", features = ["derive"] }
 ```
+
+**Status**: ✅ Partially completed - bincode and serde dependencies added, operation serialization implemented. RSML dependency still needs to be added.
 
 #### Task: Create RSML Module Structure
 ```rust
@@ -58,34 +66,22 @@ pub use router::ConsensusRouter;
 
 ### 1.2 Simple Operation Type (Day 1-2)
 
-#### File: `rust/src/consensus/operations.rs`
+**Status**: ✅ **COMPLETED** - Operation serialization implemented using existing operation types
+
+#### Implementation: Enhanced existing operations in `rust/src/lib/db.rs`
+
+Instead of creating new operation types, the existing `WriteOperation`, `AtomicOperation`, and `AtomicCommitRequest` types have been enhanced with serialization support:
 
 ```rust
-use serde::{Serialize, Deserialize};
-
-/// Simplified operation type for Phase 1
-/// Only supports basic SET operations initially
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum KvOperation {
-    Set {
-        key: Vec<u8>,
-        value: Vec<u8>,
-        column_family: Option<String>,
-    },
-    // Phase 2: Add Get, Delete, AtomicCommit, etc.
+// ✅ IMPLEMENTED in rust/src/lib/db.rs
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum WriteOperation {
+    Put { key: Vec<u8>, value: Vec<u8> },
+    Delete { key: Vec<u8> },
 }
 
-impl KvOperation {
-    /// Create a SET operation
-    pub fn set(key: Vec<u8>, value: Vec<u8>) -> Self {
-        KvOperation::Set {
-            key,
-            value,
-            column_family: None
-        }
-    }
-
-    /// Serialize operation for consensus
+impl WriteOperation {
+    /// Serialize operation for consensus transmission
     pub fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
     }
@@ -95,7 +91,14 @@ impl KvOperation {
         bincode::deserialize(data)
     }
 }
+
+// Similar implementations added for AtomicOperation and AtomicCommitRequest
 ```
+
+**Benefits of this approach**:
+- Reuses existing well-tested operation types
+- Maintains compatibility with current protocol definitions
+- No code duplication between standalone and replicated modes
 
 ### 1.3 Basic KvStoreExecutor (Day 2)
 
@@ -452,10 +455,15 @@ impl DatabaseFactory {
 }
 ```
 
-#### File: `rust/src/servers/thrift_server.rs` (modifications)
+#### File: `rust/src/bin/thrift_replicated_server.rs` (new executable)
 
 ```rust
-// Modify main function to support replicated mode
+// New executable for replicated Thrift server
+use std::sync::Arc;
+use rocksdb_server::lib::config::Config;
+use rocksdb_server::lib::service_core::KvServiceCore;
+use rocksdb_server::servers::thrift::ThriftKvStoreHandler;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
@@ -463,7 +471,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration
     let config_path = std::env::var("CONFIG_PATH")
-        .unwrap_or_else(|_| "config/db_config.toml".to_string());
+        .unwrap_or_else(|_| "config/replicated_config.toml".to_string());
 
     let config = Config::load_from_file(&config_path)
         .unwrap_or_else(|_| {
@@ -471,9 +479,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Config::default()
         });
 
-    // Check deployment mode
-    let deployment_mode = config.deployment.mode.clone();
-    tracing::info!("Starting server in {:?} mode", deployment_mode);
+    // Ensure we're in replicated mode
+    match config.deployment.mode {
+        rocksdb_server::lib::config::DeploymentMode::Replicated => {
+            tracing::info!("Starting Thrift server in replicated mode");
+        }
+        _ => {
+            return Err("This executable only supports replicated mode. Use thrift-server for standalone mode.".into());
+        }
+    }
 
     // Create database using factory
     let factory = config.create_database_factory();
@@ -488,6 +502,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+```
+
+#### File: `rust/Cargo.toml` (add new binary)
+
+```toml
+# Add to existing [[bin]] entries
+[[bin]]
+name = "thrift-replicated-server"
+path = "src/bin/thrift_replicated_server.rs"
 ```
 
 ## Testing Plan
@@ -519,7 +542,7 @@ EOF
 cargo build --release
 
 # Run Thrift server in replicated mode
-RUST_LOG=info cargo run --bin thrift-server
+RUST_LOG=info cargo run --bin thrift-replicated-server
 ```
 
 #### Step 3: Test Basic Operations
@@ -637,15 +660,17 @@ async fn test_consensus_router() {
 
 ## Implementation Timeline
 
-| Day | Tasks | Deliverables |
-|-----|-------|--------------|
-| **Day 1** | RSML integration, project setup | - RSML dependency added<br>- Module structure created<br>- Basic operation types defined |
-| **Day 2** | KvStoreExecutor implementation | - Executor applying operations<br>- Basic logging/debugging<br>- Unit tests for executor |
-| **Day 3** | ReplicaManager development | - Three replicas starting<br>- In-memory transport working<br>- Operation submission logic |
-| **Day 4** | ConsensusRouter & integration | - Router implementing KvDatabase<br>- Integration with factory<br>- Server modifications |
-| **Day 5** | Testing & debugging | - Manual testing procedures<br>- Integration tests<br>- Bug fixes |
-| **Day 6** | Documentation & cleanup | - Code documentation<br>- Test results documented<br>- Phase 2 planning |
-| **Day 7** | Buffer & review | - Performance baseline<br>- Code review<br>- Handoff preparation |
+| Day | Tasks | Status | Deliverables |
+|-----|-------|--------|--------------|
+| **Day 1** | RSML integration, project setup | ✅ **50% Complete** | - ✅ bincode/serde dependencies added<br>- ✅ Operation serialization implemented<br>- ❌ RSML dependency still needed<br>- ❌ Module structure pending |
+| **Day 2** | KvStoreExecutor implementation | ❌ **Pending** | - Executor applying operations<br>- Basic logging/debugging<br>- Unit tests for executor |
+| **Day 3** | ReplicaManager development | ❌ **Pending** | - Three replicas starting<br>- In-memory transport working<br>- Operation submission logic |
+| **Day 4** | ConsensusRouter & integration | ❌ **Pending** | - Router implementing KvDatabase<br>- Integration with factory<br>- Server modifications |
+| **Day 5** | Testing & debugging | ❌ **Pending** | - Manual testing procedures<br>- Integration tests<br>- Bug fixes |
+| **Day 6** | Documentation & cleanup | 🔄 **In Progress** | - ✅ Implementation plan updated<br>- ❌ Test results pending<br>- ❌ Phase 2 planning pending |
+| **Day 7** | Buffer & review | ❌ **Pending** | - Performance baseline<br>- Code review<br>- Handoff preparation |
+
+**Current Status**: Phase 1 foundation work completed (operation serialization), consensus layer implementation pending.
 
 ## Risks & Mitigation
 
