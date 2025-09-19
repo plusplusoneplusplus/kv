@@ -9,9 +9,11 @@ use tracing::{info, debug, error};
 use clap::Parser;
 
 use rocksdb_server::lib::db::TransactionalKvDatabase;
+use rocksdb_server::lib::db_trait::KvDatabase;
 use rocksdb_server::generated::kvstore::*;
 use rocksdb_server::lib::config::Config;
 use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
+use rocksdb_server::lib::replication::RoutingManager;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -107,6 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match stream {
             Ok(stream) => {
                 let database = Arc::clone(&database);
+                let config = config.clone();
                 let verbose = args.verbose;
                 let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
 
@@ -116,8 +119,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         debug!("Creating handler and processor for connection from {}", peer_addr);
                     }
 
-                    // Create handler and processor for this connection
-                    let handler = ThriftKvAdapter::new(database, verbose);
+                    // Create routing manager and handler for this connection
+                    let routing_manager = Arc::new(RoutingManager::new(
+                        database as Arc<dyn KvDatabase>,
+                        config.deployment.mode.clone(),
+                        config.deployment.instance_id,
+                    ));
+                    let handler = ThriftKvAdapter::new(routing_manager);
                     let processor = TransactionalKVSyncProcessor::new(handler);
 
                     // Create buffered transports

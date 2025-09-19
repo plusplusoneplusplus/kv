@@ -1,21 +1,41 @@
 use std::sync::Arc;
 
-use crate::lib::db::{TransactionalKvDatabase, AtomicOperation, FaultInjectionConfig};
-use crate::lib::db_trait::KvDatabase;
-use crate::lib::kv_operations::KvOperations;
+use crate::lib::db::{AtomicOperation, FaultInjectionConfig};
+use crate::lib::operations::{KvOperation, OperationResult};
+use crate::lib::replication::RoutingManager;
 use crate::generated::kvstore::*;
 
 /// Thrift-specific adapter that implements the TransactionalKVSyncHandler trait.
-/// This handles all Thrift protocol conversions and delegates business logic to KvOperations.
-/// It acts as a pure adapter layer without any business logic of its own.
+/// This handles all Thrift protocol conversions and delegates operations to the RoutingManager.
+/// It acts as a pure adapter layer that converts Thrift requests to KvOperations and
+/// routes them through the distributed routing system.
 pub struct ThriftKvAdapter {
-    operations: KvOperations,
+    routing_manager: Arc<RoutingManager>,
 }
 
 impl ThriftKvAdapter {
-    pub fn new(database: Arc<TransactionalKvDatabase>, verbose: bool) -> Self {
+    pub fn new(routing_manager: Arc<RoutingManager>) -> Self {
         Self {
-            operations: KvOperations::new(database as Arc<dyn KvDatabase>, verbose),
+            routing_manager,
+        }
+    }
+
+    /// Utility method to execute async operations synchronously for Thrift handlers
+    fn execute_operation(&self, operation: KvOperation) -> crate::lib::replication::RoutingResult<OperationResult> {
+        // Try to use the current runtime, otherwise create a new one for testing
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.block_on(async {
+                    self.routing_manager.route_operation(operation).await
+                })
+            }
+            Err(_) => {
+                // No current runtime, create a new one (for testing scenarios)
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    self.routing_manager.route_operation(operation).await
+                })
+            }
         }
     }
 }
@@ -24,29 +44,58 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
     // FoundationDB-style client-side transaction methods
 
     fn handle_get_read_version(&self, _req: GetReadVersionRequest) -> thrift::Result<GetReadVersionResponse> {
-        let read_version = self.operations.get_read_version();
+        let operation = KvOperation::GetReadVersion;
+        let result = self.execute_operation(operation);
 
-        Ok(GetReadVersionResponse::new(
-            read_version as i64,
-            true,
-            None
-        ))
+        match result {
+            Ok(OperationResult::ReadVersion(version)) => Ok(GetReadVersionResponse::new(
+                version as i64,
+                true,
+                None
+            )),
+            Err(e) => Ok(GetReadVersionResponse::new(
+                0,
+                false,
+                Some(e.to_string())
+            )),
+            _ => Ok(GetReadVersionResponse::new(
+                0,
+                false,
+                Some("Unexpected result type".to_string())
+            )),
+        }
     }
 
     fn handle_snapshot_read(&self, req: SnapshotReadRequest) -> thrift::Result<SnapshotReadResponse> {
-        let result = self.operations.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
+        let operation = KvOperation::SnapshotRead {
+            key: req.key,
+            read_version: req.read_version as u64,
+            column_family: req.column_family,
+        };
+
+        let result = self.execute_operation(operation);
 
         match result {
-            Ok(get_result) => Ok(SnapshotReadResponse::new(
+            Ok(OperationResult::GetResult(Ok(get_result))) => Ok(SnapshotReadResponse::new(
                 get_result.value,
                 get_result.found,
                 None
             )),
-            Err(e) => Ok(SnapshotReadResponse::new(
+            Ok(OperationResult::GetResult(Err(e))) => Ok(SnapshotReadResponse::new(
                 Vec::new(),
                 false,
                 Some(e)
-            ))
+            )),
+            Err(e) => Ok(SnapshotReadResponse::new(
+                Vec::new(),
+                false,
+                Some(e.to_string())
+            )),
+            _ => Ok(SnapshotReadResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string())
+            )),
         }
     }
 
@@ -68,146 +117,271 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
             timeout_seconds: req.timeout_seconds.map(|t| t as u64).unwrap_or(60),
         };
 
-        let result = self.operations.atomic_commit(atomic_request);
+        let operation = KvOperation::AtomicCommit {
+            request: atomic_request,
+        };
 
-        Ok(AtomicCommitResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) },
-            result.error_code,
-            result.committed_version.map(|v| v as i64)
-        ))
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::AtomicCommitResult(commit_result)) => Ok(AtomicCommitResponse::new(
+                commit_result.success,
+                if commit_result.error.is_empty() { None } else { Some(commit_result.error) },
+                commit_result.error_code,
+                commit_result.committed_version.map(|v| v as i64)
+            )),
+            Err(e) => Ok(AtomicCommitResponse::new(
+                false,
+                Some(e.to_string()),
+                None,
+                None
+            )),
+            _ => Ok(AtomicCommitResponse::new(
+                false,
+                Some("Unexpected result type".to_string()),
+                None,
+                None
+            )),
+        }
     }
 
     // Non-transactional operations for backward compatibility
 
     fn handle_get(&self, req: GetRequest) -> thrift::Result<GetResponse> {
-        let result = self.operations.get(&req.key);
+        let operation = KvOperation::Get {
+            key: req.key,
+            column_family: None,
+        };
+
+        let result = self.execute_operation(operation);
 
         match result {
-            Ok(get_result) => Ok(GetResponse::new(
+            Ok(OperationResult::GetResult(Ok(get_result))) => Ok(GetResponse::new(
                 get_result.value,
                 get_result.found,
                 None
             )),
-            Err(e) => Ok(GetResponse::new(
+            Ok(OperationResult::GetResult(Err(e))) => Ok(GetResponse::new(
                 Vec::new(),
                 false,
                 Some(e)
+            )),
+            Err(e) => Ok(GetResponse::new(
+                Vec::new(),
+                false,
+                Some(e.to_string())
+            )),
+            _ => Ok(GetResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string())
             )),
         }
     }
 
     fn handle_set_key(&self, req: SetRequest) -> thrift::Result<SetResponse> {
-        let result = self.operations.put(&req.key, &req.value);
+        let operation = KvOperation::Set {
+            key: req.key,
+            value: req.value,
+            column_family: None,
+        };
 
-        Ok(SetResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) },
-            result.error_code
-        ))
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::OpResult(op_result)) => Ok(SetResponse::new(
+                op_result.success,
+                if op_result.error.is_empty() { None } else { Some(op_result.error) },
+                op_result.error_code
+            )),
+            Err(e) => Ok(SetResponse::new(
+                false,
+                Some(e.to_string()),
+                None
+            )),
+            _ => Ok(SetResponse::new(
+                false,
+                Some("Unexpected result type".to_string()),
+                None
+            )),
+        }
     }
 
     fn handle_delete_key(&self, req: DeleteRequest) -> thrift::Result<DeleteResponse> {
-        let result = self.operations.delete(&req.key);
+        let operation = KvOperation::Delete {
+            key: req.key,
+            column_family: None,
+        };
 
-        Ok(DeleteResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) },
-            result.error_code
-        ))
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::OpResult(op_result)) => Ok(DeleteResponse::new(
+                op_result.success,
+                if op_result.error.is_empty() { None } else { Some(op_result.error) },
+                op_result.error_code
+            )),
+            Err(e) => Ok(DeleteResponse::new(
+                false,
+                Some(e.to_string()),
+                None
+            )),
+            _ => Ok(DeleteResponse::new(
+                false,
+                Some("Unexpected result type".to_string()),
+                None
+            )),
+        }
     }
 
     // Range operations
 
     fn handle_get_range(&self, req: GetRangeRequest) -> thrift::Result<GetRangeResponse> {
-        // Apply FoundationDB-style defaults for missing keys
-        let begin_key = req.begin_key.as_deref().unwrap_or(b""); // Empty string = beginning of keyspace
-        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]); // Single 0xFF = end of keyspace
 
-        let result = self.operations.get_range(
+        // Apply FoundationDB-style defaults for missing keys
+        let begin_key = req.begin_key.as_deref().unwrap_or(b"").to_vec(); // Empty string = beginning of keyspace
+        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]).to_vec(); // Single 0xFF = end of keyspace
+
+        let operation = KvOperation::GetRange {
             begin_key,
             end_key,
-            req.begin_offset.unwrap_or(0),
-            req.begin_or_equal.unwrap_or(true),
-            req.end_offset.unwrap_or(0),
-            req.end_or_equal.unwrap_or(false),
-            req.limit
-        );
+            begin_offset: req.begin_offset.unwrap_or(0),
+            begin_or_equal: req.begin_or_equal.unwrap_or(true),
+            end_offset: req.end_offset.unwrap_or(0),
+            end_or_equal: req.end_or_equal.unwrap_or(false),
+            limit: req.limit,
+            column_family: None,
+        };
 
-        if result.success {
-            let key_values: Vec<KeyValue> = result.key_values.into_iter()
-                .map(|kv| KeyValue::new(kv.key, kv.value))
-                .collect();
+        let result = self.execute_operation(operation);
 
-            Ok(GetRangeResponse::new(
-                key_values,
-                true,
-                None,
-                result.has_more
-            ))
-        } else {
-            Ok(GetRangeResponse::new(
+        match result {
+            Ok(OperationResult::GetRangeResult(range_result)) => {
+                if range_result.success {
+                    let key_values: Vec<KeyValue> = range_result.key_values.into_iter()
+                        .map(|kv| KeyValue::new(kv.key, kv.value))
+                        .collect();
+
+                    Ok(GetRangeResponse::new(
+                        key_values,
+                        true,
+                        None,
+                        range_result.has_more
+                    ))
+                } else {
+                    Ok(GetRangeResponse::new(
+                        Vec::new(),
+                        false,
+                        Some(range_result.error),
+                        false
+                    ))
+                }
+            }
+            Err(e) => Ok(GetRangeResponse::new(
                 Vec::new(),
                 false,
-                Some(result.error),
+                Some(e.to_string()),
                 false
-            ))
+            )),
+            _ => Ok(GetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string()),
+                false
+            )),
         }
     }
 
     // Backward compatibility snapshot operations
 
     fn handle_snapshot_get(&self, req: SnapshotGetRequest) -> thrift::Result<SnapshotGetResponse> {
-        let result = self.operations.snapshot_read(&req.key, req.read_version as u64, req.column_family.as_deref());
+        // This is the same as handle_snapshot_read, just different Thrift method name
+        let operation = KvOperation::SnapshotRead {
+            key: req.key,
+            read_version: req.read_version as u64,
+            column_family: req.column_family,
+        };
+
+        let result = self.execute_operation(operation);
 
         match result {
-            Ok(get_result) => Ok(SnapshotGetResponse::new(
+            Ok(OperationResult::GetResult(Ok(get_result))) => Ok(SnapshotGetResponse::new(
                 get_result.value,
                 get_result.found,
                 None
             )),
-            Err(e) => Ok(SnapshotGetResponse::new(
+            Ok(OperationResult::GetResult(Err(e))) => Ok(SnapshotGetResponse::new(
                 Vec::new(),
                 false,
                 Some(e)
+            )),
+            Err(e) => Ok(SnapshotGetResponse::new(
+                Vec::new(),
+                false,
+                Some(e.to_string())
+            )),
+            _ => Ok(SnapshotGetResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string())
             )),
         }
     }
 
     fn handle_snapshot_get_range(&self, req: SnapshotGetRangeRequest) -> thrift::Result<SnapshotGetRangeResponse> {
-        // Apply FoundationDB-style defaults for missing keys
-        let begin_key = req.begin_key.as_deref().unwrap_or(b""); // Empty string = beginning of keyspace
-        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]); // Single 0xFF = end of keyspace
 
-        let result = self.operations.snapshot_get_range(
+        // Apply FoundationDB-style defaults for missing keys
+        let begin_key = req.begin_key.as_deref().unwrap_or(b"").to_vec(); // Empty string = beginning of keyspace
+        let end_key = req.end_key.as_deref().unwrap_or(&[0xFF]).to_vec(); // Single 0xFF = end of keyspace
+
+        let operation = KvOperation::SnapshotGetRange {
             begin_key,
             end_key,
-            req.begin_offset.unwrap_or(0),
-            req.begin_or_equal.unwrap_or(true),
-            req.end_offset.unwrap_or(0),
-            req.end_or_equal.unwrap_or(false),
-            req.read_version as u64,
-            req.limit
-        );
+            begin_offset: req.begin_offset.unwrap_or(0),
+            begin_or_equal: req.begin_or_equal.unwrap_or(true),
+            end_offset: req.end_offset.unwrap_or(0),
+            end_or_equal: req.end_or_equal.unwrap_or(false),
+            read_version: req.read_version as u64,
+            limit: req.limit,
+            column_family: None,
+        };
 
-        if result.success {
-            let key_values: Vec<KeyValue> = result.key_values.into_iter()
-                .map(|kv| KeyValue::new(kv.key, kv.value))
-                .collect();
+        let result = self.execute_operation(operation);
 
-            Ok(SnapshotGetRangeResponse::new(
-                key_values,
-                true,
-                None,
-                result.has_more
-            ))
-        } else {
-            Ok(SnapshotGetRangeResponse::new(
+        match result {
+            Ok(OperationResult::GetRangeResult(range_result)) => {
+                if range_result.success {
+                    let key_values: Vec<KeyValue> = range_result.key_values.into_iter()
+                        .map(|kv| KeyValue::new(kv.key, kv.value))
+                        .collect();
+
+                    Ok(SnapshotGetRangeResponse::new(
+                        key_values,
+                        true,
+                        None,
+                        range_result.has_more
+                    ))
+                } else {
+                    Ok(SnapshotGetRangeResponse::new(
+                        Vec::new(),
+                        false,
+                        Some(range_result.error),
+                        false
+                    ))
+                }
+            }
+            Err(e) => Ok(SnapshotGetRangeResponse::new(
                 Vec::new(),
                 false,
-                Some(result.error),
+                Some(e.to_string()),
                 false
-            ))
+            )),
+            _ => Ok(SnapshotGetRangeResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string()),
+                false
+            )),
         }
     }
 
@@ -247,52 +421,93 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
     // Versionstamped operation implementation
 
     fn handle_set_versionstamped_key(&self, req: SetVersionstampedKeyRequest) -> thrift::Result<SetVersionstampedKeyResponse> {
-        let result = self.operations.set_versionstamped_key(req.key_prefix, req.value, req.column_family);
+        let operation = KvOperation::SetVersionstampedKey {
+            key_prefix: req.key_prefix,
+            value: req.value,
+            column_family: req.column_family,
+        };
 
-        if result.success && !result.generated_keys.is_empty() {
-            Ok(SetVersionstampedKeyResponse::new(
-                result.generated_keys[0].clone(),
-                true,
-                None
-            ))
-        } else {
-            Ok(SetVersionstampedKeyResponse::new(
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::AtomicCommitResult(commit_result)) => {
+                if commit_result.success && !commit_result.generated_keys.is_empty() {
+                    Ok(SetVersionstampedKeyResponse::new(
+                        commit_result.generated_keys[0].clone(),
+                        true,
+                        None
+                    ))
+                } else {
+                    Ok(SetVersionstampedKeyResponse::new(
+                        Vec::new(),
+                        false,
+                        if commit_result.error.is_empty() {
+                            Some("Failed to generate versionstamped key".to_string())
+                        } else {
+                            Some(commit_result.error)
+                        }
+                    ))
+                }
+            }
+            Err(e) => Ok(SetVersionstampedKeyResponse::new(
                 Vec::new(),
                 false,
-                if result.error.is_empty() {
-                    Some("Failed to generate versionstamped key".to_string())
-                } else {
-                    Some(result.error)
-                }
-            ))
+                Some(e.to_string())
+            )),
+            _ => Ok(SetVersionstampedKeyResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string())
+            )),
         }
     }
 
     fn handle_set_versionstamped_value(&self, req: SetVersionstampedValueRequest) -> thrift::Result<SetVersionstampedValueResponse> {
-        let result = self.operations.set_versionstamped_value(req.key, req.value_prefix, req.column_family);
+        let operation = KvOperation::SetVersionstampedValue {
+            key: req.key,
+            value_prefix: req.value_prefix,
+            column_family: req.column_family,
+        };
 
-        if result.success && !result.generated_values.is_empty() {
-            Ok(SetVersionstampedValueResponse::new(
-                result.generated_values[0].clone(),
-                true,
-                None
-            ))
-        } else {
-            Ok(SetVersionstampedValueResponse::new(
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::AtomicCommitResult(commit_result)) => {
+                if commit_result.success && !commit_result.generated_values.is_empty() {
+                    Ok(SetVersionstampedValueResponse::new(
+                        commit_result.generated_values[0].clone(),
+                        true,
+                        None
+                    ))
+                } else {
+                    Ok(SetVersionstampedValueResponse::new(
+                        Vec::new(),
+                        false,
+                        if commit_result.error.is_empty() {
+                            Some("Failed to generate versionstamped value".to_string())
+                        } else {
+                            Some(commit_result.error)
+                        }
+                    ))
+                }
+            }
+            Err(e) => Ok(SetVersionstampedValueResponse::new(
                 Vec::new(),
                 false,
-                if result.error.is_empty() {
-                    Some("Failed to generate versionstamped value".to_string())
-                } else {
-                    Some(result.error)
-                }
-            ))
+                Some(e.to_string())
+            )),
+            _ => Ok(SetVersionstampedValueResponse::new(
+                Vec::new(),
+                false,
+                Some("Unexpected result type".to_string())
+            )),
         }
     }
 
     // Fault injection for testing
 
     fn handle_set_fault_injection(&self, req: FaultInjectionRequest) -> thrift::Result<FaultInjectionResponse> {
+
         let config = if req.probability.map(|p| p.into_inner()).unwrap_or(0.0) > 0.0 {
             Some(FaultInjectionConfig {
                 fault_type: req.fault_type,
@@ -304,18 +519,63 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
             None // Disable fault injection
         };
 
-        let result = self.operations.set_fault_injection(config);
+        let operation = KvOperation::SetFaultInjection { config };
 
-        Ok(FaultInjectionResponse::new(
-            result.success,
-            if result.error.is_empty() { None } else { Some(result.error) }
-        ))
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::OpResult(op_result)) => Ok(FaultInjectionResponse::new(
+                op_result.success,
+                if op_result.error.is_empty() { None } else { Some(op_result.error) }
+            )),
+            Err(e) => Ok(FaultInjectionResponse::new(
+                false,
+                Some(e.to_string())
+            )),
+            _ => Ok(FaultInjectionResponse::new(
+                false,
+                Some("Unexpected result type".to_string())
+            )),
+        }
     }
 
     // Health check
 
     fn handle_ping(&self, req: PingRequest) -> thrift::Result<PingResponse> {
-        let (message, timestamp, server_timestamp) = self.operations.ping(req.message, req.timestamp);
-        Ok(PingResponse::new(message, timestamp, server_timestamp))
+        let operation = KvOperation::Ping {
+            message: req.message,
+            timestamp: req.timestamp,
+        };
+
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::PingResult { message, client_timestamp, server_timestamp }) => {
+                Ok(PingResponse::new(message, client_timestamp, server_timestamp))
+            }
+            Err(e) => {
+                // For ping, we'll still return a response even on error
+                let server_timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_micros() as i64)
+                    .unwrap_or(0);
+                Ok(PingResponse::new(
+                    format!("ERROR: {}", e).into_bytes(),
+                    req.timestamp.unwrap_or(0),
+                    server_timestamp
+                ))
+            }
+            _ => {
+                let server_timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_micros() as i64)
+                    .unwrap_or(0);
+                Ok(PingResponse::new(
+                    b"ERROR: Unexpected result type".to_vec(),
+                    req.timestamp.unwrap_or(0),
+                    server_timestamp
+                ))
+            }
+        }
     }
 }
