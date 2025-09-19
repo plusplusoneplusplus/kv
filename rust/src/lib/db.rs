@@ -1012,6 +1012,13 @@ impl KvDatabase for TransactionalKvDatabase {
             Ok(result)
         })
     }
+
+    async fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.set_fault_injection(config)
+        })
+    }
 }
 
 // Add tests module at the end

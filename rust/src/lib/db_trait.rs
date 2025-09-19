@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::lib::db::{GetResult, OpResult, AtomicCommitRequest, AtomicCommitResult, GetRangeResult};
+use crate::lib::db::{GetResult, OpResult, AtomicCommitRequest, AtomicCommitResult, GetRangeResult, FaultInjectionConfig};
 
 /// Abstract interface for key-value database operations.
 /// This trait allows both standalone and replicated implementations
@@ -47,4 +47,7 @@ pub trait KvDatabase: Send + Sync {
         read_version: u64,
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String>;
+
+    /// Set fault injection configuration for testing
+    async fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult;
 }
