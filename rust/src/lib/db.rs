@@ -44,7 +44,7 @@ pub struct OpResult {
     pub error_code: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WriteOperation {
     Put { key: Vec<u8>, value: Vec<u8> },
     Delete { key: Vec<u8> },
@@ -65,7 +65,7 @@ pub struct FaultInjectionConfig {
 }
 
 // FoundationDB-style client-side transaction structures
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AtomicOperation {
     pub op_type: String,  // "set" or "delete"
     pub key: Vec<u8>,
@@ -73,7 +73,7 @@ pub struct AtomicOperation {
     pub column_family: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AtomicCommitRequest {
     pub read_version: u64,
     pub operations: Vec<AtomicOperation>,
@@ -89,6 +89,42 @@ pub struct AtomicCommitResult {
     pub committed_version: Option<u64>,
     pub generated_keys: Vec<Vec<u8>>,  // Keys generated for versionstamped operations
     pub generated_values: Vec<Vec<u8>>,  // Values generated for versionstamped operations
+}
+
+impl WriteOperation {
+    /// Serialize operation for consensus transmission
+    pub fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+
+    /// Deserialize operation from consensus
+    pub fn deserialize(data: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(data)
+    }
+}
+
+impl AtomicOperation {
+    /// Serialize operation for consensus transmission
+    pub fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+
+    /// Deserialize operation from consensus
+    pub fn deserialize(data: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(data)
+    }
+}
+
+impl AtomicCommitRequest {
+    /// Serialize request for consensus transmission
+    pub fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+
+    /// Deserialize request from consensus
+    pub fn deserialize(data: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(data)
+    }
 }
 
 impl OpResult {
@@ -2515,5 +2551,57 @@ mod tests {
 
         // First key should be the 100th key (0-indexed, so key_000100)
         assert_eq!(result_offset.key_values[0].key, b"large_key_000100");
+    }
+
+    #[test]
+    fn test_operation_serialization() {
+        // Test WriteOperation serialization
+        let write_op = WriteOperation::Put {
+            key: b"test_key".to_vec(),
+            value: b"test_value".to_vec(),
+        };
+
+        let serialized = write_op.serialize().expect("WriteOperation serialization should succeed");
+        let deserialized = WriteOperation::deserialize(&serialized).expect("WriteOperation deserialization should succeed");
+
+        match (write_op, deserialized) {
+            (WriteOperation::Put { key: k1, value: v1 }, WriteOperation::Put { key: k2, value: v2 }) => {
+                assert_eq!(k1, k2);
+                assert_eq!(v1, v2);
+            },
+            _ => panic!("Deserialized WriteOperation doesn't match original"),
+        }
+
+        // Test AtomicOperation serialization
+        let atomic_op = AtomicOperation {
+            op_type: "set".to_string(),
+            key: b"atomic_key".to_vec(),
+            value: Some(b"atomic_value".to_vec()),
+            column_family: Some("test_cf".to_string()),
+        };
+
+        let serialized = atomic_op.serialize().expect("AtomicOperation serialization should succeed");
+        let deserialized = AtomicOperation::deserialize(&serialized).expect("AtomicOperation deserialization should succeed");
+
+        assert_eq!(atomic_op.op_type, deserialized.op_type);
+        assert_eq!(atomic_op.key, deserialized.key);
+        assert_eq!(atomic_op.value, deserialized.value);
+        assert_eq!(atomic_op.column_family, deserialized.column_family);
+
+        // Test AtomicCommitRequest serialization
+        let commit_request = AtomicCommitRequest {
+            read_version: 123,
+            operations: vec![atomic_op.clone()],
+            read_conflict_keys: vec![b"conflict_key".to_vec()],
+            timeout_seconds: 30,
+        };
+
+        let serialized = commit_request.serialize().expect("AtomicCommitRequest serialization should succeed");
+        let deserialized = AtomicCommitRequest::deserialize(&serialized).expect("AtomicCommitRequest deserialization should succeed");
+
+        assert_eq!(commit_request.read_version, deserialized.read_version);
+        assert_eq!(commit_request.operations.len(), deserialized.operations.len());
+        assert_eq!(commit_request.read_conflict_keys, deserialized.read_conflict_keys);
+        assert_eq!(commit_request.timeout_seconds, deserialized.timeout_seconds);
     }
 }
