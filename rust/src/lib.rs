@@ -3,6 +3,7 @@
 pub mod lib {
     pub mod config;
     pub mod db;
+    pub mod db_trait;
     pub mod service;
     pub mod proto;
     pub mod thrift_handler;
@@ -17,6 +18,7 @@ pub mod client;
 // Re-export commonly used types for convenience
 pub use lib::config::Config;
 pub use lib::db::{TransactionalKvDatabase, OpResult, GetResult, AtomicOperation, AtomicCommitRequest, AtomicCommitResult};
+pub use lib::db_trait::KvDatabase;
 pub use generated::kvstore::*;
 
 // Re-export client types for convenience

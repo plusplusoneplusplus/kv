@@ -3,7 +3,9 @@ use std::sync::{Arc, RwLock, mpsc};
 use std::collections::HashMap;
 use tracing::error;
 use std::time::Duration;
+use async_trait::async_trait;
 use super::config::Config;
+use crate::lib::db_trait::KvDatabase;
 
 pub struct TransactionalKvDatabase {
     db: Arc<TransactionDB>,
@@ -177,6 +179,15 @@ impl TransactionalKvDatabase {
             fault_injection: Arc::new(RwLock::new(None)),
             current_version,
         })
+    }
+
+    /// Create a new database instance with a unique instance ID for multi-replica support
+    pub fn new_with_instance_id(config: Config, instance_id: u32) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut modified_config = config;
+        modified_config.database.base_path = format!("{}/replica_{}",
+            modified_config.database.base_path, instance_id);
+
+        Self::new(&modified_config.database.base_path, &modified_config, &[])
     }
 
     // FoundationDB-style client-side transaction methods
@@ -903,6 +914,103 @@ impl TransactionalKvDatabase {
 
             let _ = request.response_tx.send(result);
         }
+    }
+}
+
+// Implementation of KvDatabase trait for TransactionalKvDatabase
+#[async_trait]
+impl KvDatabase for TransactionalKvDatabase {
+    async fn get(&self, key: &[u8], column_family: Option<&str>) -> Result<GetResult, String> {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            if let Some(_cf) = column_family {
+                // For now, ignore column family and use default - can be enhanced later
+                self.get(key)
+            } else {
+                self.get(key)
+            }
+        })
+    }
+
+    async fn put(&self, key: &[u8], value: &[u8], _column_family: Option<&str>) -> OpResult {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.put(key, value)
+        })
+    }
+
+    async fn delete(&self, key: &[u8], _column_family: Option<&str>) -> OpResult {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.delete(key)
+        })
+    }
+
+    async fn list_keys(&self, prefix: &[u8], limit: u32, _column_family: Option<&str>) -> Result<Vec<Vec<u8>>, String> {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.list_keys(prefix, limit)
+        })
+    }
+
+    async fn get_range(
+        &self,
+        start_key: &[u8],
+        end_key: Option<&[u8]>,
+        limit: Option<usize>,
+        reverse: bool,
+        _column_family: Option<&str>,
+    ) -> Result<GetRangeResult, String> {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            let end_key_slice = end_key.unwrap_or(b"");
+            let limit_offset = 0; // Default offset
+            let limit_count = limit.unwrap_or(0) as i32; // 0 means no limit, convert to i32
+            let inclusive = false; // Default inclusive setting
+
+            let result = self.get_range(start_key, end_key_slice, limit_offset, reverse, limit_count, inclusive, None);
+            Ok(result)
+        })
+    }
+
+    async fn atomic_commit(&self, request: AtomicCommitRequest) -> AtomicCommitResult {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.atomic_commit(request)
+        })
+    }
+
+    async fn get_read_version(&self) -> u64 {
+        // This is already thread-safe and non-blocking
+        self.get_read_version()
+    }
+
+    async fn snapshot_read(&self, key: &[u8], read_version: u64, column_family: Option<&str>) -> Result<GetResult, String> {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            self.snapshot_read(key, read_version, column_family)
+        })
+    }
+
+    async fn snapshot_get_range(
+        &self,
+        start_key: &[u8],
+        end_key: Option<&[u8]>,
+        limit: Option<usize>,
+        reverse: bool,
+        read_version: u64,
+        _column_family: Option<&str>,
+    ) -> Result<GetRangeResult, String> {
+        // Use the existing sync method within an async context
+        tokio::task::block_in_place(|| {
+            let end_key_slice = end_key.unwrap_or(b"");
+            let limit_offset = 0; // Default offset
+            let limit_count = limit.unwrap_or(0) as i32; // 0 means no limit, convert to i32
+            let inclusive = false; // Default inclusive setting
+
+            let result = self.snapshot_get_range(start_key, end_key_slice, limit_offset, reverse, limit_count, inclusive, read_version, None);
+            Ok(result)
+        })
     }
 }
 
