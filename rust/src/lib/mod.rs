@@ -7,3 +7,5 @@ pub mod kvstore;
 pub mod service;
 pub mod proto;
 pub mod thrift_handler;
+pub mod kv_operations;
+pub mod thrift_adapter;
