@@ -17,12 +17,14 @@ pub trait TestCluster: Send + Sync {
     async fn client(&self) -> Result<KvStoreClient, Box<dyn std::error::Error>>;
 
     /// Get database paths used by this cluster
+    #[allow(dead_code)]
     fn get_database_paths(&self) -> Vec<PathBuf>;
 
     /// Verify that data exists in the cluster
     async fn verify_data(&self, key: &[u8], expected_value: &[u8]) -> Result<(), String>;
 
     /// Get the cluster configuration
+    #[allow(dead_code)]
     fn config(&self) -> &Config;
 }
 
@@ -62,6 +64,7 @@ impl StandaloneTestCluster {
     }
 
     /// Get the port the server is running on
+    #[allow(dead_code)]
     pub fn get_port(&self) -> Option<u16> {
         self.thrift_server.as_ref().and_then(|s| s.port)
     }
