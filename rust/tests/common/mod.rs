@@ -1,3 +1,5 @@
+pub mod test_cluster;
+
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command};
 use std::thread;
@@ -6,7 +8,7 @@ use std::time::Duration;
 #[allow(dead_code)]
 pub struct ThriftTestServer {
     child: Option<Child>,
-    port: Option<u16>,
+    pub port: Option<u16>,
     config_dir: tempfile::TempDir,
 }
 
