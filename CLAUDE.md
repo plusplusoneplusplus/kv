@@ -24,3 +24,7 @@ The project has been refactored to use a unified Rust workspace structure:
 2. Run ./build/bin/rocksdbserver-thrift to launch the thrift server
 3. Run cargo test --workspace under rust/ to run rust tests
 4. Run ./build/bin/cpp_ffi_test to run c++ tests
+
+# Rules
+1. Never build release mode
+2. Never use emoji
