@@ -11,7 +11,7 @@ use clap::Parser;
 use rocksdb_server::lib::db::TransactionalKvDatabase;
 use rocksdb_server::generated::kvstore::*;
 use rocksdb_server::lib::config::Config;
-use rocksdb_server::lib::thrift_handler::TransactionalKvStoreThriftHandler;
+use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     // Create handler and processor for this connection
-                    let handler = TransactionalKvStoreThriftHandler::new(database, verbose);
+                    let handler = ThriftKvAdapter::new(database, verbose);
                     let processor = TransactionalKVSyncProcessor::new(handler);
 
                     // Create buffered transports

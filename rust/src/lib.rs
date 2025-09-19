@@ -9,6 +9,8 @@ pub mod lib {
     pub mod service;
     pub mod proto;
     pub mod thrift_handler;
+    pub mod kv_operations;
+    pub mod thrift_adapter;
 }
 
 pub mod generated {
