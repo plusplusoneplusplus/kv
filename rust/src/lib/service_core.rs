@@ -40,10 +40,18 @@ impl KvServiceCore {
         start_key: &[u8],
         end_key: Option<&[u8]>,
         limit: Option<usize>,
-        reverse: bool,
+        _reverse: bool,
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String> {
-        self.database.get_range(start_key, end_key, limit, reverse, column_family).await
+        // Convert parameters to match the new trait signature
+        let end_key_bytes = end_key.unwrap_or(b"");
+        let begin_offset = 0i32;
+        let begin_or_equal = true;
+        let end_offset = 0i32;
+        let end_or_equal = false;
+        let limit_i32 = limit.map(|l| l as i32);
+
+        self.database.get_range(start_key, end_key_bytes, begin_offset, begin_or_equal, end_offset, end_or_equal, limit_i32, column_family).await
     }
 
     /// Perform atomic commit of multiple operations
@@ -67,11 +75,19 @@ impl KvServiceCore {
         start_key: &[u8],
         end_key: Option<&[u8]>,
         limit: Option<usize>,
-        reverse: bool,
+        _reverse: bool,
         read_version: u64,
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String> {
-        self.database.snapshot_get_range(start_key, end_key, limit, reverse, read_version, column_family).await
+        // Convert parameters to match the new trait signature
+        let end_key_bytes = end_key.unwrap_or(b"");
+        let begin_offset = 0i32;
+        let begin_or_equal = true;
+        let end_offset = 0i32;
+        let end_or_equal = false;
+        let limit_i32 = limit.map(|l| l as i32);
+
+        self.database.snapshot_get_range(start_key, end_key_bytes, begin_offset, begin_or_equal, end_offset, end_or_equal, read_version, limit_i32, column_family).await
     }
 
     /// Set fault injection configuration for testing

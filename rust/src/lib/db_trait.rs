@@ -21,10 +21,13 @@ pub trait KvDatabase: Send + Sync {
     /// Get a range of key-value pairs
     async fn get_range(
         &self,
-        start_key: &[u8],
-        end_key: Option<&[u8]>,
-        limit: Option<usize>,
-        reverse: bool,
+        begin_key: &[u8],
+        end_key: &[u8],
+        begin_offset: i32,
+        begin_or_equal: bool,
+        end_offset: i32,
+        end_or_equal: bool,
+        limit: Option<i32>,
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String>;
 
@@ -40,11 +43,14 @@ pub trait KvDatabase: Send + Sync {
     /// Get a range of key-value pairs at a specific version
     async fn snapshot_get_range(
         &self,
-        start_key: &[u8],
-        end_key: Option<&[u8]>,
-        limit: Option<usize>,
-        reverse: bool,
+        begin_key: &[u8],
+        end_key: &[u8],
+        begin_offset: i32,
+        begin_or_equal: bool,
+        end_offset: i32,
+        end_or_equal: bool,
         read_version: u64,
+        limit: Option<i32>,
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String>;
 
