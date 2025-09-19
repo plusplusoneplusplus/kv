@@ -1,148 +1,67 @@
 use std::sync::Arc;
-use tracing::{debug, warn};
 
-use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig, AtomicOperation};
+use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig};
 use crate::lib::db_trait::KvDatabase;
+use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
+use crate::lib::read_operations::KvReadOperations;
+use crate::lib::write_operations::KvWriteOperations;
 
 /// Core business logic for KV operations, completely protocol-agnostic.
 /// This contains all the business logic operations without any knowledge of
 /// Thrift, gRPC, or other protocol specifics. It operates purely on domain types.
+///
+/// This struct now uses the new operation classification system with separate
+/// read and write operation handlers for better organization and future distributed support.
 pub struct KvOperations {
-    database: Arc<dyn KvDatabase>,
-    verbose: bool,
+    read_operations: KvReadOperations,
+    write_operations: KvWriteOperations,
 }
 
 impl KvOperations {
     pub fn new(database: Arc<dyn KvDatabase>, verbose: bool) -> Self {
-        Self { database, verbose }
-    }
-
-    /// Helper to convert async trait calls to sync by blocking on them
-    fn run_async<F, R>(&self, future: F) -> R
-    where
-        F: std::future::Future<Output = R>,
-    {
-        // Try to use the current tokio runtime if available
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            // If we're already in a tokio runtime, try block_in_place first
-            if std::thread::current().name().map_or(false, |name| name.contains("tokio")) {
-                tokio::task::block_in_place(|| handle.block_on(future))
-            } else {
-                // If not in a tokio thread, just use the handle directly
-                handle.block_on(future)
-            }
-        } else {
-            // If we're not in a tokio context, create a new runtime
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(future)
+        Self {
+            read_operations: KvReadOperations::new(database.clone(), verbose),
+            write_operations: KvWriteOperations::new(database, verbose),
         }
     }
+
+    /// Execute an operation using the new classification system
+    pub fn execute_operation(&self, operation: KvOperation) -> Result<OperationResult, String> {
+        match operation.operation_type() {
+            OperationType::Read => self.read_operations.execute(operation),
+            OperationType::Write => self.write_operations.execute(operation),
+        }
+    }
+
 
     /// Get a value by key
     pub fn get(&self, key: &[u8]) -> Result<GetResult, String> {
-        if self.verbose {
-            debug!("Get operation: key={:?}", key);
-        }
-
-        let result = self.run_async(self.database.get(key, None));
-
-        if self.verbose {
-            match &result {
-                Ok(get_result) => debug!("Get result: found={}, value_len={}", get_result.found, get_result.value.len()),
-                Err(e) => warn!("Get error: {}", e),
-            }
-        }
-
-        result
+        self.read_operations.get(key, None)
     }
 
     /// Put a key-value pair
     pub fn put(&self, key: &[u8], value: &[u8]) -> OpResult {
-        if self.verbose {
-            debug!("Put operation: key={:?}, value_len={}", key, value.len());
-        }
-
-        let result = self.run_async(self.database.put(key, value, None));
-
-        if self.verbose {
-            debug!("Put result: success={}, error_code={:?}", result.success, result.error_code);
-            if !result.error.is_empty() {
-                warn!("Put error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.put(key, value, None)
     }
 
     /// Delete a key
     pub fn delete(&self, key: &[u8]) -> OpResult {
-        if self.verbose {
-            debug!("Delete operation: key={:?}", key);
-        }
-
-        let result = self.run_async(self.database.delete(key, None));
-
-        if self.verbose {
-            debug!("Delete result: success={}, error_code={:?}", result.success, result.error_code);
-            if !result.error.is_empty() {
-                warn!("Delete error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.delete(key, None)
     }
 
     /// Get current read version for transactions
     pub fn get_read_version(&self) -> u64 {
-        if self.verbose {
-            debug!("Getting read version");
-        }
-
-        let version = self.run_async(self.database.get_read_version());
-
-        if self.verbose {
-            debug!("Read version retrieved: {}", version);
-        }
-
-        version
+        self.read_operations.get_read_version()
     }
 
     /// Snapshot read at specific version
     pub fn snapshot_read(&self, key: &[u8], read_version: u64, column_family: Option<&str>) -> Result<GetResult, String> {
-        if self.verbose {
-            debug!("Snapshot read: key={:?}, read_version={}, column_family={:?}", key, read_version, column_family);
-        }
-
-        let result = self.run_async(self.database.snapshot_read(key, read_version, column_family));
-
-        if self.verbose {
-            match &result {
-                Ok(get_result) => debug!("Snapshot read result: found={}, value_len={}", get_result.found, get_result.value.len()),
-                Err(e) => warn!("Snapshot read error: {}", e),
-            }
-        }
-
-        result
+        self.read_operations.snapshot_read(key, read_version, column_family)
     }
 
     /// Atomic commit of multiple operations
     pub fn atomic_commit(&self, request: AtomicCommitRequest) -> AtomicCommitResult {
-        if self.verbose {
-            debug!("Atomic commit: read_version={}, operations_count={}, read_conflict_keys_count={}, timeout={}s",
-                   request.read_version, request.operations.len(), request.read_conflict_keys.len(), request.timeout_seconds);
-        }
-
-        let result = self.run_async(self.database.atomic_commit(request));
-
-        if self.verbose {
-            debug!("Atomic commit result: success={}, error_code={:?}, committed_version={:?}",
-                   result.success, result.error_code, result.committed_version);
-            if !result.error.is_empty() {
-                warn!("Atomic commit error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.atomic_commit(request)
     }
 
     /// Get range of key-value pairs with offset support
@@ -156,13 +75,7 @@ impl KvOperations {
         end_or_equal: bool,
         limit: Option<i32>,
     ) -> GetRangeResult {
-        if self.verbose {
-            debug!("Get range: begin_key={:?}, end_key={:?}, begin_offset={}, begin_or_equal={}, end_offset={}, end_or_equal={}, limit={:?}",
-                   begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, limit);
-        }
-
-        // Use trait interface directly since signatures now match
-        let result = match self.run_async(self.database.get_range(
+        self.read_operations.get_range(
             begin_key,
             end_key,
             begin_offset,
@@ -171,22 +84,7 @@ impl KvOperations {
             end_or_equal,
             limit,
             None, // column_family
-        )) {
-            Ok(get_range_result) => get_range_result,
-            Err(error) => GetRangeResult {
-                key_values: Vec::new(),
-                success: false,
-                error,
-                has_more: false,
-            },
-        };
-
-        if self.verbose {
-            debug!("Get range result: success={}, key_values_count={}, error={}",
-                   result.success, result.key_values.len(), result.error);
-        }
-
-        result
+        )
     }
 
     /// Snapshot get range at specific version
@@ -201,13 +99,7 @@ impl KvOperations {
         read_version: u64,
         limit: Option<i32>,
     ) -> GetRangeResult {
-        if self.verbose {
-            debug!("Snapshot get range: begin_key={:?}, end_key={:?}, begin_offset={}, begin_or_equal={}, end_offset={}, end_or_equal={}, read_version={}, limit={:?}",
-                   begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, read_version, limit);
-        }
-
-        // Use trait interface directly since signatures now match
-        let result = match self.run_async(self.database.snapshot_get_range(
+        self.read_operations.snapshot_get_range(
             begin_key,
             end_key,
             begin_offset,
@@ -217,22 +109,7 @@ impl KvOperations {
             read_version,
             limit,
             None, // column_family
-        )) {
-            Ok(get_range_result) => get_range_result,
-            Err(error) => GetRangeResult {
-                key_values: Vec::new(),
-                success: false,
-                error,
-                has_more: false,
-            },
-        };
-
-        if self.verbose {
-            debug!("Snapshot get range result: success={}, key_values_count={}, error={}",
-                   result.success, result.key_values.len(), result.error);
-        }
-
-        result
+        )
     }
 
     /// Set versionstamped key operation
@@ -242,41 +119,7 @@ impl KvOperations {
         value: Vec<u8>,
         column_family: Option<String>,
     ) -> AtomicCommitResult {
-        if self.verbose {
-            debug!("Set versionstamped key: key_prefix={:?}, value_len={}, column_family={:?}",
-                   key_prefix, value.len(), column_family);
-        }
-
-        // Get current read version for the transaction
-        let read_version = self.run_async(self.database.get_read_version());
-
-        // Create a single versionstamped operation
-        let versionstamp_operation = AtomicOperation {
-            op_type: "SET_VERSIONSTAMPED_KEY".to_string(),
-            key: key_prefix,
-            value: Some(value),
-            column_family,
-        };
-
-        // Create atomic commit request with this single operation
-        let atomic_request = AtomicCommitRequest {
-            read_version,
-            operations: vec![versionstamp_operation],
-            read_conflict_keys: vec![], // No read conflicts for single versionstamp operation
-            timeout_seconds: 60, // Default timeout
-        };
-
-        let result = self.run_async(self.database.atomic_commit(atomic_request));
-
-        if self.verbose {
-            debug!("Versionstamped key result: success={}, generated_keys_count={}, committed_version={:?}",
-                   result.success, result.generated_keys.len(), result.committed_version);
-            if !result.error.is_empty() {
-                warn!("Versionstamped key error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.set_versionstamped_key(key_prefix, value, column_family)
     }
 
     /// Set versionstamped value operation
@@ -286,77 +129,17 @@ impl KvOperations {
         value_prefix: Vec<u8>,
         column_family: Option<String>,
     ) -> AtomicCommitResult {
-        if self.verbose {
-            debug!("Set versionstamped value: key={:?}, value_prefix_len={}, column_family={:?}",
-                   key, value_prefix.len(), column_family);
-        }
-
-        // Get current read version for the transaction
-        let read_version = self.run_async(self.database.get_read_version());
-
-        // Create a single versionstamped value operation
-        let versionstamp_operation = AtomicOperation {
-            op_type: "SET_VERSIONSTAMPED_VALUE".to_string(),
-            key,
-            value: Some(value_prefix),
-            column_family,
-        };
-
-        // Create atomic commit request with this single operation
-        let atomic_request = AtomicCommitRequest {
-            read_version,
-            operations: vec![versionstamp_operation],
-            read_conflict_keys: vec![], // No read conflicts for single versionstamp operation
-            timeout_seconds: 60, // Default timeout
-        };
-
-        let result = self.run_async(self.database.atomic_commit(atomic_request));
-
-        if self.verbose {
-            debug!("Versionstamped value result: success={}, generated_values_count={}, committed_version={:?}",
-                   result.success, result.generated_values.len(), result.committed_version);
-            if !result.error.is_empty() {
-                warn!("Versionstamped value error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.set_versionstamped_value(key, value_prefix, column_family)
     }
 
     /// Set fault injection for testing
     pub fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
-        if self.verbose {
-            debug!("Setting fault injection: config={:?}", config);
-        }
-
-        let result = self.run_async(self.database.set_fault_injection(config));
-
-        if self.verbose {
-            debug!("Fault injection result: success={}", result.success);
-            if !result.error.is_empty() {
-                warn!("Fault injection error: {}", result.error);
-            }
-        }
-
-        result
+        self.write_operations.set_fault_injection(config)
     }
 
     /// Health check ping operation
     pub fn ping(&self, message: Option<Vec<u8>>, timestamp: Option<i64>) -> (Vec<u8>, i64, i64) {
-        let server_timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
-
-        let response_message = message.unwrap_or_else(|| "pong".to_string().into_bytes());
-        let client_timestamp = timestamp.unwrap_or(server_timestamp);
-
-        if self.verbose {
-            debug!("Ping: message={:?}, client_timestamp={}, server_timestamp={}",
-                   response_message, client_timestamp, server_timestamp);
-        }
-
-        (response_message, client_timestamp, server_timestamp)
+        self.read_operations.ping(message, timestamp)
     }
 }
 
@@ -366,6 +149,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
     use async_trait::async_trait;
+    use crate::lib::db::AtomicOperation;
 
     /// Mock implementation of KvDatabase for testing trait wiring
     #[derive(Debug)]

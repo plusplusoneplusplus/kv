@@ -17,19 +17,19 @@ pub struct TransactionalKvDatabase {
     current_version: Arc<std::sync::atomic::AtomicU64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GetResult {
     pub value: Vec<u8>,
     pub found: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyValue {
     pub key: Vec<u8>,
     pub value: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GetRangeResult {
     pub key_values: Vec<KeyValue>,
     pub success: bool,
@@ -37,7 +37,7 @@ pub struct GetRangeResult {
     pub has_more: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OpResult {
     pub success: bool,
     pub error: String,
@@ -56,7 +56,7 @@ pub struct WriteRequest {
     pub response_tx: mpsc::Sender<OpResult>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FaultInjectionConfig {
     pub fault_type: String,
     pub probability: f64,
@@ -81,7 +81,7 @@ pub struct AtomicCommitRequest {
     pub timeout_seconds: u64,
 }
 
-#[derive(Debug)]  
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AtomicCommitResult {
     pub success: bool,
     pub error: String,
