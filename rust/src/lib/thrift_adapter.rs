@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::lib::db::{TransactionalKvDatabase, AtomicOperation, FaultInjectionConfig};
+use crate::lib::db_trait::KvDatabase;
 use crate::lib::kv_operations::KvOperations;
 use crate::generated::kvstore::*;
 
@@ -14,7 +15,7 @@ pub struct ThriftKvAdapter {
 impl ThriftKvAdapter {
     pub fn new(database: Arc<TransactionalKvDatabase>, verbose: bool) -> Self {
         Self {
-            operations: KvOperations::new(database, verbose),
+            operations: KvOperations::new(database as Arc<dyn KvDatabase>, verbose),
         }
     }
 }

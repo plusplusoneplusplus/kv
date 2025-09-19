@@ -991,20 +991,18 @@ impl KvDatabase for TransactionalKvDatabase {
 
     async fn get_range(
         &self,
-        start_key: &[u8],
-        end_key: Option<&[u8]>,
-        limit: Option<usize>,
-        reverse: bool,
+        begin_key: &[u8],
+        end_key: &[u8],
+        begin_offset: i32,
+        begin_or_equal: bool,
+        end_offset: i32,
+        end_or_equal: bool,
+        limit: Option<i32>,
         _column_family: Option<&str>,
     ) -> Result<GetRangeResult, String> {
         // Use the existing sync method within an async context
         tokio::task::block_in_place(|| {
-            let end_key_slice = end_key.unwrap_or(b"");
-            let limit_offset = 0; // Default offset
-            let limit_count = limit.unwrap_or(0) as i32; // 0 means no limit, convert to i32
-            let inclusive = false; // Default inclusive setting
-
-            let result = self.get_range(start_key, end_key_slice, limit_offset, reverse, limit_count, inclusive, None);
+            let result = self.get_range(begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, limit);
             Ok(result)
         })
     }
@@ -1030,21 +1028,19 @@ impl KvDatabase for TransactionalKvDatabase {
 
     async fn snapshot_get_range(
         &self,
-        start_key: &[u8],
-        end_key: Option<&[u8]>,
-        limit: Option<usize>,
-        reverse: bool,
+        begin_key: &[u8],
+        end_key: &[u8],
+        begin_offset: i32,
+        begin_or_equal: bool,
+        end_offset: i32,
+        end_or_equal: bool,
         read_version: u64,
+        limit: Option<i32>,
         _column_family: Option<&str>,
     ) -> Result<GetRangeResult, String> {
         // Use the existing sync method within an async context
         tokio::task::block_in_place(|| {
-            let end_key_slice = end_key.unwrap_or(b"");
-            let limit_offset = 0; // Default offset
-            let limit_count = limit.unwrap_or(0) as i32; // 0 means no limit, convert to i32
-            let inclusive = false; // Default inclusive setting
-
-            let result = self.snapshot_get_range(start_key, end_key_slice, limit_offset, reverse, limit_count, inclusive, read_version, None);
+            let result = self.snapshot_get_range(begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, read_version, limit);
             Ok(result)
         })
     }
