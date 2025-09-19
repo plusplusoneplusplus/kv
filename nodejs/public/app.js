@@ -295,12 +295,114 @@ function showTab(tabName) {
     event.target.classList.add('active');
 }
 
+// Settings management functions
+function updateEndpoint() {
+    const hostInput = document.getElementById('thriftHost');
+    const portInput = document.getElementById('thriftPort');
+    const statusDiv = document.getElementById('endpointStatus');
+
+    const host = hostInput.value.trim() || 'localhost';
+    const port = parseInt(portInput.value) || 9090;
+
+    // Validate port range
+    if (port < 1 || port > 65535) {
+        showEndpointStatus('Port must be between 1 and 65535', 'error');
+        return;
+    }
+
+    // Validate host (basic check)
+    if (!host || host.includes(' ')) {
+        showEndpointStatus('Please enter a valid hostname or IP address', 'error');
+        return;
+    }
+
+    // Send update request to server
+    fetch('/api/admin/update-endpoint', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            host: host,
+            port: port
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('currentEndpoint').textContent = `${host}:${port}`;
+            showEndpointStatus(`Endpoint updated to ${host}:${port}`, 'success');
+            // Refresh connection status
+            setTimeout(testConnection, 1000);
+        } else {
+            showEndpointStatus(data.error || 'Failed to update endpoint', 'error');
+        }
+    })
+    .catch(error => {
+        showEndpointStatus('Failed to update endpoint: ' + error.message, 'error');
+    });
+}
+
+function testEndpointConnection() {
+    const statusDiv = document.getElementById('endpointStatus');
+    showEndpointStatus('Testing connection...', 'info');
+
+    fetch('/api/ping')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showEndpointStatus(`Connection successful! Round-trip: ${data.roundTripTime}ms`, 'success');
+            } else {
+                showEndpointStatus('Connection failed: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showEndpointStatus('Connection test failed: ' + error.message, 'error');
+        });
+}
+
+function resetToDefaults() {
+    document.getElementById('thriftHost').value = 'localhost';
+    document.getElementById('thriftPort').value = '9090';
+    showEndpointStatus('Values reset to defaults. Click "Update Endpoint" to apply.', 'info');
+}
+
+function showEndpointStatus(message, type) {
+    const statusDiv = document.getElementById('endpointStatus');
+    statusDiv.textContent = message;
+    statusDiv.className = `status-message ${type}`;
+    statusDiv.style.display = 'block';
+
+    if (type === 'success' || type === 'info') {
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Initialize settings when page loads
+function initializeSettings() {
+    // Get current endpoint from server
+    fetch('/api/admin/current-endpoint')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('thriftHost').value = data.host;
+                document.getElementById('thriftPort').value = data.port;
+                document.getElementById('currentEndpoint').textContent = `${data.host}:${data.port}`;
+            }
+        })
+        .catch(error => {
+            console.log('Could not fetch current endpoint, using defaults');
+        });
+}
+
 // Close modal when clicking outside
 window.onclick = function(event) {
     const addModal = document.getElementById('addModal');
     const viewModal = document.getElementById('viewModal');
     const clearAllModal = document.getElementById('clearAllModal');
-    
+
     if (event.target === addModal) {
         closeModal();
     } else if (event.target === viewModal) {
@@ -309,3 +411,8 @@ window.onclick = function(event) {
         closeClearAllModal();
     }
 }
+
+// Initialize settings when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSettings();
+});
