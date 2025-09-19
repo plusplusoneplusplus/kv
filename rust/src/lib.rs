@@ -13,6 +13,7 @@ pub mod lib {
     pub mod write_operations;
     pub mod kv_operations;
     pub mod thrift_adapter;
+    pub mod replication;
 }
 
 pub mod generated {
