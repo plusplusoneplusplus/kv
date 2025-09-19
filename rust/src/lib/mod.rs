@@ -1,5 +1,6 @@
 pub mod config;
 pub mod db;
+pub mod db_trait;
 pub mod kvstore;
 pub mod service;
 pub mod proto;
