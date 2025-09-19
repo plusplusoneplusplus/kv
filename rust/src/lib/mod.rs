@@ -6,5 +6,8 @@ pub mod database_factory;
 pub mod kvstore;
 pub mod service;
 pub mod proto;
+pub mod operations;
+pub mod read_operations;
+pub mod write_operations;
 pub mod kv_operations;
 pub mod thrift_adapter;
