@@ -2,6 +2,7 @@ pub mod config;
 pub mod db;
 pub mod db_trait;
 pub mod service_core;
+pub mod database_factory;
 pub mod kvstore;
 pub mod service;
 pub mod proto;

@@ -4,6 +4,7 @@ use std::fs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub deployment: DeploymentConfig,
     pub database: DatabaseConfig,
     pub rocksdb: RocksDbConfig,
     pub bloom_filter: BloomFilterConfig,
@@ -14,6 +15,20 @@ pub struct Config {
     pub memory: MemoryConfig,
     pub logging: LoggingConfig,
     pub performance: PerformanceConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentConfig {
+    pub mode: DeploymentMode,
+    pub instance_id: Option<u32>,
+    pub replica_endpoints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeploymentMode {
+    Standalone,
+    Replicated,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +110,11 @@ impl Config {
 
     pub fn default() -> Self {
         Config {
+            deployment: DeploymentConfig {
+                mode: DeploymentMode::Standalone,
+                instance_id: None,
+                replica_endpoints: vec![],
+            },
             database: DatabaseConfig {
                 base_path: "./data/rocksdb".to_string(),
             },
@@ -150,6 +170,19 @@ impl Config {
 
     pub fn get_db_path(&self, suffix: &str) -> String {
         format!("{}-{}", self.database.base_path, suffix)
+    }
+
+    /// Create a DatabaseFactory from this configuration
+    pub fn create_database_factory(&self) -> crate::lib::database_factory::DatabaseFactory {
+        match self.deployment.mode {
+            DeploymentMode::Standalone => {
+                crate::lib::database_factory::DatabaseFactory::standalone(self.clone())
+            }
+            DeploymentMode::Replicated => {
+                let instance_id = self.deployment.instance_id.unwrap_or(0);
+                crate::lib::database_factory::DatabaseFactory::replicated(self.clone(), instance_id)
+            }
+        }
     }
 }
 
