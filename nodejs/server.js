@@ -8,8 +8,8 @@ const kvstore_types = require('./thrift/kvstore_types');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const THRIFT_HOST = process.env.THRIFT_HOST || 'localhost';
-const THRIFT_PORT = process.env.THRIFT_PORT || 9090;
+let THRIFT_HOST = process.env.THRIFT_HOST || 'localhost';
+let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 
 // Middleware
 app.use(express.json());
@@ -309,13 +309,13 @@ app.get('/api/ping', async (req, res) => {
             message: 'ping from web interface',
             timestamp: Date.now()
         });
-        
+
         client.ping(pingRequest, (err, result) => {
             if (err) {
                 console.error('Error pinging server:', err);
                 return res.status(500).json({ error: 'Failed to ping server', details: err.message });
             }
-            
+
             res.json({
                 success: true,
                 message: result.message,
@@ -327,6 +327,67 @@ app.get('/api/ping', async (req, res) => {
     } catch (error) {
         console.error('API error:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+// API endpoint to get current endpoint configuration
+app.get('/api/admin/current-endpoint', (req, res) => {
+    res.json({
+        success: true,
+        host: THRIFT_HOST,
+        port: THRIFT_PORT
+    });
+});
+
+// API endpoint to update endpoint configuration
+app.post('/api/admin/update-endpoint', (req, res) => {
+    try {
+        const { host, port } = req.body;
+
+        if (!host || !port) {
+            return res.status(400).json({
+                success: false,
+                error: 'Host and port are required'
+            });
+        }
+
+        // Validate port range
+        const portNum = parseInt(port);
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+            return res.status(400).json({
+                success: false,
+                error: 'Port must be a number between 1 and 65535'
+            });
+        }
+
+        // Validate host (basic validation)
+        if (typeof host !== 'string' || host.trim().length === 0 || host.includes(' ')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid host format'
+            });
+        }
+
+        // Update the global variables
+        THRIFT_HOST = host.trim();
+        THRIFT_PORT = portNum;
+
+        console.log(`Endpoint updated to ${THRIFT_HOST}:${THRIFT_PORT}`);
+
+        res.json({
+            success: true,
+            host: THRIFT_HOST,
+            port: THRIFT_PORT,
+            message: `Endpoint updated to ${THRIFT_HOST}:${THRIFT_PORT}`
+        });
+
+    } catch (error) {
+        console.error('Error updating endpoint:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            details: error.message
+        });
     }
 });
 

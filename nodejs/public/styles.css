@@ -77,6 +77,165 @@ body {
     display: block;
 }
 
+/* Settings Tab Styles */
+.settings-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 25px;
+}
+
+.settings-section {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.settings-section h2 {
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.settings-description {
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.form-section {
+    margin-bottom: 25px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.form-group input {
+    width: 100%;
+    max-width: 300px;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.form-group small {
+    display: block;
+    margin-top: 5px;
+    color: #6c757d;
+    font-size: 12px;
+}
+
+.current-endpoint {
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border-left: 4px solid #3498db;
+}
+
+.settings-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.settings-actions button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.settings-actions button.success {
+    background-color: #27ae60;
+    color: white;
+}
+
+.settings-actions button.success:hover {
+    background-color: #229954;
+}
+
+.settings-actions button.primary {
+    background-color: #3498db;
+    color: white;
+}
+
+.settings-actions button.primary:hover {
+    background-color: #2980b9;
+}
+
+.settings-actions button.secondary {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.settings-actions button.secondary:hover {
+    background-color: #7f8c8d;
+}
+
+.status-message {
+    padding: 12px;
+    border-radius: 5px;
+    margin-top: 15px;
+    font-weight: 500;
+}
+
+.status-message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status-message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.status-message.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.settings-info {
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border-left: 4px solid #17a2b8;
+}
+
+.settings-info h3 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.settings-info ul {
+    margin-left: 20px;
+}
+
+.settings-info li {
+    margin-bottom: 5px;
+    color: #495057;
+}
+
 .header h1 {
     color: #2c3e50;
     margin-bottom: 10px;

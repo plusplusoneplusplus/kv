@@ -22,6 +22,7 @@
         <div class="tab-nav">
             <button class="tab-button active" onclick="showTab('browse')">Browse Data</button>
             <button class="tab-button" onclick="showTab('clear')">Clear Data</button>
+            <button class="tab-button" onclick="showTab('settings')">Settings</button>
         </div>
         
         <!-- Browse Data Tab -->
@@ -129,7 +130,7 @@
                     <h2>⚠️ Clear All Data</h2>
                     <p class="warning-text">This action will permanently delete ALL key-value pairs from the database.</p>
                 </div>
-                
+
                 <div class="clear-info-section">
                     <h3>Before proceeding:</h3>
                     <ul class="clear-checklist">
@@ -139,12 +140,60 @@
                         <li>Understand this action cannot be undone</li>
                     </ul>
                 </div>
-                
+
                 <div class="clear-action-section">
                     <button class="danger-button large" onclick="openClearAllModal()">
                         🗑️ Clear All Data
                     </button>
                     <p class="clear-note">This will open a confirmation dialog with additional safety checks.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settingsTab" class="tab-content">
+            <div class="settings-container">
+                <div class="settings-section">
+                    <h2>🔧 Connection Settings</h2>
+                    <p class="settings-description">Configure the Thrift server endpoint for the KV store connection.</p>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-group">
+                        <label for="thriftHost">Thrift Host:</label>
+                        <input type="text" id="thriftHost" placeholder="localhost" value="localhost">
+                        <small>The hostname or IP address of the Thrift server</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="thriftPort">Thrift Port:</label>
+                        <input type="number" id="thriftPort" placeholder="9090" value="9090" min="1" max="65535">
+                        <small>The port number of the Thrift server (1-65535)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="current-endpoint">
+                            <strong>Current Endpoint:</strong> <span id="currentEndpoint">localhost:9090</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button onclick="updateEndpoint()" class="success">Update Endpoint</button>
+                        <button onclick="testEndpointConnection()" class="primary">Test Connection</button>
+                        <button onclick="resetToDefaults()" class="secondary">Reset to Defaults</button>
+                    </div>
+
+                    <div id="endpointStatus" class="status-message" style="display: none;"></div>
+                </div>
+
+                <div class="settings-info">
+                    <h3>ℹ️ Information</h3>
+                    <ul>
+                        <li>Changes will take effect immediately for new connections</li>
+                        <li>Existing connections may need to be refreshed</li>
+                        <li>The server must be reachable at the specified endpoint</li>
+                        <li>Default values are localhost:9090</li>
+                    </ul>
                 </div>
             </div>
         </div>
