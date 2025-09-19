@@ -530,7 +530,7 @@ mod tests {
             end_key: &[u8],
             begin_offset: i32,
             begin_or_equal: bool,
-            _end_offset: i32,
+            end_offset: i32,
             end_or_equal: bool,
             _read_version: u64,
             limit: Option<i32>,
