@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use crate::lib::db_trait::KvDatabase;
-use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult};
+use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig};
 
 /// Core business logic for KV operations, protocol-agnostic.
 /// This contains all the business logic that can be shared between
@@ -72,5 +72,10 @@ impl KvServiceCore {
         column_family: Option<&str>,
     ) -> Result<GetRangeResult, String> {
         self.database.snapshot_get_range(start_key, end_key, limit, reverse, read_version, column_family).await
+    }
+
+    /// Set fault injection configuration for testing
+    pub async fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult {
+        self.database.set_fault_injection(config).await
     }
 }
