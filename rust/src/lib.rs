@@ -5,6 +5,7 @@ pub mod lib {
     pub mod db;
     pub mod service;
     pub mod proto;
+    pub mod thrift_handler;
 }
 
 pub mod generated {
