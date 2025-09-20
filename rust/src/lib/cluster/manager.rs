@@ -9,6 +9,27 @@ use crate::lib::config::ClusterConfig;
 use super::errors::ClusterResult;
 use super::node_info::{NodeInfo, NodeStatus};
 
+/// Cluster status information for diagnostics
+#[derive(Debug, Clone)]
+pub struct ClusterStatus {
+    pub total_nodes: u32,
+    pub healthy_nodes: u32,
+    pub cluster_health: String,
+    pub current_leader: Option<u32>,
+    pub current_term: u64,
+    pub nodes: HashMap<u32, NodeInfo>,
+}
+
+/// Replication status information for diagnostics
+#[derive(Debug, Clone)]
+pub struct ReplicationStatus {
+    pub current_term: u64,
+    pub leader_id: Option<u32>,
+    pub node_states: HashMap<u32, String>, // node_id -> "leader" | "follower" | "unreachable"
+    pub replication_lag: HashMap<u32, u64>, // node_id -> lag in milliseconds
+    pub consensus_active: bool,
+}
+
 pub struct ClusterManager {
     node_id: u32,
     cluster_nodes: Arc<RwLock<HashMap<u32, NodeInfo>>>,
@@ -198,17 +219,24 @@ impl ClusterManager {
         // In Phase 1, node 0 is always the leader by convention
         // This will be replaced with real leader election in later phases
         let leader_id = 0;
+        let leader_term = 1; // Leader is at term 1
 
         {
             let mut current_leader = self.current_leader.write().await;
             *current_leader = Some(leader_id);
         }
 
+        // Update our term to match the leader's term
+        {
+            let mut current_term = self.current_term.write().await;
+            *current_term = leader_term;
+        }
+
         {
             let mut nodes = self.cluster_nodes.write().await;
             if let Some(leader_node) = nodes.get_mut(&leader_id) {
-                leader_node.update_leader_status(true, 1);
-                info!("Node {}: Discovered leader: Node {}", self.node_id, leader_id);
+                leader_node.update_leader_status(true, leader_term);
+                info!("Node {}: Discovered leader: Node {} at term {}", self.node_id, leader_id, leader_term);
             }
         }
 
@@ -237,6 +265,86 @@ impl ClusterManager {
         }
 
         info!("Node {}: Successfully became cluster leader", self.node_id);
+    }
+
+    /// Get cluster status for diagnostic purposes
+    pub async fn get_cluster_status(&self) -> ClusterStatus {
+        let nodes = self.cluster_nodes.read().await;
+        let leader_id = *self.current_leader.read().await;
+        let current_term = *self.current_term.read().await;
+
+        let total_nodes = nodes.len() as u32;
+        let healthy_nodes = nodes.values()
+            .filter(|node| node.is_healthy())
+            .count() as u32;
+
+        let cluster_health = if healthy_nodes == total_nodes {
+            "healthy".to_string()
+        } else if healthy_nodes > total_nodes / 2 {
+            "degraded".to_string()
+        } else {
+            "unhealthy".to_string()
+        };
+
+        ClusterStatus {
+            total_nodes,
+            healthy_nodes,
+            cluster_health,
+            current_leader: leader_id,
+            current_term,
+            nodes: nodes.clone(),
+        }
+    }
+
+    /// Get replication status for diagnostic purposes
+    pub async fn get_replication_status(&self) -> ReplicationStatus {
+        let nodes = self.cluster_nodes.read().await;
+        let leader_id = *self.current_leader.read().await;
+        let current_term = *self.current_term.read().await;
+        
+        let mut replication_lag = HashMap::new();
+        let mut node_states = HashMap::new();
+
+        // In Phase 1, we don't have real replication yet, so we'll provide placeholder data
+        for (id, node) in nodes.iter() {
+            let state = if Some(*id) == leader_id {
+                // Leader is always considered reachable if we know about it
+                "leader".to_string()
+            } else if node.is_healthy() {
+                "follower".to_string()
+            } else {
+                "unreachable".to_string()
+            };
+
+            node_states.insert(*id, state);
+            
+            // In Phase 1, replication lag is 0 since we don't have real replication
+            replication_lag.insert(*id, 0u64);
+        }
+
+        ReplicationStatus {
+            current_term,
+            leader_id,
+            node_states,
+            replication_lag,
+            consensus_active: leader_id.is_some() && nodes.len() > 1,
+        }
+    }
+
+    /// Get current term for diagnostic purposes
+    pub async fn get_current_term(&self) -> u64 {
+        *self.current_term.read().await
+    }
+
+    /// Get node by ID for diagnostic purposes
+    pub async fn get_node_info(&self, node_id: u32) -> Option<NodeInfo> {
+        let nodes = self.cluster_nodes.read().await;
+        nodes.get(&node_id).cloned()
+    }
+
+    /// Get this node's ID
+    pub fn get_node_id(&self) -> u32 {
+        self.node_id
     }
 }
 
