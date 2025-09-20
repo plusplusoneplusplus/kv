@@ -21,13 +21,13 @@ This document outlines the design for converting the existing single-node Thrift
 3. **Consensus Integration**: Abstract consensus layer supporting multiple algorithms
 4. **State Machine Executor**: Applies consensus decisions to local database
 5. **Enhanced Thrift Adapter**: Server-side routing with read/write separation logic
-6. **Multi-Node Client**: Client-side routing with leader discovery and read load balancing
+6. **Client**: Client-side routing with leader discovery and read load balancing
 
 ### System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                Multi-Node Client Applications               │
+│                    Client Applications                      │
 │           (Load balances reads, routes writes to leader)    │
 └────────────────────────────┬────────────────────────────────┘
           Reads: Any Node    │ Writes: Leader Only
