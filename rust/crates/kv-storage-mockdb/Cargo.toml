@@ -1,0 +1,9 @@
+[package]
+name = "kv-storage-mockdb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kv-storage-api = { path = "../kv-storage-api" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
