@@ -1,0 +1,202 @@
+<!-- Replication Monitor Tab -->
+<div id="replicationTab" class="tab-content">
+    <!-- Replication Overview -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="replication-flow">
+                <h4 class="mb-3">
+                    <i class="fas fa-sync-alt"></i> Replication Flow Overview
+                </h4>
+                <div class="row align-items-center">
+                    <div class="col-md-3 text-center">
+                        <div class="consensus-indicator" id="repl-consensus-status">
+                            <i class="fas fa-handshake"></i><br>
+                            Consensus Status
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="term-badge" id="repl-current-term">
+                            Term: -
+                        </div>
+                        <br><small class="opacity-75 mt-2 d-block">Current Election Term</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h2 mb-0" id="repl-active-followers">-</div>
+                        <small class="opacity-75">Active Followers</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h2 mb-0" id="repl-replication-lag">-</div>
+                        <small class="opacity-75">Avg Lag (ms)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> Replication Health
+                    </h6>
+                </div>
+                <div class="card-body text-center">
+                    <canvas id="replicationHealthChart" width="200" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Replication Status -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card dashboard-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-network-wired"></i> Node Replication Status
+                    </h5>
+                    <small class="text-muted">Last updated: <span id="repl-last-updated">-</span></small>
+                </div>
+                <div class="card-body">
+                    <div id="repl-nodes-replication-grid" class="row">
+                        <!-- Node replication cards will be generated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lag Trends and Pending Operations -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line"></i> Replication Lag Trends
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="lag-chart-container">
+                        <canvas id="lagTrendsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-clock"></i> Pending Operations
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="pending-operations" id="repl-pending-operations">
+                        <!-- Pending operations will be listed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Replication Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar"></i> Replication Statistics
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="replication-stats">
+                        <div class="row">
+                            <div class="col-6 text-center">
+                                <div class="h4 text-primary" id="repl-ops-replicated">-</div>
+                                <small class="text-muted">Operations Replicated</small>
+                            </div>
+                            <div class="col-6 text-center">
+                                <div class="h4 text-success" id="repl-replication-rate">-</div>
+                                <small class="text-muted">Replication Rate/sec</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="replication-stats">
+                        <div class="row">
+                            <div class="col-6 text-center">
+                                <div class="h5 text-warning" id="repl-pending-count">-</div>
+                                <small class="text-muted">Pending Operations</small>
+                            </div>
+                            <div class="col-6 text-center">
+                                <div class="h5 text-info" id="repl-sync-nodes">-</div>
+                                <small class="text-muted">Nodes in Sync</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="replication-stats">
+                        <div class="row">
+                            <div class="col-6 text-center">
+                                <div class="h6 text-secondary" id="repl-last-commit">-</div>
+                                <small class="text-muted">Last Commit</small>
+                            </div>
+                            <div class="col-6 text-center">
+                                <div class="h6 text-secondary" id="repl-commit-rate">-</div>
+                                <small class="text-muted">Commit Rate (%)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history"></i> Failover History
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 350px; overflow-y: auto;">
+                    <div class="failover-timeline" id="repl-failover-timeline">
+                        <!-- Failover history will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls and Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tools"></i> Replication Controls
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group me-3" role="group">
+                        <button type="button" class="btn btn-outline-primary" onclick="refreshReplicationData()">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="showReplicationDetails()">
+                            <i class="fas fa-info-circle"></i> Detailed View
+                        </button>
+                    </div>
+                    <div class="btn-group me-3" role="group">
+                        <button type="button" class="btn btn-outline-warning" onclick="pauseReplication()">
+                            <i class="fas fa-pause"></i> Pause Replication
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="resumeReplication()">
+                            <i class="fas fa-play"></i> Resume Replication
+                        </button>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-danger" onclick="triggerFailover()">
+                            <i class="fas fa-exchange-alt"></i> Manual Failover
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="exportReplicationReport()">
+                            <i class="fas fa-download"></i> Export Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

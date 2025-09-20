@@ -1,0 +1,245 @@
+<!-- Node Details Tab -->
+<div id="nodeDetailsTab" class="tab-content">
+    <!-- Loading State -->
+    <div id="node-loading-state" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-3">Loading node details...</p>
+    </div>
+
+    <!-- Node Details Content -->
+    <div id="node-content" class="d-none">
+        <!-- Node Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h2 class="mb-2">
+                                    <i class="fas fa-server text-primary"></i>
+                                    <span id="node-name">Node</span>
+                                    <span id="node-leader-badge" class="leader-indicator d-none">
+                                        <i class="fas fa-crown"></i> LEADER
+                                    </span>
+                                </h2>
+                                <p class="text-muted mb-0">
+                                    <i class="fas fa-network-wired"></i>
+                                    Endpoint: <span id="node-endpoint">-</span>
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <div id="node-status-badge" class="node-status-badge">
+                                    Unknown
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">Last updated: <span id="node-last-updated">-</span></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="node-uptime-value">-</div>
+                    <div class="metric-label">Uptime</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="node-connections-value">-</div>
+                    <div class="metric-label">Active Connections</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="node-transactions-value">-</div>
+                    <div class="metric-label">Transactions/sec</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="node-latency-value">-</div>
+                    <div class="metric-label">Avg Latency (ms)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line"></i> Transaction History
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="nodeTransactionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-stopwatch"></i> Latency Trends
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="nodeLatencyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Pool & Node Info -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-plug"></i> Connection Pool Statistics
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="connection-card p-3 mb-3">
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Active Connections</small>
+                                    <div class="h4 text-primary" id="node-active-connections">-</div>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Max Pool Size</small>
+                                    <div class="h4 text-info" id="node-max-pool-size">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="connection-card p-3 mb-3">
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Idle Connections</small>
+                                    <div class="h5 text-secondary" id="node-idle-connections">-</div>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Connection Errors</small>
+                                    <div class="h5 text-danger" id="node-connection-errors">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" role="progressbar" id="node-pool-usage-bar" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted">Pool Usage: <span id="node-pool-usage-percent">0%</span></small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle"></i> Node Information
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Node ID:</strong></td>
+                                    <td id="node-id-detail">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Role:</strong></td>
+                                    <td id="node-role">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Term:</strong></td>
+                                    <td id="node-term">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Last Heartbeat:</strong></td>
+                                    <td id="node-last-heartbeat">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Join Time:</strong></td>
+                                    <td id="node-join-time">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list"></i> Recent Transactions
+                        </h5>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="node-recent-transactions">
+                            <!-- Transaction items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history"></i> Node Activity Timeline
+                        </h5>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="node-activity-timeline">
+                            <!-- Timeline items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tools"></i> Node Actions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-outline-primary" onclick="refreshNodeData()">
+                                <i class="fas fa-sync-alt"></i> Refresh Data
+                            </button>
+                            <button type="button" class="btn btn-outline-info" onclick="showNodeConnectionDetails()">
+                                <i class="fas fa-network-wired"></i> Connection Details
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" onclick="showNodeDiagnostics()">
+                                <i class="fas fa-stethoscope"></i> Run Diagnostics
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="exportNodeReport()">
+                                <i class="fas fa-download"></i> Export Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,47 @@
+<!-- Settings Tab -->
+<div id="settingsTab" class="tab-content">
+    <div class="settings-container">
+        <div class="settings-section">
+            <h2>🔧 Connection Settings</h2>
+            <p class="settings-description">Configure the Thrift server endpoint for the KV store connection.</p>
+        </div>
+
+        <div class="form-section">
+            <div class="form-group">
+                <label for="thriftHost">Thrift Host:</label>
+                <input type="text" id="thriftHost" placeholder="localhost" value="localhost">
+                <small>The hostname or IP address of the Thrift server</small>
+            </div>
+
+            <div class="form-group">
+                <label for="thriftPort">Thrift Port:</label>
+                <input type="number" id="thriftPort" placeholder="9090" value="9090" min="1" max="65535">
+                <small>The port number of the Thrift server (1-65535)</small>
+            </div>
+
+            <div class="form-group">
+                <div class="current-endpoint">
+                    <strong>Current Endpoint:</strong> <span id="currentEndpoint">localhost:9090</span>
+                </div>
+            </div>
+
+            <div class="settings-actions">
+                <button onclick="updateEndpoint()" class="success">Update Endpoint</button>
+                <button onclick="testEndpointConnection()" class="primary">Test Connection</button>
+                <button onclick="resetToDefaults()" class="secondary">Reset to Defaults</button>
+            </div>
+
+            <div id="endpointStatus" class="status-message" style="display: none;"></div>
+        </div>
+
+        <div class="settings-info">
+            <h3>ℹ️ Information</h3>
+            <ul>
+                <li>Changes will take effect immediately for new connections</li>
+                <li>Existing connections may need to be refreshed</li>
+                <li>The server must be reachable at the specified endpoint</li>
+                <li>Default values are localhost:9090</li>
+            </ul>
+        </div>
+    </div>
+</div>
