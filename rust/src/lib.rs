@@ -9,6 +9,7 @@ pub mod lib {
     pub mod operations;
     pub mod cluster;
     pub mod config;
+    pub mod kv_state_machine;
 }
 
 pub mod generated {
@@ -24,6 +25,7 @@ pub use kv_storage_rocksdb::{Config, TransactionalKvDatabase, DatabaseFactory};
 pub use lib::service_core::KvServiceCore;
 pub use lib::operations::{KvOperation, OperationResult, OperationType, DatabaseOperation};
 pub use lib::replication::{RoutingManager, RoutingError, RoutingResult};
+pub use lib::kv_state_machine::{KvStateMachine, ConsensusKvDatabase};
 
 // Re-export generated Thrift types with prefix to avoid conflicts
 pub use generated::kvstore::{

@@ -137,7 +137,7 @@ pub enum OperationResult {
         client_timestamp: i64,
         server_timestamp: i64,
     },
-    
+
     // Diagnostic operation results
     ClusterHealthResult(ClusterHealth),
     DatabaseStatsResult(DatabaseStats),

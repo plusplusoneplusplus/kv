@@ -602,7 +602,6 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
         }
     }
 
-
     fn handle_get_node_info(&self, req: GetNodeInfoRequest) -> thrift::Result<GetNodeInfoResponse> {
         // TODO: Implement authentication check
         if let Some(_auth_token) = req.auth_token {
