@@ -40,6 +40,7 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   └── kvstore.proto     # gRPC service and message definitions
 ├── thrift/               # Thrift definitions
 │   └── kvstore.thrift    # Thrift service and message definitions
+├── nodejs/               # Node.js web viewer for the Thrift server
 ├── data/                  # Database storage directory (auto-created)
 ├── bin/                   # Compiled binaries (auto-created)
 ├── configs/               # Database configuration files
@@ -72,6 +73,7 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 
 ### System Requirements
 - **Rust**: 1.70 or later (with Cargo)
+- **Node.js**: 18 or later (for optional web viewer)
 - **Ubuntu/Debian**: 20.04 or later (for package installations below)
 
 ### Required System Packages
@@ -297,6 +299,16 @@ int main() {
     return 0;
 }
 ```
+
+### Node.js Web Viewer
+
+```bash
+cd nodejs
+npm install
+THRIFT_HOST=localhost THRIFT_PORT=9090 npm start
+```
+
+The web UI runs on http://localhost:3000 and communicates with the Thrift server.
 
 ### Protocol-Specific Usage
 
