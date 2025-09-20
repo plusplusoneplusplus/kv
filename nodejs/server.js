@@ -1,17 +1,58 @@
 const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
 const thrift = require('thrift');
 const path = require('path');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+// Authentication modules removed
 
 // Import the generated Thrift files
 const TransactionalKV = require('./thrift/TransactionalKV');
 const kvstore_types = require('./thrift/kvstore_types');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: process.env.ALLOWED_ORIGINS || "*",
+        methods: ["GET", "POST"]
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 let THRIFT_HOST = process.env.THRIFT_HOST || 'localhost';
 let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 
+// Security configuration (authentication removed)
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: { error: 'Too many requests, please try again later.' }
+});
+
 // Middleware
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            connectSrc: ["'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
+            scriptSrcAttr: ["'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+            fontSrc: ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+            imgSrc: ["'self'", "data:"]
+        }
+    },
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+app.use(cors());
+app.use(limiter);
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -21,17 +62,334 @@ function createThriftClient() {
         transport: thrift.TBufferedTransport,
         protocol: thrift.TBinaryProtocol
     });
-    
+
     connection.on('error', (err) => {
         console.error('Thrift connection error:', err);
     });
-    
+
     return thrift.createClient(TransactionalKV, connection);
+}
+
+// Authentication middleware removed
+
+// WebSocket connection handling
+io.on('connection', (socket) => {
+    console.log('Client connected:', socket.id);
+
+    // Join dashboard room for real-time updates
+    socket.join('dashboard');
+
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+
+    socket.on('request-cluster-update', async () => {
+        try {
+            const clusterHealth = await getClusterHealthData();
+            socket.emit('cluster-update', clusterHealth);
+        } catch (error) {
+            socket.emit('error', { message: 'Failed to get cluster update' });
+        }
+    });
+});
+
+// Helper function to get cluster health data
+async function getClusterHealthData() {
+    return new Promise((resolve, reject) => {
+        const client = createThriftClient();
+        const request = new kvstore_types.GetClusterHealthRequest({});
+
+        client.getClusterHealth(request, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            if (!result.success) {
+                reject(new Error(result.error || 'Failed to get cluster health'));
+                return;
+            }
+
+            const processedHealth = processClusterHealthData(result.cluster_health);
+            resolve(processedHealth);
+        });
+    });
+}
+
+// Helper function to convert buffer values to numbers
+function convertBufferValue(value) {
+    // Handle the specific buffer format we're getting
+    if (value && typeof value === 'object' && value.buffer && value.buffer.data) {
+        const bytes = value.buffer.data;
+        // Convert buffer data to BigInt, then to number
+        let result = 0n;
+        for (let i = 0; i < bytes.length; i++) {
+            result = (result << 8n) | BigInt(bytes[i]);
+        }
+        return Number(result);
+    }
+
+    // Also handle the case where value has buffer and offset properties directly
+    if (value && typeof value === 'object' && value.buffer && typeof value.offset === 'number') {
+        // Check if it's a Node.js Buffer object
+        if (Buffer.isBuffer(value.buffer)) {
+            let result = 0n;
+            for (let i = 0; i < value.buffer.length; i++) {
+                result = (result << 8n) | BigInt(value.buffer[i]);
+            }
+            return Number(result);
+        }
+        // Handle serialized buffer format
+        if (value.buffer.type === 'Buffer' && value.buffer.data) {
+            const bytes = value.buffer.data;
+            let result = 0n;
+            for (let i = 0; i < bytes.length; i++) {
+                result = (result << 8n) | BigInt(bytes[i]);
+            }
+            return Number(result);
+        }
+    }
+
+    return value;
+}
+
+// Helper function to process stats object and convert buffer values
+function processStatsData(stats) {
+    if (!stats) return stats;
+
+    const processed = {};
+    for (const [key, value] of Object.entries(stats)) {
+        processed[key] = convertBufferValue(value);
+    }
+    return processed;
+}
+
+// Helper function to process cluster health data
+function processClusterHealthData(clusterHealth) {
+    if (!clusterHealth) return clusterHealth;
+
+    const processed = { ...clusterHealth };
+
+    // Convert numeric fields
+    processed.total_nodes_count = convertBufferValue(clusterHealth.total_nodes_count);
+    processed.healthy_nodes_count = convertBufferValue(clusterHealth.healthy_nodes_count);
+    processed.current_term = convertBufferValue(clusterHealth.current_term);
+    processed.current_leader_id = convertBufferValue(clusterHealth.current_leader_id);
+
+    // Process nodes array
+    if (clusterHealth.nodes) {
+        processed.nodes = clusterHealth.nodes.map(node => ({
+            ...node,
+            node_id: convertBufferValue(node.node_id),
+            last_seen_timestamp: convertBufferValue(node.last_seen_timestamp),
+            term: convertBufferValue(node.term),
+            uptime_seconds: convertBufferValue(node.uptime_seconds)
+        }));
+    }
+
+    return processed;
+}
+
+// Helper function to get database stats
+async function getDatabaseStatsData(includeDetailed = false) {
+    return new Promise((resolve, reject) => {
+        const client = createThriftClient();
+        const request = new kvstore_types.GetDatabaseStatsRequest({
+            include_detailed_stats: includeDetailed
+        });
+
+        client.getDatabaseStats(request, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            if (!result.success) {
+                reject(new Error(result.error || 'Failed to get database stats'));
+                return;
+            }
+
+            const processedStats = processStatsData(result.database_stats);
+            resolve(processedStats);
+        });
+    });
+}
+
+// Helper function to get node info
+async function getNodeInfoData(nodeId = null) {
+    return new Promise((resolve, reject) => {
+        const client = createThriftClient();
+        const request = new kvstore_types.GetNodeInfoRequest({
+            node_id: nodeId
+        });
+
+        client.getNodeInfo(request, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            if (!result.success) {
+                reject(new Error(result.error || 'Failed to get node info'));
+                return;
+            }
+
+            resolve(result.node_info);
+        });
+    });
 }
 
 // Routes
 
-// Home page - serve the web interface
+// Authentication routes removed
+
+// Dashboard routes (serve unified admin dashboard)
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'cluster-dashboard.html'));
+});
+
+app.get('/dashboard/node/:nodeId', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'node-details.html'));
+});
+
+app.get('/dashboard/replication', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'replication-monitor.html'));
+});
+
+// Diagnostic API endpoints
+app.get('/api/cluster/health', async (req, res) => {
+    try {
+        const clusterHealth = await getClusterHealthData();
+        res.json({
+            success: true,
+            data: clusterHealth
+        });
+
+        // Broadcast to connected clients
+        io.to('dashboard').emit('cluster-update', clusterHealth);
+    } catch (error) {
+        console.error('Error getting cluster health:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get cluster health',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/cluster/stats', async (req, res) => {
+    try {
+        const includeDetailed = req.query.detailed === 'true';
+        const stats = await getDatabaseStatsData(includeDetailed);
+        res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Error getting database stats:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get database stats',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/cluster/nodes', async (req, res) => {
+    try {
+        const clusterHealth = await getClusterHealthData();
+        res.json({
+            success: true,
+            data: {
+                nodes: clusterHealth.nodes,
+                totalNodes: clusterHealth.total_nodes_count,
+                healthyNodes: clusterHealth.healthy_nodes_count,
+                currentLeader: clusterHealth.current_leader_id
+            }
+        });
+    } catch (error) {
+        console.error('Error getting cluster nodes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get cluster nodes',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/cluster/nodes/:nodeId', async (req, res) => {
+    try {
+        const nodeId = parseInt(req.params.nodeId);
+        if (isNaN(nodeId)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid node ID'
+            });
+        }
+
+        const nodeInfo = await getNodeInfoData(nodeId);
+        res.json({
+            success: true,
+            data: nodeInfo
+        });
+    } catch (error) {
+        console.error('Error getting node info:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get node info',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/cluster/replication', async (req, res) => {
+    try {
+        const clusterHealth = await getClusterHealthData();
+
+        // Extract replication status from cluster health
+        const replicationStatus = {
+            currentTerm: clusterHealth.current_term || 0,
+            leaderId: clusterHealth.current_leader_id,
+            nodeStates: {},
+            replicationLag: {},
+            consensusActive: clusterHealth.nodes && clusterHealth.nodes.length > 1
+        };
+
+        // Process node states and replication lag
+        if (clusterHealth.nodes) {
+            clusterHealth.nodes.forEach(node => {
+                const state = node.is_leader ? 'leader' :
+                             node.status === 'healthy' ? 'follower' : 'unreachable';
+                replicationStatus.nodeStates[node.node_id] = state;
+                replicationStatus.replicationLag[node.node_id] = 0; // Placeholder
+            });
+        }
+
+        res.json({
+            success: true,
+            data: replicationStatus
+        });
+    } catch (error) {
+        console.error('Error getting replication status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get replication status',
+            details: error.message
+        });
+    }
+});
+
+// Real-time data broadcast (every 5 seconds)
+setInterval(async () => {
+    try {
+        const clusterHealth = await getClusterHealthData();
+        io.to('dashboard').emit('cluster-update', clusterHealth);
+    } catch (error) {
+        console.error('Error broadcasting cluster update:', error);
+    }
+}, 5000);
+
+// Home page - serve original index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -391,8 +749,11 @@ app.post('/api/admin/update-endpoint', (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`KV Store Web Viewer running on port ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`KV Store Admin Dashboard running on port ${PORT}`);
     console.log(`Connecting to Thrift server at ${THRIFT_HOST}:${THRIFT_PORT}`);
-    console.log(`Open http://localhost:${PORT} to view the interface`);
+    console.log(`Unified Admin Portal: http://localhost:${PORT}/`);
+    console.log(`  • Cluster Monitoring & Data Browser integrated`);
+    console.log(`  • Real-time updates via WebSocket enabled`);
+    console.log(`  • No authentication required`);
 });
