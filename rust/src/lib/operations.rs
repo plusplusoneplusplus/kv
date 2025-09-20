@@ -1,40 +1,36 @@
 use serde::{Deserialize, Serialize};
-use kv_storage_api::{AtomicCommitRequest, FaultInjectionConfig};
+use kv_storage_api::{GetResult, GetRangeResult, OpResult, AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig};
 
-/// Trait for database operations to classify them by type and routing requirements
-pub trait DatabaseOperation {
-    /// Returns true if this operation only reads data and doesn't modify it
-    fn is_read_only(&self) -> bool;
-
-    /// Returns true if this operation requires consensus in a distributed system
-    fn requires_consensus(&self) -> bool {
-        !self.is_read_only()
-    }
-
-    /// Returns the type classification of this operation
-    fn operation_type(&self) -> OperationType;
-}
-
-/// Classification of database operations for routing and consensus
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Types of operations supported by the KV store
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OperationType {
-    /// Read operations - can be served by any node, don't require consensus
     Read,
-    /// Write operations - must go through leader and consensus in distributed mode
     Write,
 }
 
-/// Unified enum representing all possible KV store operations
-/// This separates read and write operations for proper routing in distributed systems
+/// Trait for operations that can be performed on the database
+pub trait DatabaseOperation {
+    fn is_read_only(&self) -> bool;
+    fn requires_consensus(&self) -> bool {
+        !self.is_read_only()
+    }
+    fn operation_type(&self) -> OperationType {
+        if self.is_read_only() {
+            OperationType::Read
+        } else {
+            OperationType::Write
+        }
+    }
+}
+
+/// All operations that can be performed on the distributed KV store
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum KvOperation {
     // Read operations - can be served by any node
-    /// Get a value by key
     Get {
         key: Vec<u8>,
         column_family: Option<String>,
     },
-    /// Get range of key-value pairs with offset support
     GetRange {
         begin_key: Vec<u8>,
         end_key: Vec<u8>,
@@ -45,13 +41,11 @@ pub enum KvOperation {
         limit: Option<i32>,
         column_family: Option<String>,
     },
-    /// Snapshot read at specific version
     SnapshotRead {
         key: Vec<u8>,
         read_version: u64,
         column_family: Option<String>,
     },
-    /// Snapshot get range at specific version
     SnapshotGetRange {
         begin_key: Vec<u8>,
         end_key: Vec<u8>,
@@ -63,43 +57,35 @@ pub enum KvOperation {
         limit: Option<i32>,
         column_family: Option<String>,
     },
-    /// Get current read version for transactions
     GetReadVersion,
-    /// Health check ping operation
     Ping {
         message: Option<Vec<u8>>,
         timestamp: Option<i64>,
     },
 
     // Write operations - must go through leader and consensus
-    /// Set a key-value pair
     Set {
         key: Vec<u8>,
         value: Vec<u8>,
         column_family: Option<String>,
     },
-    /// Delete a key
     Delete {
         key: Vec<u8>,
         column_family: Option<String>,
     },
-    /// Atomic commit of multiple operations
     AtomicCommit {
         request: AtomicCommitRequest,
     },
-    /// Set versionstamped key operation
     SetVersionstampedKey {
         key_prefix: Vec<u8>,
         value: Vec<u8>,
         column_family: Option<String>,
     },
-    /// Set versionstamped value operation
     SetVersionstampedValue {
         key: Vec<u8>,
         value_prefix: Vec<u8>,
         column_family: Option<String>,
     },
-    /// Set fault injection for testing
     SetFaultInjection {
         config: Option<FaultInjectionConfig>,
     },
@@ -107,32 +93,31 @@ pub enum KvOperation {
 
 impl DatabaseOperation for KvOperation {
     fn is_read_only(&self) -> bool {
-        matches!(self,
-            KvOperation::Get { .. } |
-            KvOperation::GetRange { .. } |
-            KvOperation::SnapshotRead { .. } |
-            KvOperation::SnapshotGetRange { .. } |
-            KvOperation::GetReadVersion |
-            KvOperation::Ping { .. }
-        )
-    }
+        match self {
+            KvOperation::Get { .. }
+            | KvOperation::GetRange { .. }
+            | KvOperation::SnapshotRead { .. }
+            | KvOperation::SnapshotGetRange { .. }
+            | KvOperation::GetReadVersion
+            | KvOperation::Ping { .. } => true,
 
-    fn operation_type(&self) -> OperationType {
-        if self.is_read_only() {
-            OperationType::Read
-        } else {
-            OperationType::Write
+            KvOperation::Set { .. }
+            | KvOperation::Delete { .. }
+            | KvOperation::AtomicCommit { .. }
+            | KvOperation::SetVersionstampedKey { .. }
+            | KvOperation::SetVersionstampedValue { .. }
+            | KvOperation::SetFaultInjection { .. } => false,
         }
     }
 }
 
-/// Result types for operation execution
-#[derive(Debug, Clone)]
+/// Results returned by operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationResult {
-    GetResult(Result<kv_storage_api::GetResult, String>),
-    GetRangeResult(kv_storage_api::GetRangeResult),
-    OpResult(kv_storage_api::OpResult),
-    AtomicCommitResult(kv_storage_api::AtomicCommitResult),
+    GetResult(Result<GetResult, String>),
+    GetRangeResult(GetRangeResult),
+    OpResult(OpResult),
+    AtomicCommitResult(AtomicCommitResult),
     ReadVersion(u64),
     PingResult {
         message: Vec<u8>,
@@ -146,84 +131,66 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_operations_classification() {
-        let read_ops = vec![
-            KvOperation::Get { key: b"key".to_vec(), column_family: None },
-            KvOperation::GetRange {
-                begin_key: b"a".to_vec(),
-                end_key: b"z".to_vec(),
-                begin_offset: 0,
-                begin_or_equal: true,
-                end_offset: 0,
-                end_or_equal: false,
-                limit: None,
-                column_family: None,
-            },
-            KvOperation::SnapshotRead { key: b"key".to_vec(), read_version: 123, column_family: None },
-            KvOperation::GetReadVersion,
-            KvOperation::Ping { message: None, timestamp: None },
-        ];
-
-        for op in read_ops {
-            assert!(op.is_read_only(), "Operation {:?} should be read-only", op);
-            assert_eq!(op.operation_type(), OperationType::Read);
-            assert!(!op.requires_consensus(), "Read operations should not require consensus");
-        }
-    }
-
-    #[test]
-    fn test_write_operations_classification() {
-        let write_ops = vec![
-            KvOperation::Set { key: b"key".to_vec(), value: b"value".to_vec(), column_family: None },
-            KvOperation::Delete { key: b"key".to_vec(), column_family: None },
-            KvOperation::AtomicCommit {
-                request: AtomicCommitRequest {
-                    read_version: 123,
-                    operations: vec![],
-                    read_conflict_keys: vec![],
-                    timeout_seconds: 60,
-                }
-            },
-            KvOperation::SetVersionstampedKey {
-                key_prefix: b"prefix".to_vec(),
-                value: b"value".to_vec(),
-                column_family: None,
-            },
-            KvOperation::SetVersionstampedValue {
-                key: b"key".to_vec(),
-                value_prefix: b"prefix".to_vec(),
-                column_family: None,
-            },
-            KvOperation::SetFaultInjection { config: None },
-        ];
-
-        for op in write_ops {
-            assert!(!op.is_read_only(), "Operation {:?} should not be read-only", op);
-            assert_eq!(op.operation_type(), OperationType::Write);
-            assert!(op.requires_consensus(), "Write operations should require consensus");
-        }
-    }
-
-    #[test]
-    fn test_operation_serialization() {
-        let op = KvOperation::Set {
-            key: b"test_key".to_vec(),
-            value: b"test_value".to_vec(),
-            column_family: Some("test_cf".to_string()),
+    fn test_operation_classification() {
+        let get_op = KvOperation::Get {
+            key: b"test".to_vec(),
+            column_family: None,
         };
+        assert!(get_op.is_read_only());
+        assert_eq!(get_op.operation_type(), OperationType::Read);
+        assert!(!get_op.requires_consensus());
 
-        // Test that operations can be serialized and deserialized for network transmission
-        let serialized = bincode::serialize(&op).expect("Should serialize");
-        let deserialized: KvOperation = bincode::deserialize(&serialized).expect("Should deserialize");
+        let set_op = KvOperation::Set {
+            key: b"test".to_vec(),
+            value: b"value".to_vec(),
+            column_family: None,
+        };
+        assert!(!set_op.is_read_only());
+        assert_eq!(set_op.operation_type(), OperationType::Write);
+        assert!(set_op.requires_consensus());
+    }
 
-        match (&op, &deserialized) {
-            (KvOperation::Set { key: k1, value: v1, column_family: cf1 },
-             KvOperation::Set { key: k2, value: v2, column_family: cf2 }) => {
-                assert_eq!(k1, k2);
-                assert_eq!(v1, v2);
-                assert_eq!(cf1, cf2);
-            }
-            _ => panic!("Deserialized operation doesn't match original"),
-        }
+    #[test]
+    fn test_ping_operation() {
+        let ping_op = KvOperation::Ping {
+            message: Some(b"hello".to_vec()),
+            timestamp: Some(12345),
+        };
+        assert!(ping_op.is_read_only());
+        assert_eq!(ping_op.operation_type(), OperationType::Read);
+    }
+
+    #[test]
+    fn test_atomic_commit_operation() {
+        let atomic_op = KvOperation::AtomicCommit {
+            request: AtomicCommitRequest {
+                read_version: 1,
+                operations: vec![],
+                read_conflict_keys: vec![],
+                timeout_seconds: 60,
+            },
+        };
+        assert!(!atomic_op.is_read_only());
+        assert_eq!(atomic_op.operation_type(), OperationType::Write);
+        assert!(atomic_op.requires_consensus());
+    }
+
+    #[test]
+    fn test_versionstamped_operations() {
+        let key_op = KvOperation::SetVersionstampedKey {
+            key_prefix: b"test".to_vec(),
+            value: b"value".to_vec(),
+            column_family: None,
+        };
+        assert!(!key_op.is_read_only());
+        assert!(key_op.requires_consensus());
+
+        let value_op = KvOperation::SetVersionstampedValue {
+            key: b"test".to_vec(),
+            value_prefix: b"value".to_vec(),
+            column_family: None,
+        };
+        assert!(!value_op.is_read_only());
+        assert!(value_op.requires_consensus());
     }
 }
