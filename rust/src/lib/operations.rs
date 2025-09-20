@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::lib::db::{AtomicCommitRequest, FaultInjectionConfig};
+use kv_storage_api::{AtomicCommitRequest, FaultInjectionConfig};
 
 /// Trait for database operations to classify them by type and routing requirements
 pub trait DatabaseOperation {
@@ -129,10 +129,10 @@ impl DatabaseOperation for KvOperation {
 /// Result types for operation execution
 #[derive(Debug, Clone)]
 pub enum OperationResult {
-    GetResult(Result<crate::lib::db::GetResult, String>),
-    GetRangeResult(crate::lib::db::GetRangeResult),
-    OpResult(crate::lib::db::OpResult),
-    AtomicCommitResult(crate::lib::db::AtomicCommitResult),
+    GetResult(Result<kv_storage_api::GetResult, String>),
+    GetRangeResult(kv_storage_api::GetRangeResult),
+    OpResult(kv_storage_api::OpResult),
+    AtomicCommitResult(kv_storage_api::AtomicCommitResult),
     ReadVersion(u64),
     PingResult {
         message: Vec<u8>,

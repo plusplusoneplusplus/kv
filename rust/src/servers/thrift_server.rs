@@ -1,19 +1,17 @@
+use clap::Parser;
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::path::PathBuf;
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
-use tracing::{info, debug, error};
-use clap::Parser;
+use tracing::{debug, error, info};
 
-use rocksdb_server::lib::db::TransactionalKvDatabase;
-use rocksdb_server::lib::db_trait::KvDatabase;
 use rocksdb_server::generated::kvstore::*;
-use rocksdb_server::lib::config::Config;
-use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
 use rocksdb_server::lib::replication::RoutingManager;
+use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
+use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -54,7 +52,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration from binary's directory
     let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let exe_dir = exe_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let exe_dir = exe_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let config_path = exe_dir.join("db_config.toml");
 
     let config = match Config::load_from_file(&config_path) {
@@ -64,9 +64,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 debug!("Configuration loaded successfully");
             }
             config
-        },
+        }
         Err(e) => {
-            info!("Could not load {} ({}), using default configuration", config_path.display(), e);
+            info!(
+                "Could not load {} ({}), using default configuration",
+                config_path.display(),
+                e
+            );
             if args.verbose {
                 debug!("Using default configuration due to error: {}", e);
             }
@@ -95,8 +99,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listen_address = format!("0.0.0.0:{}", args.port);
     info!("Starting Transactional Thrift server on {}", listen_address);
     if args.verbose {
-        debug!("Server configuration: port={}, verbose={}, db_path={}",
-               args.port, args.verbose, db_path);
+        debug!(
+            "Server configuration: port={}, verbose={}, db_path={}",
+            args.port, args.verbose, db_path
+        );
     }
 
     // Create TCP listener
@@ -111,12 +117,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let database = Arc::clone(&database);
                 let config = config.clone();
                 let verbose = args.verbose;
-                let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
+                let peer_addr = stream
+                    .peer_addr()
+                    .unwrap_or_else(|_| "unknown".parse().unwrap());
 
                 thread::spawn(move || {
                     info!("Accepted connection from {}", peer_addr);
                     if verbose {
-                        debug!("Creating handler and processor for connection from {}", peer_addr);
+                        debug!(
+                            "Creating handler and processor for connection from {}",
+                            peer_addr
+                        );
                     }
 
                     // Create routing manager and handler for this connection
@@ -137,7 +148,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut output_protocol = TBinaryOutputProtocol::new(write_transport, true);
 
                     if verbose {
-                        debug!("Connection setup complete for {}, entering request processing loop", peer_addr);
+                        debug!(
+                            "Connection setup complete for {}, entering request processing loop",
+                            peer_addr
+                        );
                     }
 
                     // Handle the connection in a loop to process multiple requests
@@ -147,15 +161,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(()) => {
                                 request_count += 1;
                                 if verbose {
-                                    debug!("Request {} from {} processed successfully", request_count, peer_addr);
+                                    debug!(
+                                        "Request {} from {} processed successfully",
+                                        request_count, peer_addr
+                                    );
                                 }
                             }
-                            Err(thrift::Error::Transport(ref e)) if e.kind == thrift::TransportErrorKind::EndOfFile => {
-                                info!("Client {} closed connection after {} requests", peer_addr, request_count);
+                            Err(thrift::Error::Transport(ref e))
+                                if e.kind == thrift::TransportErrorKind::EndOfFile =>
+                            {
+                                info!(
+                                    "Client {} closed connection after {} requests",
+                                    peer_addr, request_count
+                                );
                                 break;
                             }
                             Err(e) => {
-                                error!("Error processing request {} from {}: {}", request_count + 1, peer_addr, e);
+                                error!(
+                                    "Error processing request {} from {}: {}",
+                                    request_count + 1,
+                                    peer_addr,
+                                    e
+                                );
                                 if verbose {
                                     debug!("Connection from {} terminating due to error after {} successful requests",
                                            peer_addr, request_count);

@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 
-use crate::{BenchmarkConfig, BenchmarkResult};
-use crate::config::{load_config_from_file, get_default_config};
 use super::{ClientFactory, KvOperations};
+use crate::config::{get_default_config, load_config_from_file};
+use crate::{BenchmarkConfig, BenchmarkResult};
 
 pub struct RawClient {
     db: Arc<TransactionDB>,
@@ -28,8 +28,11 @@ impl RawClientFactory {
 
 #[async_trait]
 impl ClientFactory for RawClientFactory {
-    async fn create_client(&self, db_path: &str, config: &BenchmarkConfig) 
-        -> anyhow::Result<Arc<dyn KvOperations>> {
+    async fn create_client(
+        &self,
+        db_path: &str,
+        config: &BenchmarkConfig,
+    ) -> anyhow::Result<Arc<dyn KvOperations>> {
         // Load configuration
         let rocks_config = match &config.config_file {
             Some(config_file) => {
@@ -66,13 +69,21 @@ impl ClientFactory for RawClientFactory {
                 // Set up RocksDB options
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
-                opts.set_write_buffer_size((rocks_config.rocksdb.write_buffer_size_mb * 1024 * 1024) as usize);
-                opts.set_max_write_buffer_number(rocks_config.rocksdb.max_write_buffer_number as i32);
+                opts.set_write_buffer_size(
+                    (rocks_config.rocksdb.write_buffer_size_mb * 1024 * 1024) as usize,
+                );
+                opts.set_max_write_buffer_number(
+                    rocks_config.rocksdb.max_write_buffer_number as i32,
+                );
                 opts.set_max_background_jobs(rocks_config.rocksdb.max_background_jobs as i32);
 
                 // Open transaction database
-                let db = Arc::new(TransactionDB::open(&opts, &TransactionDBOptions::default(), db_path)?);
-                
+                let db = Arc::new(TransactionDB::open(
+                    &opts,
+                    &TransactionDBOptions::default(),
+                    db_path,
+                )?);
+
                 *guard = Some(db.clone());
                 db
             }
@@ -81,7 +92,9 @@ impl ClientFactory for RawClientFactory {
         // Create individual client with shared database for parallel transactions
         Ok(Arc::new(RawClient {
             db: shared_db,
-            read_semaphore: Arc::new(Semaphore::new(rocks_config.concurrency.max_read_concurrency as usize)),
+            read_semaphore: Arc::new(Semaphore::new(
+                rocks_config.concurrency.max_read_concurrency as usize,
+            )),
             write_semaphore: Arc::new(Semaphore::new(16)),
         }))
     }
@@ -116,10 +129,10 @@ impl KvOperations for RawClient {
 
         // Create a transaction for pessimistic locking
         let txn = self.db.transaction();
-        
+
         // Put the key-value pair within the transaction
         let result = txn.put(key.as_bytes(), value.as_bytes());
-        
+
         if let Err(e) = result {
             let latency = start.elapsed();
             return BenchmarkResult {
@@ -203,10 +216,10 @@ impl KvOperations for RawClient {
         // We'll create an iterator and do a quick seek operation
         let txn = self.db.transaction();
         let mut iter = txn.iterator(rocksdb::IteratorMode::Start);
-        
+
         // Try to get the first key as a database connectivity test
         let _first = iter.next();
-        
+
         let latency = start.elapsed();
 
         BenchmarkResult {

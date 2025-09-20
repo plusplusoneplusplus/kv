@@ -1,4 +1,4 @@
-use rocksdb_server::client::{KvStoreClient, KvError};
+use rocksdb_server::client::{KvError, KvStoreClient};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -7,68 +7,68 @@ use crate::common;
 #[tokio::test]
 async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    
+
     // Set and get a value
     let mut tx = tx; // Make mutable for set
     tx.set(b"test_key", b"test_value", None)?;
-    
+
     let get_future = tx.get(b"test_key", None);
     let value = get_future.await_result().await?;
-    
+
     assert_eq!(value, Some(b"test_value".to_vec()));
-    
+
     // Commit
     let commit_future = tx.commit();
     commit_future.await_result().await?;
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_transaction_conflict() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // Start two transactions
     let tx1_future = client.begin_transaction(None, Some(30));
     let tx1 = tx1_future.await_result().await?;
-    
+
     let tx2_future = client.begin_transaction(None, Some(30));
     let tx2 = tx2_future.await_result().await?;
-    
+
     let conflict_key = b"conflict_test";
-    
+
     // Set up initial data for conflict detection
     let setup_tx_future = client.begin_transaction(None, Some(30));
     let mut setup_tx = setup_tx_future.await_result().await?;
     setup_tx.set(conflict_key, b"initial_value", None)?;
     let setup_commit_future = setup_tx.commit();
     setup_commit_future.await_result().await?;
-    
+
     // Both transactions read then modify the same key to create conflict
     let read_future1 = tx1.get(conflict_key, None);
     let _initial_value1 = read_future1.await_result().await?;
-    
-    let read_future2 = tx2.get(conflict_key, None); 
+
+    let read_future2 = tx2.get(conflict_key, None);
     let _initial_value2 = read_future2.await_result().await?;
-    
+
     let mut tx1 = tx1; // Make mutable for set
     tx1.set(conflict_key, b"value1", None)?;
-    
+
     let mut tx2 = tx2; // Make mutable for set
     tx2.set(conflict_key, b"value2", None)?;
-    
+
     // First commit should succeed
     let commit1_future = tx1.commit();
     commit1_future.await_result().await?;
-    
+
     // Second commit should fail with conflict due to read-write conflict
     let commit2_future = tx2.commit();
     let result = commit2_future.await_result().await;
-    
+
     // If the system doesn't detect conflicts, just verify both commits worked
     match result {
         Err(KvError::TransactionConflict(_)) => {
@@ -81,18 +81,18 @@ async fn test_transaction_conflict() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(other) => panic!("Expected transaction conflict or success, got: {:?}", other),
     }
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    
+
     // Set multiple keys in a range
     let mut tx = tx; // Make mutable for set
     for i in 1..=5 {
@@ -100,21 +100,30 @@ async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
         let value = format!("value_{}", i);
         tx.set(key.as_bytes(), value.as_bytes(), None)?;
     }
-    
+
     // Commit first to ensure data is persisted before range query
     let commit_future = tx.commit();
     commit_future.await_result().await?;
-    
+
     // Start new transaction for range query
     let range_tx_future = client.begin_transaction(None, Some(30));
     let range_tx = range_tx_future.await_result().await?;
-    
+
     // Get range
-    let range_future = range_tx.get_range(Some(b"range_test:"), Some(b"range_test:z"), Some(0), Some(true), Some(0), Some(false), Some(10), None);
+    let range_future = range_tx.get_range(
+        Some(b"range_test:"),
+        Some(b"range_test:z"),
+        Some(0),
+        Some(true),
+        Some(0),
+        Some(false),
+        Some(10),
+        None,
+    );
     let results = range_future.await_result().await?;
-    
+
     assert_eq!(results.len(), 5);
-    
+
     // Verify ordering and values
     for (i, (key, value)) in results.iter().enumerate() {
         let expected_key = format!("range_test:{:03}", i + 1);
@@ -122,149 +131,149 @@ async fn test_range_operations() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(key, expected_key.as_bytes());
         assert_eq!(value, expected_value.as_bytes());
     }
-    
+
     // Commit range transaction
     let range_commit_future = range_tx.commit();
     range_commit_future.await_result().await?;
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_read_transaction() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // First, set up some data with a regular transaction
     let setup_tx_future = client.begin_transaction(None, Some(30));
     let setup_tx = setup_tx_future.await_result().await?;
-    
+
     let mut setup_tx = setup_tx; // Make mutable for set
     setup_tx.set(b"read_test_key", b"read_test_value", None)?;
-    
+
     let commit_future = setup_tx.commit();
     commit_future.await_result().await?;
-    
+
     // Now test read transaction
     let read_tx_future = client.begin_read_transaction(None);
     let read_tx = read_tx_future.await_result().await?;
-    
+
     // Test snapshot_get (direct database read at snapshot version)
     let snapshot_get_future = read_tx.snapshot_get(b"read_test_key", None);
     let snapshot_value = snapshot_get_future.await_result().await?;
-    
+
     assert_eq!(snapshot_value, Some(b"read_test_value".to_vec()));
-    
+
     // Test regular transaction get (checks local writes first, then database)
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    
+
     let get_future = tx.get(b"read_test_key", None);
     let get_value = get_future.await_result().await?;
-    
+
     assert_eq!(get_value, Some(b"read_test_value".to_vec()));
-    
+
     // Both methods should return the same value when reading committed data
     assert_eq!(snapshot_value, get_value);
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_read_transaction_binary_keys() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // First, set up binary data with a regular transaction
     let tx_future = client.begin_transaction(None, Some(30));
     let mut tx = tx_future.await_result().await?;
-    
+
     // Test binary key with null bytes
     let binary_key = b"binary\x00key\x00with\x00nulls";
     let binary_value = b"binary\x00value\x00data\x00test";
-    
+
     tx.set(binary_key, binary_value, None)?;
-    
+
     let commit_future = tx.commit();
     commit_future.await_result().await?;
-    
+
     // Now test read transaction with binary key
     let read_tx_future = client.begin_read_transaction(None);
     let read_tx = read_tx_future.await_result().await?;
-    
+
     // Test snapshot_get (direct database read at snapshot version)
     let snapshot_get_future = read_tx.snapshot_get(binary_key, None);
     let snapshot_value = snapshot_get_future.await_result().await?;
-    
+
     // Verify binary value retrieval via snapshot_get
     assert!(snapshot_value.is_some());
     let retrieved_snapshot_value = snapshot_value.unwrap();
     assert_eq!(retrieved_snapshot_value, binary_value);
-    
+
     // Test regular transaction get (checks local writes first, then database)
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    
+
     let get_future = tx.get(binary_key, None);
     let get_value = get_future.await_result().await?;
-    
+
     // Verify binary value retrieval via get
     assert!(get_value.is_some());
     let retrieved_get_value = get_value.unwrap();
     assert_eq!(retrieved_get_value, binary_value);
-    
+
     // Both methods should return the same value when reading committed data
     assert_eq!(retrieved_snapshot_value, retrieved_get_value);
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_versionstamped_operations() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // Begin transaction
     let tx_future = client.begin_transaction(None, Some(30));
     let tx = tx_future.await_result().await?;
-    
+
     // The versionstamped operations are not supported by the current server implementation
     // Instead, test that the transaction can be created and committed successfully
     let mut tx = tx; // Make mutable for set
     tx.set(b"versionstamped_test", b"test_value", None)?;
-    
+
     let get_future = tx.get(b"versionstamped_test", None);
     let value = get_future.await_result().await?;
     assert_eq!(value, Some(b"test_value".to_vec()));
-    
+
     // Commit
     let commit_future = tx.commit();
     commit_future.await_result().await?;
-    
+
     Ok(())
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_connection_timeout() -> Result<(), Box<dyn std::error::Error>> {
     // Test connection to non-existent server
     let result = KvStoreClient::connect("localhost:19999");
     assert!(result.is_err());
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_transaction_timeout() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     // Begin transaction with very short timeout
     let tx_future = client.begin_transaction(None, Some(1));
     let tx = tx_future.await_result().await?;
-    
+
     // Wait longer than timeout
     tokio::time::sleep(Duration::from_secs(2)).await;
-    
+
     // Try to use transaction after timeout
     let get_future = tx.get(b"test_key", None);
     let result = timeout(Duration::from_secs(5), get_future.await_result()).await;
-    
+
     // The timeout behavior may vary - the transaction might still work if timeout isn't enforced
     match result {
         Err(_) => {
@@ -284,19 +293,19 @@ async fn test_transaction_timeout() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_ping() -> Result<(), Box<dyn std::error::Error>> {
     let client = KvStoreClient::connect(&common::get_server_address())?;
-    
+
     let ping_future = client.ping(Some("test message".as_bytes().to_vec()));
     let response = ping_future.await_result().await?;
-    
+
     assert!(response.windows(12).any(|w| w == b"test message") || response == b"pong");
-    
+
     Ok(())
 }
 
@@ -369,14 +378,14 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
 
     // First, get all results to see what's actually stored
     let all_range_future = range_tx.get_range(
-        None,                // start from beginning
-        None,                // go to end
-        Some(0),             // begin_offset = 0
-        Some(true),          // begin_or_equal = true
-        Some(0),             // end_offset = 0
-        Some(false),         // end_or_equal = false
-        Some(100),           // limit = 100 (get all)
-        None                 // column_family
+        None,        // start from beginning
+        None,        // go to end
+        Some(0),     // begin_offset = 0
+        Some(true),  // begin_or_equal = true
+        Some(0),     // end_offset = 0
+        Some(false), // end_or_equal = false
+        Some(100),   // limit = 100 (get all)
+        None,        // column_family
     );
     let all_results = all_range_future.await_result().await?;
 
@@ -402,7 +411,7 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
         Some(0),             // end_offset = 0
         Some(false),         // end_or_equal = false
         Some(10),            // limit = 10
-        None                 // column_family
+        None,                // column_family
     );
     let results = range_future.await_result().await?;
 
@@ -434,7 +443,7 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
         Some(0),             // end_offset = 0
         Some(false),         // end_or_equal = false
         Some(3),             // limit = 3 (should get only 3 results)
-        None                 // column_family
+        None,                // column_family
     );
     let limited_results = limited_range_future.await_result().await?;
 
@@ -462,11 +471,14 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
         Some(0),             // end_offset = 0
         Some(false),         // end_or_equal = false
         Some(10),            // limit = 10
-        None                 // column_family
+        None,                // column_family
     );
     let offset_results = offset_range_future.await_result().await?;
 
-    println!("Binary prefix results with offset=1: {}", offset_results.len());
+    println!(
+        "Binary prefix results with offset=1: {}",
+        offset_results.len()
+    );
     for (i, (key, value)) in offset_results.iter().enumerate() {
         println!("Binary offset key {}: {:?} -> {:?}", i, key, value);
     }
@@ -485,7 +497,9 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
             assert_eq!(value, expected_value.as_bytes());
         }
     } else if offset_results.len() == 5 {
-        println!("WARNING: Offset parameter appears to be ignored (got all 5 results instead of 4)");
+        println!(
+            "WARNING: Offset parameter appears to be ignored (got all 5 results instead of 4)"
+        );
         // Still verify the results are correct, just without offset
         for (i, (key, value)) in offset_results.iter().enumerate() {
             let expected_suffix = i as u8;
@@ -513,11 +527,14 @@ async fn test_binary_data_range_operations() -> Result<(), Box<dyn std::error::E
         Some(0),             // end_offset = 0
         Some(false),         // end_or_equal = false
         Some(10),            // limit = 10
-        None                 // column_family
+        None,                // column_family
     );
     let large_offset_results = large_offset_range_future.await_result().await?;
 
-    println!("Binary prefix results with offset=2: {}", large_offset_results.len());
+    println!(
+        "Binary prefix results with offset=2: {}",
+        large_offset_results.len()
+    );
 
     if large_offset_results.len() == 3 {
         println!("Large offset functionality works correctly");
@@ -581,14 +598,14 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let range_future = range_tx.get_range(
-        Some(base_prefix),   // start key prefix (just the base)
-        Some(&end_key),      // end key to capture prefix range
-        Some(0),             // begin_offset = 0 (no offset)
-        Some(true),          // begin_or_equal = true
-        Some(0),             // end_offset = 0
-        Some(false),         // end_or_equal = false
-        Some(20),            // limit = 20 (should get all 10)
-        None                 // column_family
+        Some(base_prefix), // start key prefix (just the base)
+        Some(&end_key),    // end key to capture prefix range
+        Some(0),           // begin_offset = 0 (no offset)
+        Some(true),        // begin_or_equal = true
+        Some(0),           // end_offset = 0
+        Some(false),       // end_or_equal = false
+        Some(20),          // limit = 20 (should get all 10)
+        None,              // column_family
     );
     let results = range_future.await_result().await?;
 
@@ -614,22 +631,28 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
         let key_suffix = &key[base_prefix.len()..];
         assert_eq!(key_suffix.len(), 8);
         let decoded_u64 = u64::from_be_bytes([
-            key_suffix[0], key_suffix[1], key_suffix[2], key_suffix[3],
-            key_suffix[4], key_suffix[5], key_suffix[6], key_suffix[7]
+            key_suffix[0],
+            key_suffix[1],
+            key_suffix[2],
+            key_suffix[3],
+            key_suffix[4],
+            key_suffix[5],
+            key_suffix[6],
+            key_suffix[7],
         ]);
         assert_eq!(decoded_u64, expected_u64);
     }
 
     // Test limiting u64 results to verify limit parameter works
     let limited_u64_future = range_tx.get_range(
-        Some(base_prefix),   // start key prefix
-        Some(&end_key),      // end key to capture prefix range
-        Some(0),             // begin_offset = 0
-        Some(true),          // begin_or_equal = true
-        Some(0),             // end_offset = 0
-        Some(false),         // end_or_equal = false
-        Some(5),             // limit = 5 (should get only 5 results)
-        None                 // column_family
+        Some(base_prefix), // start key prefix
+        Some(&end_key),    // end key to capture prefix range
+        Some(0),           // begin_offset = 0
+        Some(true),        // begin_or_equal = true
+        Some(0),           // end_offset = 0
+        Some(false),       // end_or_equal = false
+        Some(5),           // limit = 5 (should get only 5 results)
+        None,              // column_family
     );
     let limited_u64_results = limited_u64_future.await_result().await?;
 
@@ -650,18 +673,21 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test with offset != 0 to skip first few u64 results
     let offset_u64_future = range_tx.get_range(
-        Some(base_prefix),   // start key prefix
-        Some(&end_key),      // end key to capture prefix range
-        Some(3),             // begin_offset = 3 (skip first 3 matching keys)
-        Some(true),          // begin_or_equal = true
-        Some(0),             // end_offset = 0
-        Some(false),         // end_or_equal = false
-        Some(20),            // limit = 20
-        None                 // column_family
+        Some(base_prefix), // start key prefix
+        Some(&end_key),    // end key to capture prefix range
+        Some(3),           // begin_offset = 3 (skip first 3 matching keys)
+        Some(true),        // begin_or_equal = true
+        Some(0),           // end_offset = 0
+        Some(false),       // end_or_equal = false
+        Some(20),          // limit = 20
+        None,              // column_family
     );
     let offset_u64_results = offset_u64_future.await_result().await?;
 
-    println!("U64 prefix results with offset=3: {}", offset_u64_results.len());
+    println!(
+        "U64 prefix results with offset=3: {}",
+        offset_u64_results.len()
+    );
     for (i, (key, value)) in offset_u64_results.iter().enumerate() {
         println!("U64 offset key {}: {:?} -> {:?}", i, key, value);
     }
@@ -683,13 +709,21 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
             let key_suffix = &key[base_prefix.len()..];
             assert_eq!(key_suffix.len(), 8);
             let decoded_u64 = u64::from_be_bytes([
-                key_suffix[0], key_suffix[1], key_suffix[2], key_suffix[3],
-                key_suffix[4], key_suffix[5], key_suffix[6], key_suffix[7]
+                key_suffix[0],
+                key_suffix[1],
+                key_suffix[2],
+                key_suffix[3],
+                key_suffix[4],
+                key_suffix[5],
+                key_suffix[6],
+                key_suffix[7],
             ]);
             assert_eq!(decoded_u64, expected_u64);
         }
     } else if offset_u64_results.len() == 10 {
-        println!("WARNING: U64 offset parameter appears to be ignored (got all 10 results instead of 7)");
+        println!(
+            "WARNING: U64 offset parameter appears to be ignored (got all 10 results instead of 7)"
+        );
         // Still verify the results are correct, just without offset
         for (i, (key, value)) in offset_u64_results.iter().enumerate() {
             let expected_u64 = i as u64;
@@ -704,24 +738,30 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
         println!("WARNING: U64 offset parameter may not be implemented (got 0 results)");
         // Don't fail the test for unimplemented offset functionality
     } else {
-        println!("ERROR: Unexpected U64 result count: {}", offset_u64_results.len());
+        println!(
+            "ERROR: Unexpected U64 result count: {}",
+            offset_u64_results.len()
+        );
         // Don't fail the test, just log the unexpected behavior
     }
 
     // Test with offset + limit combination for u64 keys
     let offset_limit_u64_future = range_tx.get_range(
-        Some(base_prefix),   // start key prefix
-        Some(&end_key),      // end key to capture prefix range
-        Some(2),             // begin_offset = 2 (skip first 2 matching keys)
-        Some(true),          // begin_or_equal = true
-        Some(0),             // end_offset = 0
-        Some(false),         // end_or_equal = false
-        Some(4),             // limit = 4 (should get 4 results starting from third key)
-        None                 // column_family
+        Some(base_prefix), // start key prefix
+        Some(&end_key),    // end key to capture prefix range
+        Some(2),           // begin_offset = 2 (skip first 2 matching keys)
+        Some(true),        // begin_or_equal = true
+        Some(0),           // end_offset = 0
+        Some(false),       // end_or_equal = false
+        Some(4),           // limit = 4 (should get 4 results starting from third key)
+        None,              // column_family
     );
     let offset_limit_u64_results = offset_limit_u64_future.await_result().await?;
 
-    println!("U64 prefix results with offset=2, limit=4: {}", offset_limit_u64_results.len());
+    println!(
+        "U64 prefix results with offset=2, limit=4: {}",
+        offset_limit_u64_results.len()
+    );
 
     if offset_limit_u64_results.len() == 4 {
         println!("U64 offset+limit functionality works correctly");
@@ -738,8 +778,14 @@ async fn test_u64_range_operations() -> Result<(), Box<dyn std::error::Error>> {
             // Verify the u64 suffix is correct
             let key_suffix = &key[base_prefix.len()..];
             let decoded_u64 = u64::from_be_bytes([
-                key_suffix[0], key_suffix[1], key_suffix[2], key_suffix[3],
-                key_suffix[4], key_suffix[5], key_suffix[6], key_suffix[7]
+                key_suffix[0],
+                key_suffix[1],
+                key_suffix[2],
+                key_suffix[3],
+                key_suffix[4],
+                key_suffix[5],
+                key_suffix[6],
+                key_suffix[7],
             ]);
             assert_eq!(decoded_u64, expected_u64);
         }

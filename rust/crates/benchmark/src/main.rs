@@ -17,10 +17,17 @@ use clients::{ClientFactory, KvOperations};
 #[command(name = "benchmark")]
 #[command(about = "RocksDB Service Benchmark Tool", long_about = None)]
 struct Args {
-    #[arg(long, help = "server address (defaults: grpc=localhost:50051, thrift=localhost:9090)")]
+    #[arg(
+        long,
+        help = "server address (defaults: grpc=localhost:50051, thrift=localhost:9090)"
+    )]
     addr: Option<String>,
 
-    #[arg(long, default_value = "mixed", help = "benchmark mode: ping, read, write, mixed")]
+    #[arg(
+        long,
+        default_value = "mixed",
+        help = "benchmark mode: ping, read, write, mixed"
+    )]
     mode: String,
 
     #[arg(long, default_value = "32", help = "number of concurrent threads")]
@@ -29,31 +36,67 @@ struct Args {
     #[arg(long, default_value = "100000", help = "total number of requests")]
     requests: i64,
 
-    #[arg(long, default_value = "30", help = "percentage of write operations (0-100) - only used in mixed mode", name = "write-pct")]
+    #[arg(
+        long,
+        default_value = "30",
+        help = "percentage of write operations (0-100) - only used in mixed mode",
+        name = "write-pct"
+    )]
     write_pct: i32,
 
-    #[arg(long, default_value = "0", help = "percentage of ping operations (0-100) - only used in mixed mode", name = "ping-pct")]
+    #[arg(
+        long,
+        default_value = "0",
+        help = "percentage of ping operations (0-100) - only used in mixed mode",
+        name = "ping-pct"
+    )]
     ping_pct: i32,
 
-    #[arg(long, default_value = "16", help = "size of keys in bytes", name = "key-size")]
+    #[arg(
+        long,
+        default_value = "16",
+        help = "size of keys in bytes",
+        name = "key-size"
+    )]
     key_size: usize,
 
-    #[arg(long, default_value = "100", help = "size of values in bytes", name = "value-size")]
+    #[arg(
+        long,
+        default_value = "100",
+        help = "size of values in bytes",
+        name = "value-size"
+    )]
     value_size: usize,
 
-    #[arg(long, default_value = "30", help = "timeout for individual operations (seconds)")]
+    #[arg(
+        long,
+        default_value = "30",
+        help = "timeout for individual operations (seconds)"
+    )]
     timeout: u64,
 
-    #[arg(long, default_value = "grpc", help = "protocol to use: grpc, thrift, raw")]
+    #[arg(
+        long,
+        default_value = "grpc",
+        help = "protocol to use: grpc, thrift, raw"
+    )]
     protocol: String,
 
-    #[arg(long, default_value = "10000", help = "number of keys to pre-populate for read operations")]
+    #[arg(
+        long,
+        default_value = "10000",
+        help = "number of keys to pre-populate for read operations"
+    )]
     prepopulate: i32,
 
     #[arg(long, help = "output results to JSON file (e.g., results.json)")]
     json: Option<String>,
 
-    #[arg(long, help = "do not fill block cache on reads (raw mode)", name = "no-cache-read")]
+    #[arg(
+        long,
+        help = "do not fill block cache on reads (raw mode)",
+        name = "no-cache-read"
+    )]
     no_cache_read: bool,
 
     #[arg(long, help = "path to config file (for raw protocol)")]
@@ -144,12 +187,14 @@ impl Worker {
                 }
                 "mixed" => {
                     let remainder = current % 100;
-                    
+
                     if remainder < self.config.write_percentage as i64 {
                         let key = generate_random_string(self.config.key_size);
                         let value = generate_random_string(self.config.value_size);
                         self.kv_ops.put(&key, &value).await
-                    } else if remainder < (self.config.write_percentage + self.config.ping_percentage) as i64 {
+                    } else if remainder
+                        < (self.config.write_percentage + self.config.ping_percentage) as i64
+                    {
                         self.kv_ops.ping(self.id).await
                     } else {
                         let key = self.get_read_key();
@@ -193,42 +238,55 @@ async fn pre_populate_database(
     client_factory: &dyn ClientFactory,
     config: &mut BenchmarkConfig,
 ) -> Result<()> {
-    println!("Pre-populating database with {} keys...", config.prepopulate_keys);
-    
-    let kv_client = client_factory.create_client(&config.server_addr, config).await?;
-    
+    println!(
+        "Pre-populating database with {} keys...",
+        config.prepopulate_keys
+    );
+
+    let kv_client = client_factory
+        .create_client(&config.server_addr, config)
+        .await?;
+
     for i in 0..config.prepopulate_keys {
         let key_prefix = format!("benchmark_key_{:08}", i);
         let remaining_key_size = config.key_size.saturating_sub(key_prefix.len());
-        
+
         let key = if remaining_key_size > 0 {
             let random_suffix = generate_random_string(remaining_key_size);
             format!("{}{}", key_prefix, random_suffix)
         } else {
             key_prefix.chars().take(config.key_size).collect()
         };
-        
+
         let value = generate_random_string(config.value_size);
-        
+
         let result = kv_client.put(&key, &value).await;
         if !result.success {
-            return Err(anyhow::anyhow!("Failed to pre-populate key {}: {:?}", key, result.error));
+            return Err(anyhow::anyhow!(
+                "Failed to pre-populate key {}: {:?}",
+                key,
+                result.error
+            ));
         }
-        
+
         config.prepopulated_keys.push(key);
-        
+
         if (i + 1) % 1000 == 0 {
-            println!("Pre-populated {}/{} keys...", i + 1, config.prepopulate_keys);
+            println!(
+                "Pre-populated {}/{} keys...",
+                i + 1,
+                config.prepopulate_keys
+            );
         }
     }
-    
+
     println!("Pre-population completed.\n");
     Ok(())
 }
 
 async fn run_benchmark(config: BenchmarkConfig) -> Result<()> {
     let start_time = SystemTime::now();
-    
+
     let client_factory: Box<dyn ClientFactory> = match config.protocol.as_str() {
         "grpc" => Box::new(clients::grpc::GrpcClientFactory),
         "thrift" => Box::new(clients::thrift::ThriftClientFactory),
@@ -237,10 +295,10 @@ async fn run_benchmark(config: BenchmarkConfig) -> Result<()> {
     };
 
     let mut config = config;
-    
-    let needs_pre_population = config.mode == "read" || 
-        (config.mode == "mixed" && 100 - config.write_percentage - config.ping_percentage > 0);
-    
+
+    let needs_pre_population = config.mode == "read"
+        || (config.mode == "mixed" && 100 - config.write_percentage - config.ping_percentage > 0);
+
     if needs_pre_population && config.prepopulate_keys > 0 {
         pre_populate_database(client_factory.as_ref(), &mut config).await?;
     }
@@ -254,7 +312,9 @@ async fn run_benchmark(config: BenchmarkConfig) -> Result<()> {
 
     let mut tasks = Vec::new();
     for worker_id in 0..config.num_threads {
-        let kv_client = client_factory.create_client(&config.server_addr, &config).await?;
+        let kv_client = client_factory
+            .create_client(&config.server_addr, &config)
+            .await?;
         let worker = Worker {
             id: worker_id,
             kv_ops: kv_client,
@@ -263,9 +323,7 @@ async fn run_benchmark(config: BenchmarkConfig) -> Result<()> {
             counter: counter.clone(),
         };
 
-        let task = tokio::spawn(async move {
-            worker.run().await
-        });
+        let task = tokio::spawn(async move { worker.run().await });
         tasks.push(task);
     }
 
@@ -331,7 +389,11 @@ fn analyze_results(
     }
 
     let overall_stats = if !results.is_empty() {
-        Some(calculate_statistics("OVERALL", &results.iter().collect::<Vec<_>>(), total_duration))
+        Some(calculate_statistics(
+            "OVERALL",
+            &results.iter().collect::<Vec<_>>(),
+            total_duration,
+        ))
     } else {
         None
     };
@@ -360,7 +422,10 @@ fn analyze_results(
         println!("Total Requests: {}", results.len());
         if let Some(overall) = &overall_stats {
             println!("Overall Throughput: {:.2} ops/sec", overall.throughput);
-            println!("Success Rate: {:.2}%", (overall.success as f64 / overall.count as f64) * 100.0);
+            println!(
+                "Success Rate: {:.2}%",
+                (overall.success as f64 / overall.count as f64) * 100.0
+            );
         }
         println!("Detailed results saved to: {}", json_file);
     } else {
@@ -381,7 +446,11 @@ fn write_json_results(report: &BenchmarkReport, filename: &str) -> Result<()> {
     Ok(())
 }
 
-fn calculate_statistics(operation: &str, results: &[&BenchmarkResult], total_duration: Duration) -> Statistics {
+fn calculate_statistics(
+    operation: &str,
+    results: &[&BenchmarkResult],
+    total_duration: Duration,
+) -> Statistics {
     if results.is_empty() {
         return Statistics {
             operation: operation.to_string(),
@@ -434,15 +503,28 @@ fn percentile(latencies: &[Duration], p: u8) -> Duration {
 
 fn print_statistics(stats: &Statistics) {
     println!("=== {} STATISTICS ===", stats.operation);
-    
+
     println!("┌─────────────────────┬─────────────┬──────────────┬──────────────┐");
-    println!("│ {:19} │ {:11} │ {:12} │ {:12} │", "Metric", "Total", "Successful", "Failed");
+    println!(
+        "│ {:19} │ {:11} │ {:12} │ {:12} │",
+        "Metric", "Total", "Successful", "Failed"
+    );
     println!("├─────────────────────┼─────────────┼──────────────┼──────────────┤");
-    println!("│ {:19} │ {:11} │ {:12} │ {:12} │", "Operations", stats.count, stats.success, stats.failed);
-    println!("│ {:19} │ {:11} │ {:11.2}% │ {:11.2}% │", "Percentage", "-", 
-             (stats.success as f64 / stats.count as f64) * 100.0, 
-             (stats.failed as f64 / stats.count as f64) * 100.0);
-    println!("│ {:19} │ {:11.2} │ {:12} │ {:12} │", "Throughput (op/s)", stats.throughput, "-", "-");
+    println!(
+        "│ {:19} │ {:11} │ {:12} │ {:12} │",
+        "Operations", stats.count, stats.success, stats.failed
+    );
+    println!(
+        "│ {:19} │ {:11} │ {:11.2}% │ {:11.2}% │",
+        "Percentage",
+        "-",
+        (stats.success as f64 / stats.count as f64) * 100.0,
+        (stats.failed as f64 / stats.count as f64) * 100.0
+    );
+    println!(
+        "│ {:19} │ {:11.2} │ {:12} │ {:12} │",
+        "Throughput (op/s)", stats.throughput, "-", "-"
+    );
     println!("└─────────────────────┴─────────────┴──────────────┴──────────────┘");
     println!();
 
@@ -469,7 +551,9 @@ fn show_usage_examples() {
     println!("   ./benchmark --protocol=grpc --mode=ping --requests=10000 --threads=16");
     println!();
     println!("2. Read-only benchmark with Thrift:");
-    println!("   ./benchmark --protocol=thrift --mode=read --requests=50000 --threads=32 --key-size=20");
+    println!(
+        "   ./benchmark --protocol=thrift --mode=read --requests=50000 --threads=32 --key-size=20"
+    );
     println!();
     println!("3. Write-only benchmark (default gRPC):");
     println!("   ./benchmark --mode=write --requests=25000 --threads=16 --value-size=1024");
@@ -489,7 +573,9 @@ fn show_usage_examples() {
     println!("7. Using default addresses:");
     println!("   ./benchmark --protocol=grpc --mode=ping    # uses localhost:50051");
     println!("   ./benchmark --protocol=thrift --mode=ping  # uses localhost:9090");
-    println!("   ./benchmark --protocol=raw --mode=ping     # uses default path with benchmark suffix");
+    println!(
+        "   ./benchmark --protocol=raw --mode=ping     # uses default path with benchmark suffix"
+    );
     println!();
     println!("8. Raw RocksDB benchmarking (no network overhead):");
     println!("   ./benchmark --protocol=raw --mode=write --requests=100000 --threads=16");
@@ -512,37 +598,43 @@ async fn main() -> Result<()> {
 
     let valid_modes = ["ping", "read", "write", "mixed"];
     if !valid_modes.contains(&args.mode.as_str()) {
-        return Err(anyhow::anyhow!("Mode must be one of: ping, read, write, mixed"));
+        return Err(anyhow::anyhow!(
+            "Mode must be one of: ping, read, write, mixed"
+        ));
     }
 
     let valid_protocols = ["grpc", "thrift", "raw"];
     if !valid_protocols.contains(&args.protocol.as_str()) {
-        return Err(anyhow::anyhow!("Protocol must be one of: grpc, thrift, raw"));
+        return Err(anyhow::anyhow!(
+            "Protocol must be one of: grpc, thrift, raw"
+        ));
     }
 
     if args.mode == "mixed" {
         if args.write_pct < 0 || args.write_pct > 100 {
-            return Err(anyhow::anyhow!("Write percentage must be between 0 and 100"));
+            return Err(anyhow::anyhow!(
+                "Write percentage must be between 0 and 100"
+            ));
         }
         if args.ping_pct < 0 || args.ping_pct > 100 {
             return Err(anyhow::anyhow!("Ping percentage must be between 0 and 100"));
         }
         if args.write_pct + args.ping_pct > 100 {
-            return Err(anyhow::anyhow!("Write percentage + Ping percentage cannot exceed 100"));
+            return Err(anyhow::anyhow!(
+                "Write percentage + Ping percentage cannot exceed 100"
+            ));
         }
     }
 
-    let server_addr = args.addr.unwrap_or_else(|| {
-        match args.protocol.as_str() {
-            "grpc" => "localhost:50051".to_string(),
-            "thrift" => "localhost:9090".to_string(),
-            "raw" => {
-                use crate::config::get_default_config;
-                let db_config = get_default_config();
-                db_config.get_db_path("benchmark")
-            },
-            _ => "localhost:50051".to_string(),
+    let server_addr = args.addr.unwrap_or_else(|| match args.protocol.as_str() {
+        "grpc" => "localhost:50051".to_string(),
+        "thrift" => "localhost:9090".to_string(),
+        "raw" => {
+            use crate::config::get_default_config;
+            let db_config = get_default_config();
+            db_config.get_db_path("benchmark")
         }
+        _ => "localhost:50051".to_string(),
     });
 
     let config = BenchmarkConfig {
@@ -573,13 +665,19 @@ async fn main() -> Result<()> {
     if config.mode == "mixed" {
         println!("Write Percentage: {}%", config.write_percentage);
         println!("Ping Percentage: {}%", config.ping_percentage);
-        println!("Read Percentage: {}%", 100 - config.write_percentage - config.ping_percentage);
+        println!(
+            "Read Percentage: {}%",
+            100 - config.write_percentage - config.ping_percentage
+        );
     }
 
     if config.mode == "read" || config.mode == "write" || config.mode == "mixed" {
         println!("Key Size: {} bytes", config.key_size);
         println!("Value Size: {} bytes", config.value_size);
-        if config.mode == "read" || (config.mode == "mixed" && 100 - config.write_percentage - config.ping_percentage > 0) {
+        if config.mode == "read"
+            || (config.mode == "mixed"
+                && 100 - config.write_percentage - config.ping_percentage > 0)
+        {
             println!("Pre-populate Keys: {}", config.prepopulate_keys);
         }
     }

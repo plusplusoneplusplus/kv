@@ -1,5 +1,5 @@
 use tonic::{Request, Response, Status};
-use super::db::TransactionalKvDatabase;
+use kv_storage_rocksdb::TransactionalKvDatabase;
 use super::proto::{
     GetRequest, GetResponse, PutRequest, PutResponse, DeleteRequest, DeleteResponse,
     ListKeysRequest, ListKeysResponse, PingRequest, PingResponse,

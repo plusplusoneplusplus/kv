@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::{BenchmarkConfig, BenchmarkResult};
 
 pub mod grpc;
-pub mod thrift;
 pub mod raw;
+pub mod thrift;
 
 #[async_trait]
 pub trait KvOperations: Send + Sync {
@@ -16,6 +16,9 @@ pub trait KvOperations: Send + Sync {
 
 #[async_trait]
 pub trait ClientFactory: Send + Sync {
-    async fn create_client(&self, server_addr: &str, config: &BenchmarkConfig) 
-        -> anyhow::Result<Arc<dyn KvOperations>>;
+    async fn create_client(
+        &self,
+        server_addr: &str,
+        config: &BenchmarkConfig,
+    ) -> anyhow::Result<Arc<dyn KvOperations>>;
 }

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig};
-use crate::lib::db_trait::KvDatabase;
+use kv_storage_api::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig, KvDatabase};
 use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
 use crate::lib::read_operations::KvReadOperations;
 use crate::lib::write_operations::KvWriteOperations;
@@ -149,7 +148,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
     use async_trait::async_trait;
-    use crate::lib::db::AtomicOperation;
+    use kv_storage_api::AtomicOperation;
 
     /// Mock implementation of KvDatabase for testing trait wiring
     #[derive(Debug)]
@@ -227,7 +226,7 @@ mod tests {
             _column_family: Option<&str>,
         ) -> Result<GetRangeResult, String> {
             let data = self.data.lock().unwrap();
-            let mut key_values: Vec<crate::lib::db::KeyValue> = data
+            let mut key_values: Vec<kv_storage_api::KeyValue> = data
                 .iter()
                 .filter(|(key, _)| {
                     let include_start = if begin_or_equal {
@@ -242,7 +241,7 @@ mod tests {
                     };
                     include_start && include_end
                 })
-                .map(|(k, v)| crate::lib::db::KeyValue {
+                .map(|(k, v)| kv_storage_api::KeyValue {
                     key: k.clone(),
                     value: v.clone(),
                 })

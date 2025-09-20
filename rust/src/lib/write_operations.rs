@@ -1,8 +1,7 @@
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, OpResult, AtomicOperation, FaultInjectionConfig};
-use crate::lib::db_trait::KvDatabase;
+use kv_storage_api::{AtomicCommitRequest, AtomicCommitResult, OpResult, AtomicOperation, FaultInjectionConfig, KvDatabase};
 use crate::lib::operations::{KvOperation, OperationResult, DatabaseOperation};
 
 /// Write operations that modify database state and require consensus in a distributed system.
@@ -301,7 +300,7 @@ mod tests {
         use std::collections::HashMap;
         use std::sync::Mutex;
         use async_trait::async_trait;
-        use crate::lib::db::GetResult;
+        use kv_storage_api::GetResult;
 
         // Mock database for testing
         #[derive(Debug)]
@@ -310,7 +309,7 @@ mod tests {
         }
 
         #[async_trait]
-        impl crate::lib::db_trait::KvDatabase for MockKvDatabase {
+        impl kv_storage_api::KvDatabase for MockKvDatabase {
             async fn get(&self, key: &[u8], _column_family: Option<&str>) -> Result<GetResult, String> {
                 let data = self.data.lock().unwrap();
                 match data.get(key) {
@@ -336,8 +335,8 @@ mod tests {
             async fn get_range(
                 &self, _begin_key: &[u8], _end_key: &[u8], _begin_offset: i32, _begin_or_equal: bool,
                 _end_offset: i32, _end_or_equal: bool, _limit: Option<i32>, _column_family: Option<&str>,
-            ) -> Result<crate::lib::db::GetRangeResult, String> {
-                Ok(crate::lib::db::GetRangeResult { key_values: vec![], success: true, error: String::new(), has_more: false })
+            ) -> Result<kv_storage_api::GetRangeResult, String> {
+                Ok(kv_storage_api::GetRangeResult { key_values: vec![], success: true, error: String::new(), has_more: false })
             }
 
             async fn atomic_commit(&self, _request: AtomicCommitRequest) -> AtomicCommitResult {
@@ -356,7 +355,7 @@ mod tests {
             async fn snapshot_get_range(
                 &self, begin_key: &[u8], end_key: &[u8], begin_offset: i32, begin_or_equal: bool,
                 end_offset: i32, end_or_equal: bool, _read_version: u64, limit: Option<i32>, column_family: Option<&str>,
-            ) -> Result<crate::lib::db::GetRangeResult, String> {
+            ) -> Result<kv_storage_api::GetRangeResult, String> {
                 self.get_range(begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, limit, column_family).await
             }
 
@@ -365,7 +364,7 @@ mod tests {
             }
         }
 
-        let mock_db = Arc::new(MockKvDatabase { data: Mutex::new(HashMap::new()) }) as Arc<dyn crate::lib::db_trait::KvDatabase>;
+        let mock_db = Arc::new(MockKvDatabase { data: Mutex::new(HashMap::new()) }) as Arc<dyn kv_storage_api::KvDatabase>;
         let write_ops = KvWriteOperations::new(mock_db, false);
 
         // Try to execute a read operation - should fail

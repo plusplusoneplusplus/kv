@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::lib::db::{AtomicOperation, FaultInjectionConfig};
+use kv_storage_api::{AtomicOperation, FaultInjectionConfig};
 use crate::lib::operations::{KvOperation, OperationResult};
 use crate::lib::replication::RoutingManager;
 use crate::generated::kvstore::*;
@@ -110,7 +110,7 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
             })
             .collect();
 
-        let atomic_request = crate::lib::db::AtomicCommitRequest {
+        let atomic_request = kv_storage_api::AtomicCommitRequest {
             read_version: req.read_version as u64,
             operations,
             read_conflict_keys: req.read_conflict_keys,

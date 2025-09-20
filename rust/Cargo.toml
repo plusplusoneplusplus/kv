@@ -1,7 +1,9 @@
 [workspace]
 members = [
     ".",
-    "crates/benchmark"
+    "crates/benchmark",
+    "crates/kv-storage-api",
+    "crates/kv-storage-rocksdb"
 ]
 resolver = "2"
 
@@ -55,6 +57,8 @@ name = "thrift-server"
 path = "src/servers/thrift_server.rs"
 
 [dependencies]
+kv-storage-api = { path = "crates/kv-storage-api" }
+kv-storage-rocksdb = { path = "crates/kv-storage-rocksdb" }
 tokio = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }

@@ -5,7 +5,7 @@ use tracing::error;
 use std::time::Duration;
 use async_trait::async_trait;
 use super::config::Config;
-use crate::lib::db_trait::KvDatabase;
+use kv_storage_api::KvDatabase;
 
 pub struct TransactionalKvDatabase {
     db: Arc<TransactionDB>,
