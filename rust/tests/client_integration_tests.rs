@@ -2,8 +2,8 @@
 // Run with: cargo test client_integration_tests
 // Make sure to start thrift server first: cargo run --bin thrift-server
 
-mod common;
 mod client;
+mod common;
 
 use rocksdb_server::client::KvStoreClient;
 

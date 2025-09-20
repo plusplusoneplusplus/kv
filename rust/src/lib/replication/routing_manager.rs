@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::lib::db_trait::KvDatabase;
-use crate::lib::config::DeploymentMode;
+use kv_storage_api::KvDatabase;
+use kv_storage_rocksdb::config::DeploymentMode;
 use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
 use super::errors::{RoutingError, RoutingResult};
 
@@ -180,7 +180,7 @@ impl RoutingManager {
                 let put_result = self.database.put(&full_key, &value, column_family.as_deref()).await;
 
                 // Return AtomicCommitResult with generated key
-                let atomic_result = crate::lib::db::AtomicCommitResult {
+                let atomic_result = kv_storage_api::AtomicCommitResult {
                     success: put_result.success,
                     error: put_result.error,
                     error_code: put_result.error_code,
@@ -212,7 +212,7 @@ impl RoutingManager {
                 let put_result = self.database.put(&key, &full_value, column_family.as_deref()).await;
 
                 // Return AtomicCommitResult with generated value
-                let atomic_result = crate::lib::db::AtomicCommitResult {
+                let atomic_result = kv_storage_api::AtomicCommitResult {
                     success: put_result.success,
                     error: put_result.error,
                     error_code: put_result.error_code,
@@ -235,8 +235,8 @@ impl RoutingManager {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use crate::lib::config::DeploymentMode;
-    use crate::lib::db::{GetResult, OpResult, GetRangeResult, AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig};
+    use kv_storage_rocksdb::config::DeploymentMode;
+    use kv_storage_api::{GetResult, OpResult, GetRangeResult, AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -315,7 +315,7 @@ mod tests {
             _column_family: Option<&str>,
         ) -> Result<GetRangeResult, String> {
             let data = self.data.lock().unwrap();
-            let mut key_values: Vec<crate::lib::db::KeyValue> = data
+            let mut key_values: Vec<kv_storage_api::KeyValue> = data
                 .iter()
                 .filter(|(key, _)| {
                     let include_start = if begin_or_equal {
@@ -330,7 +330,7 @@ mod tests {
                     };
                     include_start && include_end
                 })
-                .map(|(k, v)| crate::lib::db::KeyValue {
+                .map(|(k, v)| kv_storage_api::KeyValue {
                     key: k.clone(),
                     value: v.clone(),
                 })

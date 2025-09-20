@@ -1,8 +1,8 @@
 use std::net::{TcpListener, TcpStream};
-use std::process::{Command, Stdio, Child};
+use std::process::{Child, Command, Stdio};
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 use std::{env, fs};
-use std::thread::sleep;
 
 fn wait_for_port(addr: &str, timeout: Duration) -> bool {
     let start = Instant::now();
@@ -25,9 +25,13 @@ fn find_free_port() -> u16 {
 
 fn spawn_thrift_server(port: u16) -> Option<Child> {
     // Prefer an explicit path from env for CI, fallback to relative debug path
-    let server_bin = env::var("THRIFT_SERVER_BIN").unwrap_or_else(|_| "../rust/target/debug/thrift-server".to_string());
+    let server_bin = env::var("THRIFT_SERVER_BIN")
+        .unwrap_or_else(|_| "../rust/target/debug/thrift-server".to_string());
     if !std::path::Path::new(&server_bin).exists() {
-        eprintln!("thrift-server binary not found at {} — skipping smoke test", server_bin);
+        eprintln!(
+            "thrift-server binary not found at {} — skipping smoke test",
+            server_bin
+        );
         return None;
     }
 
@@ -58,7 +62,11 @@ fn thrift_ping_benchmark_smoke() {
     let mut child = maybe_child.unwrap();
 
     // Wait for server to be ready
-    assert!(wait_for_port(&addr, Duration::from_secs(10)), "Thrift server did not become ready on {}", addr);
+    assert!(
+        wait_for_port(&addr, Duration::from_secs(10)),
+        "Thrift server did not become ready on {}",
+        addr
+    );
 
     // Resolve benchmark binary path via Cargo’s test-provided env var
     let bench_bin = env::var("CARGO_BIN_EXE_benchmark").expect("CARGO_BIN_EXE_benchmark not set");
@@ -85,4 +93,3 @@ fn thrift_ping_benchmark_smoke() {
     let _ = child.kill();
     let _ = child.wait();
 }
-

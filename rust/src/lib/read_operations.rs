@@ -1,8 +1,7 @@
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::lib::db::{GetResult, GetRangeResult};
-use crate::lib::db_trait::KvDatabase;
+use kv_storage_api::{GetResult, GetRangeResult, KvDatabase};
 use crate::lib::operations::{KvOperation, OperationResult, DatabaseOperation};
 
 /// Read-only operations that can be served by any node in a distributed system.
@@ -335,7 +334,7 @@ mod tests {
         use std::collections::HashMap;
         use std::sync::Mutex;
         use async_trait::async_trait;
-        use crate::lib::db::OpResult;
+        use kv_storage_api::OpResult;
 
         // Mock database for testing
         #[derive(Debug)]
@@ -344,7 +343,7 @@ mod tests {
         }
 
         #[async_trait]
-        impl crate::lib::db_trait::KvDatabase for MockKvDatabase {
+        impl kv_storage_api::KvDatabase for MockKvDatabase {
             async fn get(&self, key: &[u8], _column_family: Option<&str>) -> Result<GetResult, String> {
                 let data = self.data.lock().unwrap();
                 match data.get(key) {
@@ -372,8 +371,8 @@ mod tests {
                 Ok(GetRangeResult { key_values: vec![], success: true, error: String::new(), has_more: false })
             }
 
-            async fn atomic_commit(&self, _request: crate::lib::db::AtomicCommitRequest) -> crate::lib::db::AtomicCommitResult {
-                crate::lib::db::AtomicCommitResult {
+            async fn atomic_commit(&self, _request: kv_storage_api::AtomicCommitRequest) -> kv_storage_api::AtomicCommitResult {
+                kv_storage_api::AtomicCommitResult {
                     success: true, error: String::new(), error_code: None,
                     committed_version: Some(1), generated_keys: vec![], generated_values: vec![],
                 }
@@ -392,12 +391,12 @@ mod tests {
                 self.get_range(begin_key, end_key, begin_offset, begin_or_equal, end_offset, end_or_equal, limit, column_family).await
             }
 
-            async fn set_fault_injection(&self, _config: Option<crate::lib::db::FaultInjectionConfig>) -> OpResult {
+            async fn set_fault_injection(&self, _config: Option<kv_storage_api::FaultInjectionConfig>) -> OpResult {
                 OpResult { success: true, error: String::new(), error_code: None }
             }
         }
 
-        let mock_db = Arc::new(MockKvDatabase { data: Mutex::new(HashMap::new()) }) as Arc<dyn crate::lib::db_trait::KvDatabase>;
+        let mock_db = Arc::new(MockKvDatabase { data: Mutex::new(HashMap::new()) }) as Arc<dyn kv_storage_api::KvDatabase>;
         let read_ops = KvReadOperations::new(mock_db, false);
 
         // Try to execute a write operation - should fail

@@ -1,14 +1,17 @@
-use std::sync::Arc;
+use crate::engine::TransactionalKvDatabase;
 use kv_storage_api::KvDatabase;
-use kv_storage_rocksdb::TransactionalKvDatabase;
+use std::sync::Arc;
 
 /// Simple database factory that creates the right database type based on deployment mode.
 /// This is all we actually need - the "routing" is handled by the consensus layer (RSML).
 pub enum DatabaseFactory {
     /// Standalone mode - single database instance
-    Standalone { config: kv_storage_rocksdb::Config },
+    Standalone { config: crate::config::Config },
     /// Replicated mode - consensus-backed database (Phase 1)
-    Replicated { config: kv_storage_rocksdb::Config, instance_id: u32 },
+    Replicated {
+        config: crate::config::Config,
+        instance_id: u32,
+    },
 }
 
 impl DatabaseFactory {
@@ -21,7 +24,10 @@ impl DatabaseFactory {
                     .map(|db| Arc::new(db) as Arc<dyn KvDatabase>)
                     .map_err(|e| format!("Failed to create standalone database: {}", e))
             }
-            DatabaseFactory::Replicated { config, instance_id } => {
+            DatabaseFactory::Replicated {
+                config,
+                instance_id,
+            } => {
                 // In Phase 1, this will create a database wrapped with RSML consensus
                 let db_path = format!("{}/replica_{}", config.database.base_path, instance_id);
                 TransactionalKvDatabase::new(&db_path, config, &[])
@@ -32,20 +38,23 @@ impl DatabaseFactory {
     }
 
     /// Create standalone factory
-    pub fn standalone(config: kv_storage_rocksdb::Config) -> Self {
+    pub fn standalone(config: crate::config::Config) -> Self {
         DatabaseFactory::Standalone { config }
     }
 
     /// Create replicated factory
-    pub fn replicated(config: kv_storage_rocksdb::Config, instance_id: u32) -> Self {
-        DatabaseFactory::Replicated { config, instance_id }
+    pub fn replicated(config: crate::config::Config, instance_id: u32) -> Self {
+        DatabaseFactory::Replicated {
+            config,
+            instance_id,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kv_storage_rocksdb::{Config, DeploymentMode};
+    use crate::config::{Config, DeploymentMode};
     use tempfile::TempDir;
 
     fn create_test_config(base_path: &str) -> Config {
@@ -78,7 +87,9 @@ mod tests {
         let factory = DatabaseFactory::replicated(config, instance_id);
 
         match factory {
-            DatabaseFactory::Replicated { instance_id: id, .. } => {
+            DatabaseFactory::Replicated {
+                instance_id: id, ..
+            } => {
                 assert_eq!(id, 42);
             }
             _ => panic!("Expected Replicated factory"),
@@ -93,7 +104,11 @@ mod tests {
         let factory = DatabaseFactory::standalone(config);
         let result = factory.create_database();
 
-        assert!(result.is_ok(), "Failed to create standalone database: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to create standalone database: {:?}",
+            result.err()
+        );
 
         let _db = result.unwrap();
         // Database created successfully
@@ -107,7 +122,11 @@ mod tests {
         let factory = DatabaseFactory::replicated(config, 1);
         let result = factory.create_database();
 
-        assert!(result.is_ok(), "Failed to create replicated database: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to create replicated database: {:?}",
+            result.err()
+        );
 
         let _db = result.unwrap();
         // Database created successfully

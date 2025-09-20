@@ -85,17 +85,19 @@ pub struct PerformanceConfig {
     pub stats_dump_period_sec: u64,
 }
 
-pub fn load_config_from_file(config_path: Option<String>) -> anyhow::Result<(RocksDbConfig, String)> {
+pub fn load_config_from_file(
+    config_path: Option<String>,
+) -> anyhow::Result<(RocksDbConfig, String)> {
     if let Some(path) = config_path {
         if !std::path::Path::new(&path).exists() {
             return Err(anyhow::anyhow!("config file not found: {}", path));
         }
-        
+
         let data = fs::read_to_string(&path)?;
         let config: RocksDbConfig = toml::from_str(&data)?;
         return Ok((config, path));
     }
-    
+
     // Try to find config file relative to the executable
     let config_path = "db_config.toml";
     if std::path::Path::new(config_path).exists() {
@@ -103,7 +105,7 @@ pub fn load_config_from_file(config_path: Option<String>) -> anyhow::Result<(Roc
         let config: RocksDbConfig = toml::from_str(&data)?;
         return Ok((config, config_path.to_string()));
     }
-    
+
     Ok((get_default_config(), String::new()))
 }
 

@@ -1,6 +1,5 @@
 use std::sync::Arc;
-use crate::lib::db_trait::KvDatabase;
-use crate::lib::db::{AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig};
+use kv_storage_api::{KvDatabase, AtomicCommitRequest, AtomicCommitResult, GetResult, OpResult, GetRangeResult, FaultInjectionConfig};
 
 /// Core business logic for KV operations, protocol-agnostic.
 /// This contains all the business logic that can be shared between

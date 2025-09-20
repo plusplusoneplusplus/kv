@@ -1,5 +1,8 @@
+use crate::types::{
+    AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig, GetRangeResult, GetResult,
+    OpResult,
+};
 use async_trait::async_trait;
-use kv_storage_api::{GetResult, OpResult, AtomicCommitRequest, AtomicCommitResult, GetRangeResult, FaultInjectionConfig};
 
 /// Abstract interface for key-value database operations.
 /// This trait allows both standalone and replicated implementations
@@ -16,7 +19,12 @@ pub trait KvDatabase: Send + Sync {
     async fn delete(&self, key: &[u8], column_family: Option<&str>) -> OpResult;
 
     /// List keys with a given prefix
-    async fn list_keys(&self, prefix: &[u8], limit: u32, column_family: Option<&str>) -> Result<Vec<Vec<u8>>, String>;
+    async fn list_keys(
+        &self,
+        prefix: &[u8],
+        limit: u32,
+        column_family: Option<&str>,
+    ) -> Result<Vec<Vec<u8>>, String>;
 
     /// Get a range of key-value pairs
     async fn get_range(
@@ -38,7 +46,12 @@ pub trait KvDatabase: Send + Sync {
     async fn get_read_version(&self) -> u64;
 
     /// Read a key at a specific version (snapshot read)
-    async fn snapshot_read(&self, key: &[u8], read_version: u64, column_family: Option<&str>) -> Result<GetResult, String>;
+    async fn snapshot_read(
+        &self,
+        key: &[u8],
+        read_version: u64,
+        column_family: Option<&str>,
+    ) -> Result<GetResult, String>;
 
     /// Get a range of key-value pairs at a specific version
     async fn snapshot_get_range(

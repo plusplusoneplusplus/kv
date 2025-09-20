@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use std::path::PathBuf;
-use std::sync::Arc;
 use rocksdb_server::client::KvStoreClient;
 use rocksdb_server::{Config, KvDatabase};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Trait for test cluster abstractions that can be used across different deployment modes
 #[async_trait]
@@ -75,13 +75,16 @@ impl TestCluster for StandaloneTestCluster {
     async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Create database
         let factory = self.config.create_database_factory();
-        let database = factory.create_database()
+        let database = factory
+            .create_database()
             .map_err(|e| format!("Failed to create database: {}", e))?;
         self.database = Some(database);
 
         // Start Thrift server
         let mut server = super::ThriftTestServer::new().await;
-        let port = server.start().await
+        let port = server
+            .start()
+            .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;
         self.thrift_server = Some(server);
 
@@ -109,7 +112,8 @@ impl TestCluster for StandaloneTestCluster {
     }
 
     async fn client(&self) -> Result<KvStoreClient, Box<dyn std::error::Error>> {
-        self.client.as_ref()
+        self.client
+            .as_ref()
             .ok_or_else(|| "Cluster not started".into())
             .map(|c| c.clone())
     }
@@ -119,17 +123,23 @@ impl TestCluster for StandaloneTestCluster {
     }
 
     async fn verify_data(&self, key: &[u8], expected_value: &[u8]) -> Result<(), String> {
-        let client = self.client().await
+        let client = self
+            .client()
+            .await
             .map_err(|e| format!("Failed to get client: {}", e))?;
 
         // Start a transaction for reading
         let tx_future = client.begin_transaction(None, Some(30));
-        let tx = tx_future.await_result().await
+        let tx = tx_future
+            .await_result()
+            .await
             .map_err(|e| format!("Failed to begin transaction: {:?}", e))?;
 
         // Get the value
         let get_future = tx.get(key, None);
-        let result = get_future.await_result().await
+        let result = get_future
+            .await_result()
+            .await
             .map_err(|e| format!("Failed to get value: {:?}", e))?;
 
         match result {
@@ -137,13 +147,13 @@ impl TestCluster for StandaloneTestCluster {
                 if actual_value == expected_value {
                     Ok(())
                 } else {
-                    Err(format!("Value mismatch: expected {:?}, got {:?}",
-                               expected_value, actual_value))
+                    Err(format!(
+                        "Value mismatch: expected {:?}, got {:?}",
+                        expected_value, actual_value
+                    ))
                 }
             }
-            None => {
-                Err("Key not found".to_string())
-            }
+            None => Err("Key not found".to_string()),
         }
     }
 
@@ -157,7 +167,9 @@ pub mod test_operations {
     use super::*;
 
     /// Test basic get/set operations on a cluster
-    pub async fn test_basic_operations(cluster: &dyn TestCluster) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn test_basic_operations(
+        cluster: &dyn TestCluster,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let client = cluster.client().await?;
 
         // Test SET
@@ -170,12 +182,16 @@ pub mod test_operations {
         commit_future.await_result().await?;
 
         // Verify
-        cluster.verify_data(b"test_key", b"test_value").await
+        cluster
+            .verify_data(b"test_key", b"test_value")
+            .await
             .map_err(|e| e.into())
     }
 
     /// Test transaction rollback behavior
-    pub async fn test_transaction_rollback(cluster: &dyn TestCluster) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn test_transaction_rollback(
+        cluster: &dyn TestCluster,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let client = cluster.client().await?;
 
         // Start transaction but don't commit
@@ -188,7 +204,9 @@ pub mod test_operations {
         drop(tx);
 
         // Verify key doesn't exist
-        let verify_result = cluster.verify_data(b"rollback_key", b"rollback_value").await;
+        let verify_result = cluster
+            .verify_data(b"rollback_key", b"rollback_value")
+            .await;
         if verify_result.is_ok() {
             return Err("Key should not exist after rollback".into());
         }
@@ -222,8 +240,12 @@ mod tests {
         cluster.start().await.unwrap();
 
         // Test the helper functions
-        test_operations::test_basic_operations(&cluster).await.unwrap();
-        test_operations::test_transaction_rollback(&cluster).await.unwrap();
+        test_operations::test_basic_operations(&cluster)
+            .await
+            .unwrap();
+        test_operations::test_transaction_rollback(&cluster)
+            .await
+            .unwrap();
 
         cluster.shutdown().await.unwrap();
     }
