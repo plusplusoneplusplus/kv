@@ -1,0 +1,179 @@
+<!-- Cluster Health Tab -->
+<div id="clusterTab" class="tab-content">
+    <!-- Alert Section -->
+    <div id="cluster-alerts-container"></div>
+
+    <!-- Cluster Overview -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card dashboard-card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Total Nodes</h6>
+                            <div class="metric-value text-white" id="cluster-total-nodes">-</div>
+                        </div>
+                        <i class="fas fa-server fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dashboard-card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Healthy Nodes</h6>
+                            <div class="metric-value text-white" id="cluster-healthy-nodes">-</div>
+                        </div>
+                        <i class="fas fa-heartbeat fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dashboard-card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Current Leader</h6>
+                            <div class="metric-value text-white" id="cluster-current-leader">-</div>
+                        </div>
+                        <i class="fas fa-crown fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dashboard-card" id="cluster-health-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Cluster Health</h6>
+                            <div class="metric-value" id="cluster-health">-</div>
+                        </div>
+                        <i class="fas fa-shield-alt fa-2x" id="cluster-health-icon"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Status Grid -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card dashboard-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-network-wired"></i> Cluster Topology
+                    </h5>
+                    <small class="text-muted">Last updated: <span id="cluster-last-updated">-</span></small>
+                </div>
+                <div class="card-body">
+                    <div id="cluster-nodes-grid" class="row">
+                        <!-- Node cards will be dynamically generated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card dashboard-card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar"></i> Database Statistics
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Total Keys</small>
+                                <div class="h4 text-primary" id="cluster-total-keys">-</div>
+                            </div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Total Size</small>
+                                <div class="h4 text-primary" id="cluster-total-size">-</div>
+                            </div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Active Transactions</small>
+                                <div class="h4 text-warning" id="cluster-active-transactions">-</div>
+                            </div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Cache Hit Rate</small>
+                                <div class="h4 text-success" id="cluster-cache-hit-rate">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card dashboard-card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tachometer-alt"></i> Performance Metrics
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12 text-center mb-3">
+                            <small class="text-muted">Average Response Time</small>
+                            <div class="h4 text-info" id="cluster-avg-response-time">-</div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Compaction Pending</small>
+                                <div class="h5 text-secondary" id="cluster-compaction-pending">-</div>
+                            </div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="mb-2">
+                                <small class="text-muted">Current Term</small>
+                                <div class="h5 text-primary" id="cluster-current-term">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card dashboard-card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tools"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary" onclick="refreshClusterDashboard()">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="showTab('replication')">
+                            <i class="fas fa-sync"></i> Replication Monitor
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="showTab('browse')">
+                            <i class="fas fa-database"></i> Data Browser
+                        </button>
+                        <button type="button" class="btn btn-outline-warning" onclick="showClusterDiagnostics()">
+                            <i class="fas fa-stethoscope"></i> Diagnostics
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

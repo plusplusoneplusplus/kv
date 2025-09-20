@@ -1,0 +1,86 @@
+<!-- Add/Edit Modal -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Add Key-Value Pair</h3>
+            <span class="close" onclick="closeModal()">&times;</span>
+        </div>
+        <div class="form-group">
+            <label for="modalKey">Key:</label>
+            <input type="text" id="modalKey" required>
+        </div>
+        <div class="form-group">
+            <label for="modalValue">Value:</label>
+            <textarea id="modalValue" required></textarea>
+        </div>
+        <div style="text-align: right;">
+            <button onclick="closeModal()" style="background-color: #95a5a6;">Cancel</button>
+            <button onclick="saveKeyValue()" class="success">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Value Viewer Modal -->
+<div id="viewModal" class="modal">
+    <div class="modal-content viewer-modal">
+        <div class="modal-header">
+            <h3 id="viewModalTitle">View Value</h3>
+            <span class="close" onclick="closeViewModal()">&times;</span>
+        </div>
+        <div class="view-mode-tabs">
+            <button class="view-mode-tab active" onclick="switchViewMode('text')">Text</button>
+            <button class="view-mode-tab" onclick="switchViewMode('hex')">Hex</button>
+            <button class="view-mode-tab" onclick="switchViewMode('raw')">Raw Bytes</button>
+        </div>
+        <div id="textView" class="view-content active">
+            <div class="raw-view" id="textContent"></div>
+        </div>
+        <div id="hexView" class="view-content">
+            <div class="hex-view" id="hexContent"></div>
+        </div>
+        <div id="rawView" class="view-content">
+            <div class="raw-view" id="rawContent"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Clear All Confirmation Modal -->
+<div id="clearAllModal" class="modal confirmation-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 style="color: #e53e3e;">⚠️ DANGER: Clear All Data</h3>
+            <span class="close" onclick="closeClearAllModal()">&times;</span>
+        </div>
+
+        <div class="confirmation-step">
+            <h4>This action will:</h4>
+            <ul>
+                <li>Delete ALL key-value pairs in the database</li>
+                <li>Cannot be undone or recovered</li>
+                <li>May take several minutes for large datasets</li>
+            </ul>
+        </div>
+
+        <div class="confirmation-step">
+            <h4>Before proceeding:</h4>
+            <ol>
+                <li>Ensure you have a backup if needed</li>
+                <li>Confirm this is the correct database</li>
+                <li>Verify no critical processes are running</li>
+            </ol>
+        </div>
+
+        <div class="confirmation-step">
+            <p><strong>Type "DELETE ALL DATA" to confirm:</strong></p>
+            <input type="text" id="clearAllConfirmation" class="confirmation-input" placeholder="Type confirmation phrase here">
+            <p id="clearAllStatus" style="margin-top: 10px; font-weight: bold;"></p>
+        </div>
+
+        <div style="text-align: right; margin-top: 20px;">
+            <button onclick="closeClearAllModal()" style="background-color: #95a5a6; margin-right: 10px;">Cancel</button>
+            <button id="clearAllExecute" onclick="executeClearAll()" class="danger-button" disabled>
+                Clear All Data
+            </button>
+        </div>
+    </div>
+</div>

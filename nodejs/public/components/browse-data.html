@@ -1,0 +1,97 @@
+<!-- Browse Data Tab -->
+<div id="browseTab" class="tab-content active">
+    <!-- Controls Section -->
+    <div class="controls">
+        <div class="controls-row">
+            <input type="text" id="prefixFilter" placeholder="Prefix filter (optional)" style="width: 200px;">
+            <input type="text" id="startKey" placeholder="Start key (optional)" style="width: 200px;">
+            <input type="number" id="limitInput" value="100" min="1" max="10000" style="width: 100px;">
+            <button onclick="loadKeys()">Refresh</button>
+            <button onclick="openAddModal()" class="success">Add Key</button>
+        </div>
+        <div class="controls-row">
+            <input type="text" id="searchKey" placeholder="Search for specific key" style="width: 300px;">
+            <button onclick="searchKey()">Search</button>
+            <button onclick="testConnection()">Test Connection</button>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="filters-section">
+        <div class="filter-row">
+            <label><strong>Sort by:</strong></label>
+            <select id="sortBy" class="sort-select" onchange="applySorting()">
+                <option value="key">Key (A-Z)</option>
+                <option value="key-desc">Key (Z-A)</option>
+                <option value="size">Value Size (Small to Large)</option>
+                <option value="size-desc">Value Size (Large to Small)</option>
+                <option value="duplicates">Show Duplicates First</option>
+            </select>
+
+            <label><strong>Filter:</strong></label>
+            <select id="filterType" class="sort-select" onchange="applyFilter()">
+                <option value="all">Show All</option>
+                <option value="duplicates">Only Duplicates</option>
+                <option value="unique">Only Unique</option>
+                <option value="binary">Only Binary</option>
+                <option value="text">Only Text</option>
+            </select>
+
+            <label><strong>Group duplicates:</strong></label>
+            <input type="checkbox" id="groupDuplicates" onchange="displayCurrentData()" checked>
+        </div>
+        <div class="filter-row">
+            <label><strong>Items per page:</strong></label>
+            <select id="itemsPerPage" class="sort-select" onchange="changePage(1)">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="500">500</option>
+                <option value="-1">All</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Data Table Section -->
+    <div class="data-section">
+        <div class="section-header">
+            <h2>Key-Value Pairs</h2>
+            <div class="stats">
+                <span id="countStats">0 items</span>
+                <span id="connectionStats">Disconnected</span>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="loading">
+            Loading...
+        </div>
+
+        <div id="errorDisplay" class="error" style="display: none;"></div>
+        <div id="successDisplay" class="success" style="display: none;"></div>
+
+        <div class="table-container">
+            <table id="dataTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th>Length</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Section -->
+        <div class="pagination" id="pagination" style="display: none;">
+            <div class="pagination-info" id="paginationInfo"></div>
+            <div class="pagination-controls">
+                <button class="pagination-btn" id="prevBtn" onclick="changePage(currentPage - 1)">← Prev</button>
+                <span id="pageNumbers"></span>
+                <button class="pagination-btn" id="nextBtn" onclick="changePage(currentPage + 1)">Next →</button>
+            </div>
+        </div>
+    </div>
+</div>
