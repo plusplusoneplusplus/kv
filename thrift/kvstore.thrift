@@ -225,6 +225,79 @@ struct PingResponse {
     3: required i64 server_timestamp
 }
 
+// Diagnostic API structures for cluster management
+
+// Node status information
+struct NodeStatus {
+    1: required i32 node_id,
+    2: required string endpoint,
+    3: required string status,  // "healthy", "degraded", "unreachable", "unknown"
+    4: required bool is_leader,
+    5: required i64 last_seen_timestamp,
+    6: required i64 term,
+    7: optional i64 uptime_seconds
+}
+
+// Cluster health information
+struct ClusterHealth {
+    1: required list<NodeStatus> nodes,
+    2: required i32 healthy_nodes_count,
+    3: required i32 total_nodes_count,
+    4: optional NodeStatus leader,
+    5: required string cluster_status,  // "healthy", "degraded", "unhealthy"
+    6: required i64 current_term
+}
+
+// Database statistics
+struct DatabaseStats {
+    1: required i64 total_keys,
+    2: required i64 total_size_bytes,
+    3: required i64 write_operations_count,
+    4: required i64 read_operations_count,
+    5: required double average_response_time_ms,
+    6: required i64 active_transactions,
+    7: required i64 committed_transactions,
+    8: required i64 aborted_transactions,
+    9: optional i64 cache_hit_rate_percent,
+    10: optional i64 compaction_pending_bytes
+}
+
+
+// Diagnostic requests and responses
+
+struct GetClusterHealthRequest {
+    1: optional string auth_token
+}
+
+struct GetClusterHealthResponse {
+    1: required bool success,
+    2: optional ClusterHealth cluster_health,
+    3: optional string error
+}
+
+struct GetDatabaseStatsRequest {
+    1: optional string auth_token,
+    2: optional bool include_detailed_stats = false
+}
+
+struct GetDatabaseStatsResponse {
+    1: required bool success,
+    2: optional DatabaseStats database_stats,
+    3: optional string error
+}
+
+
+struct GetNodeInfoRequest {
+    1: optional string auth_token,
+    2: optional i32 node_id  // If not provided, returns info for current node
+}
+
+struct GetNodeInfoResponse {
+    1: required bool success,
+    2: optional NodeStatus node_info,
+    3: optional string error
+}
+
 // The FoundationDB-style transactional key-value store service
 service TransactionalKV {
     // FoundationDB-style client-side transactions
@@ -258,5 +331,10 @@ service TransactionalKV {
     FaultInjectionResponse setFaultInjection(1: FaultInjectionRequest request),
     
     // Health check
-    PingResponse ping(1: PingRequest request)
+    PingResponse ping(1: PingRequest request),
+    
+    // Diagnostic API endpoints for cluster management
+    GetClusterHealthResponse getClusterHealth(1: GetClusterHealthRequest request),
+    GetDatabaseStatsResponse getDatabaseStats(1: GetDatabaseStatsRequest request),
+    GetNodeInfoResponse getNodeInfo(1: GetNodeInfoRequest request)
 }

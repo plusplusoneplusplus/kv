@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use kv_storage_api::{GetResult, GetRangeResult, OpResult, AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig};
+use crate::generated::kvstore::{ClusterHealth, DatabaseStats, NodeStatus};
 
 /// Types of operations supported by the KV store
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,6 +90,15 @@ pub enum KvOperation {
     SetFaultInjection {
         config: Option<FaultInjectionConfig>,
     },
+
+    // Diagnostic operations for cluster management
+    GetClusterHealth,
+    GetDatabaseStats {
+        include_detailed: bool,
+    },
+    GetNodeInfo {
+        node_id: Option<u32>,
+    },
 }
 
 impl DatabaseOperation for KvOperation {
@@ -99,7 +109,10 @@ impl DatabaseOperation for KvOperation {
             | KvOperation::SnapshotRead { .. }
             | KvOperation::SnapshotGetRange { .. }
             | KvOperation::GetReadVersion
-            | KvOperation::Ping { .. } => true,
+            | KvOperation::Ping { .. }
+            | KvOperation::GetClusterHealth
+            | KvOperation::GetDatabaseStats { .. }
+            | KvOperation::GetNodeInfo { .. } => true,
 
             KvOperation::Set { .. }
             | KvOperation::Delete { .. }
@@ -112,7 +125,7 @@ impl DatabaseOperation for KvOperation {
 }
 
 /// Results returned by operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum OperationResult {
     GetResult(Result<GetResult, String>),
     GetRangeResult(GetRangeResult),
@@ -124,6 +137,11 @@ pub enum OperationResult {
         client_timestamp: i64,
         server_timestamp: i64,
     },
+    
+    // Diagnostic operation results
+    ClusterHealthResult(ClusterHealth),
+    DatabaseStatsResult(DatabaseStats),
+    NodeInfoResult(NodeStatus),
 }
 
 #[cfg(test)]
