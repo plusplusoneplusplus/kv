@@ -7,6 +7,8 @@ pub mod lib {
     pub mod thrift_adapter;
     pub mod replication;
     pub mod operations;
+    pub mod cluster;
+    pub mod config;
 }
 
 pub mod generated {
