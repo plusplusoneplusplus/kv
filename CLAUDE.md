@@ -28,3 +28,5 @@ The project has been refactored to use a unified Rust workspace structure:
 # Rules
 1. Never build release mode
 2. Never use emoji
+3. Never choose to use a simple approach, if the design/code doesn't work. just pause and wait for manual guidance
+4. Fix all rust build warnings

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use kv_storage_api::KvDatabase;
 use kv_storage_rocksdb::config::DeploymentMode;
 use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
+use crate::lib::cluster::ClusterManager;
 use super::errors::{RoutingError, RoutingResult};
 use super::executor::KvStoreExecutor;
 
@@ -18,6 +19,10 @@ pub struct RoutingManager {
     /// Currently unused but prepared for consensus integration
     #[allow(dead_code)]
     executor: Arc<KvStoreExecutor>,
+    /// Cluster manager for node discovery and leader election
+    /// Handles both single-node and multi-node cases
+    #[allow(dead_code)]
+    cluster_manager: Arc<ClusterManager>,
 }
 
 impl RoutingManager {
@@ -26,6 +31,7 @@ impl RoutingManager {
         database: Arc<dyn KvDatabase>,
         deployment_mode: DeploymentMode,
         node_id: Option<u32>,
+        cluster_manager: Arc<ClusterManager>,
     ) -> Self {
         let executor = Arc::new(KvStoreExecutor::new(database.clone()));
 
@@ -34,6 +40,7 @@ impl RoutingManager {
             deployment_mode,
             node_id,
             executor,
+            cluster_manager,
         }
     }
 
@@ -254,7 +261,13 @@ mod tests {
     #[tokio::test]
     async fn test_routing_manager_standalone_mode() {
         let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
+        let cluster_manager = Arc::new(ClusterManager::single_node(0));
+        let routing_manager = RoutingManager::new(
+            mock_db,
+            DeploymentMode::Standalone,
+            None,
+            cluster_manager,
+        );
 
         // Test GET operation
         let get_op = KvOperation::Get {
@@ -295,7 +308,13 @@ mod tests {
     #[tokio::test]
     async fn test_routing_manager_replicated_mode() {
         let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Replicated, Some(1));
+        let cluster_manager = Arc::new(ClusterManager::single_node(1));
+        let routing_manager = RoutingManager::new(
+            mock_db,
+            DeploymentMode::Replicated,
+            Some(1),
+            cluster_manager,
+        );
 
         // Test that replicated mode works the same as standalone for now
         let set_op = KvOperation::Set {
@@ -319,7 +338,13 @@ mod tests {
     #[tokio::test]
     async fn test_routing_manager_ping_operation() {
         let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
+        let cluster_manager = Arc::new(ClusterManager::single_node(0));
+        let routing_manager = RoutingManager::new(
+            mock_db,
+            DeploymentMode::Standalone,
+            None,
+            cluster_manager,
+        );
 
         let ping_op = KvOperation::Ping {
             message: Some(b"hello".to_vec()),
@@ -341,7 +366,13 @@ mod tests {
     #[tokio::test]
     async fn test_routing_manager_executor_integration() {
         let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
+        let cluster_manager = Arc::new(ClusterManager::single_node(0));
+        let routing_manager = RoutingManager::new(
+            mock_db,
+            DeploymentMode::Standalone,
+            None,
+            cluster_manager,
+        );
 
         // Verify executor is available and functional
         let executor = routing_manager.get_executor();
