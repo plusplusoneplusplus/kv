@@ -5,9 +5,270 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KV Store Viewer</title>
     <link rel="stylesheet" href="styles.css?v=admin-update-1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Cluster Dashboard Styles */
+        .dashboard-card {
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-healthy { background-color: #28a745; }
+        .status-degraded { background-color: #ffc107; }
+        .status-unhealthy { background-color: #dc3545; }
+        .status-unreachable { background-color: #6c757d; }
+        .node-card {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .node-card:hover {
+            border-color: #007bff;
+            transform: scale(1.02);
+        }
+        .leader-badge {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .real-time-indicator {
+            color: #28a745;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .alert-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Node Details Styles */
+        .node-status-badge {
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .connection-card {
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+        }
+        .leader-indicator {
+            background: linear-gradient(45deg, #ffd700, #ffed4e);
+            color: #333;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-weight: bold;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .transaction-item {
+            border-left: 3px solid #007bff;
+            background: #f8f9fa;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 0 5px 5px 0;
+        }
+        .timeline-item {
+            position: relative;
+            padding-left: 30px;
+            margin-bottom: 20px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 5px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #007bff;
+        }
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: 14px;
+            top: 15px;
+            width: 2px;
+            height: calc(100% + 10px);
+            background: #dee2e6;
+        }
+        .timeline-item:last-child::after {
+            display: none;
+        }
+
+        /* Replication Monitor Styles */
+        .replication-flow {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .node-replication-card {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .node-replication-card.leader {
+            border-color: #ffd700;
+            background: linear-gradient(135deg, #fff9c4, #fff);
+        }
+        .node-replication-card.follower {
+            border-color: #007bff;
+            background: linear-gradient(135deg, #e3f2fd, #fff);
+        }
+        .node-replication-card.unreachable {
+            border-color: #dc3545;
+            background: linear-gradient(135deg, #f8d7da, #fff);
+        }
+        .replication-arrow {
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2rem;
+            color: #007bff;
+        }
+        .lag-indicator {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .lag-low { background: #d4edda; color: #155724; }
+        .lag-medium { background: #fff3cd; color: #856404; }
+        .lag-high { background: #f8d7da; color: #721c24; }
+        .sync-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .sync-synced { background-color: #28a745; }
+        .sync-syncing { background-color: #ffc107; animation: pulse 1s infinite; }
+        .sync-failed { background-color: #dc3545; }
+        .failover-timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        .failover-item {
+            position: relative;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .failover-item::before {
+            content: '';
+            position: absolute;
+            left: -38px;
+            top: 20px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #007bff;
+        }
+        .failover-item.critical::before {
+            background: #dc3545;
+        }
+        .failover-item.success::before {
+            background: #28a745;
+        }
+        .consensus-indicator {
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .consensus-active {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+        }
+        .consensus-inactive {
+            background: linear-gradient(45deg, #6c757d, #495057);
+            color: white;
+        }
+        .term-badge {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-weight: bold;
+        }
+        .replication-stats {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .lag-chart-container {
+            position: relative;
+            height: 250px;
+        }
+        .pending-operations {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .operation-item {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        .operation-pending { border-left: 4px solid #ffc107; }
+        .operation-committed { border-left: 4px solid #28a745; }
+        .operation-failed { border-left: 4px solid #dc3545; }
+    </style>
 </head>
 <body>
-    
+
     <div class="container">
         <!-- Header Section -->
         <div class="header">
@@ -17,14 +278,17 @@
                 <span id="statusText">Checking connection...</span>
             </div>
         </div>
-        
+
         <!-- Tab Navigation -->
         <div class="tab-nav">
             <button class="tab-button active" onclick="showTab('browse')">Browse Data</button>
             <button class="tab-button" onclick="showTab('clear')">Clear Data</button>
             <button class="tab-button" onclick="showTab('settings')">Settings</button>
+            <button class="tab-button" onclick="showTab('cluster')">Cluster Health</button>
+            <button class="tab-button" onclick="showTab('nodeDetails')">Node Details</button>
+            <button class="tab-button" onclick="showTab('replication')">Replication Monitor</button>
         </div>
-        
+
         <!-- Browse Data Tab -->
         <div id="browseTab" class="tab-content active">
                 <!-- Controls Section -->
@@ -42,7 +306,7 @@
                 <button onclick="testConnection()">Test Connection</button>
             </div>
         </div>
-        
+
         <!-- Filters Section -->
         <div class="filters-section">
             <div class="filter-row">
@@ -54,7 +318,7 @@
                     <option value="size-desc">Value Size (Large to Small)</option>
                     <option value="duplicates">Show Duplicates First</option>
                 </select>
-                
+
                 <label><strong>Filter:</strong></label>
                 <select id="filterType" class="sort-select" onchange="applyFilter()">
                     <option value="all">Show All</option>
@@ -63,7 +327,7 @@
                     <option value="binary">Only Binary</option>
                     <option value="text">Only Text</option>
                 </select>
-                
+
                 <label><strong>Group duplicates:</strong></label>
                 <input type="checkbox" id="groupDuplicates" onchange="displayCurrentData()" checked>
             </div>
@@ -78,7 +342,7 @@
                 </select>
             </div>
         </div>
-        
+
         <!-- Data Table Section -->
         <div class="data-section">
             <div class="section-header">
@@ -88,14 +352,14 @@
                     <span id="connectionStats">Disconnected</span>
                 </div>
             </div>
-            
+
             <div id="loadingIndicator" class="loading">
                 Loading...
             </div>
-            
+
             <div id="errorDisplay" class="error" style="display: none;"></div>
             <div id="successDisplay" class="success" style="display: none;"></div>
-            
+
             <div class="table-container">
                 <table id="dataTable" style="display: none;">
                     <thead>
@@ -110,7 +374,7 @@
                     </tbody>
                 </table>
             </div>
-            
+
             <!-- Pagination Section -->
             <div class="pagination" id="pagination" style="display: none;">
                 <div class="pagination-info" id="paginationInfo"></div>
@@ -122,7 +386,7 @@
             </div>
         </div>
         </div>
-        
+
         <!-- Clear Data Tab -->
         <div id="clearTab" class="tab-content">
             <div class="clear-data-container">
@@ -197,8 +461,637 @@
                 </div>
             </div>
         </div>
+
+        <!-- Cluster Health Tab -->
+        <div id="clusterTab" class="tab-content">
+            <!-- Alert Section -->
+            <div id="cluster-alerts-container"></div>
+
+            <!-- Cluster Overview -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card dashboard-card bg-primary text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title">Total Nodes</h6>
+                                    <div class="metric-value text-white" id="cluster-total-nodes">-</div>
+                                </div>
+                                <i class="fas fa-server fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card dashboard-card bg-success text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title">Healthy Nodes</h6>
+                                    <div class="metric-value text-white" id="cluster-healthy-nodes">-</div>
+                                </div>
+                                <i class="fas fa-heartbeat fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card dashboard-card bg-info text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title">Current Leader</h6>
+                                    <div class="metric-value text-white" id="cluster-current-leader">-</div>
+                                </div>
+                                <i class="fas fa-crown fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card dashboard-card" id="cluster-health-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title">Cluster Health</h6>
+                                    <div class="metric-value" id="cluster-health">-</div>
+                                </div>
+                                <i class="fas fa-shield-alt fa-2x" id="cluster-health-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Status Grid -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card dashboard-card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-network-wired"></i> Cluster Topology
+                            </h5>
+                            <small class="text-muted">Last updated: <span id="cluster-last-updated">-</span></small>
+                        </div>
+                        <div class="card-body">
+                            <div id="cluster-nodes-grid" class="row">
+                                <!-- Node cards will be dynamically generated -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card dashboard-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-bar"></i> Database Statistics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Total Keys</small>
+                                        <div class="h4 text-primary" id="cluster-total-keys">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Total Size</small>
+                                        <div class="h4 text-primary" id="cluster-total-size">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Active Transactions</small>
+                                        <div class="h4 text-warning" id="cluster-active-transactions">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Cache Hit Rate</small>
+                                        <div class="h4 text-success" id="cluster-cache-hit-rate">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card dashboard-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-tachometer-alt"></i> Performance Metrics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-12 text-center mb-3">
+                                    <small class="text-muted">Average Response Time</small>
+                                    <div class="h4 text-info" id="cluster-avg-response-time">-</div>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Compaction Pending</small>
+                                        <div class="h5 text-secondary" id="cluster-compaction-pending">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Current Term</small>
+                                        <div class="h5 text-primary" id="cluster-current-term">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card dashboard-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-tools"></i> Quick Actions
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-primary" onclick="refreshClusterDashboard()">
+                                    <i class="fas fa-sync-alt"></i> Refresh Data
+                                </button>
+                                <button type="button" class="btn btn-outline-info" onclick="showTab('replication')">
+                                    <i class="fas fa-sync"></i> Replication Monitor
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="showTab('browse')">
+                                    <i class="fas fa-database"></i> Data Browser
+                                </button>
+                                <button type="button" class="btn btn-outline-warning" onclick="showClusterDiagnostics()">
+                                    <i class="fas fa-stethoscope"></i> Diagnostics
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Node Details Tab -->
+        <div id="nodeDetailsTab" class="tab-content">
+            <!-- Loading State -->
+            <div id="node-loading-state" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3">Loading node details...</p>
+            </div>
+
+            <!-- Node Details Content -->
+            <div id="node-content" class="d-none">
+                <!-- Node Header -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row align-items-center">
+                                    <div class="col-md-8">
+                                        <h2 class="mb-2">
+                                            <i class="fas fa-server text-primary"></i>
+                                            <span id="node-name">Node</span>
+                                            <span id="node-leader-badge" class="leader-indicator d-none">
+                                                <i class="fas fa-crown"></i> LEADER
+                                            </span>
+                                        </h2>
+                                        <p class="text-muted mb-0">
+                                            <i class="fas fa-network-wired"></i>
+                                            Endpoint: <span id="node-endpoint">-</span>
+                                        </p>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <div id="node-status-badge" class="node-status-badge">
+                                            Unknown
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">Last updated: <span id="node-last-updated">-</span></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Metrics -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value" id="node-uptime-value">-</div>
+                            <div class="metric-label">Uptime</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value" id="node-connections-value">-</div>
+                            <div class="metric-label">Active Connections</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value" id="node-transactions-value">-</div>
+                            <div class="metric-label">Transactions/sec</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value" id="node-latency-value">-</div>
+                            <div class="metric-label">Avg Latency (ms)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-chart-line"></i> Transaction History
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="nodeTransactionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-stopwatch"></i> Latency Trends
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="nodeLatencyChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection Pool & Node Info -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-plug"></i> Connection Pool Statistics
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="connection-card p-3 mb-3">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <small class="text-muted">Active Connections</small>
+                                            <div class="h4 text-primary" id="node-active-connections">-</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <small class="text-muted">Max Pool Size</small>
+                                            <div class="h4 text-info" id="node-max-pool-size">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="connection-card p-3 mb-3">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <small class="text-muted">Idle Connections</small>
+                                            <div class="h5 text-secondary" id="node-idle-connections">-</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <small class="text-muted">Connection Errors</small>
+                                            <div class="h5 text-danger" id="node-connection-errors">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="progress mb-2">
+                                    <div class="progress-bar" role="progressbar" id="node-pool-usage-bar" style="width: 0%"></div>
+                                </div>
+                                <small class="text-muted">Pool Usage: <span id="node-pool-usage-percent">0%</span></small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-info-circle"></i> Node Information
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-borderless">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Node ID:</strong></td>
+                                            <td id="node-id-detail">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Role:</strong></td>
+                                            <td id="node-role">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Term:</strong></td>
+                                            <td id="node-term">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Last Heartbeat:</strong></td>
+                                            <td id="node-last-heartbeat">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Join Time:</strong></td>
+                                            <td id="node-join-time">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-list"></i> Recent Transactions
+                                </h5>
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <div id="node-recent-transactions">
+                                    <!-- Transaction items will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-history"></i> Node Activity Timeline
+                                </h5>
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <div id="node-activity-timeline">
+                                    <!-- Timeline items will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-tools"></i> Node Actions
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-outline-primary" onclick="refreshNodeData()">
+                                        <i class="fas fa-sync-alt"></i> Refresh Data
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="showNodeConnectionDetails()">
+                                        <i class="fas fa-network-wired"></i> Connection Details
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning" onclick="showNodeDiagnostics()">
+                                        <i class="fas fa-stethoscope"></i> Run Diagnostics
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="exportNodeReport()">
+                                        <i class="fas fa-download"></i> Export Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Replication Monitor Tab -->
+        <div id="replicationTab" class="tab-content">
+            <!-- Replication Overview -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <div class="replication-flow">
+                        <h4 class="mb-3">
+                            <i class="fas fa-sync-alt"></i> Replication Flow Overview
+                        </h4>
+                        <div class="row align-items-center">
+                            <div class="col-md-3 text-center">
+                                <div class="consensus-indicator" id="repl-consensus-status">
+                                    <i class="fas fa-handshake"></i><br>
+                                    Consensus Status
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="term-badge" id="repl-current-term">
+                                    Term: -
+                                </div>
+                                <br><small class="opacity-75 mt-2 d-block">Current Election Term</small>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="h2 mb-0" id="repl-active-followers">-</div>
+                                <small class="opacity-75">Active Followers</small>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="h2 mb-0" id="repl-replication-lag">-</div>
+                                <small class="opacity-75">Avg Lag (ms)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-pie"></i> Replication Health
+                            </h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <canvas id="replicationHealthChart" width="200" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Replication Status -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card dashboard-card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-network-wired"></i> Node Replication Status
+                            </h5>
+                            <small class="text-muted">Last updated: <span id="repl-last-updated">-</span></small>
+                        </div>
+                        <div class="card-body">
+                            <div id="repl-nodes-replication-grid" class="row">
+                                <!-- Node replication cards will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lag Trends and Pending Operations -->
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-line"></i> Replication Lag Trends
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="lag-chart-container">
+                                <canvas id="lagTrendsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-clock"></i> Pending Operations
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="pending-operations" id="repl-pending-operations">
+                                <!-- Pending operations will be listed here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Replication Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-bar"></i> Replication Statistics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="replication-stats">
+                                <div class="row">
+                                    <div class="col-6 text-center">
+                                        <div class="h4 text-primary" id="repl-ops-replicated">-</div>
+                                        <small class="text-muted">Operations Replicated</small>
+                                    </div>
+                                    <div class="col-6 text-center">
+                                        <div class="h4 text-success" id="repl-replication-rate">-</div>
+                                        <small class="text-muted">Replication Rate/sec</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="replication-stats">
+                                <div class="row">
+                                    <div class="col-6 text-center">
+                                        <div class="h5 text-warning" id="repl-pending-count">-</div>
+                                        <small class="text-muted">Pending Operations</small>
+                                    </div>
+                                    <div class="col-6 text-center">
+                                        <div class="h5 text-info" id="repl-sync-nodes">-</div>
+                                        <small class="text-muted">Nodes in Sync</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="replication-stats">
+                                <div class="row">
+                                    <div class="col-6 text-center">
+                                        <div class="h6 text-secondary" id="repl-last-commit">-</div>
+                                        <small class="text-muted">Last Commit</small>
+                                    </div>
+                                    <div class="col-6 text-center">
+                                        <div class="h6 text-secondary" id="repl-commit-rate">-</div>
+                                        <small class="text-muted">Commit Rate (%)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-history"></i> Failover History
+                            </h5>
+                        </div>
+                        <div class="card-body" style="max-height: 350px; overflow-y: auto;">
+                            <div class="failover-timeline" id="repl-failover-timeline">
+                                <!-- Failover history will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls and Actions -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-tools"></i> Replication Controls
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="btn-group me-3" role="group">
+                                <button type="button" class="btn btn-outline-primary" onclick="refreshReplicationData()">
+                                    <i class="fas fa-sync-alt"></i> Refresh Data
+                                </button>
+                                <button type="button" class="btn btn-outline-info" onclick="showReplicationDetails()">
+                                    <i class="fas fa-info-circle"></i> Detailed View
+                                </button>
+                            </div>
+                            <div class="btn-group me-3" role="group">
+                                <button type="button" class="btn btn-outline-warning" onclick="pauseReplication()">
+                                    <i class="fas fa-pause"></i> Pause Replication
+                                </button>
+                                <button type="button" class="btn btn-outline-success" onclick="resumeReplication()">
+                                    <i class="fas fa-play"></i> Resume Replication
+                                </button>
+                            </div>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-danger" onclick="triggerFailover()">
+                                    <i class="fas fa-exchange-alt"></i> Manual Failover
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="exportReplicationReport()">
+                                    <i class="fas fa-download"></i> Export Report
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    
+
     <!-- Add/Edit Modal -->
     <div id="addModal" class="modal">
         <div class="modal-content">
@@ -220,7 +1113,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Value Viewer Modal -->
     <div id="viewModal" class="modal">
         <div class="modal-content viewer-modal">
@@ -244,7 +1137,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Clear All Confirmation Modal -->
     <div id="clearAllModal" class="modal confirmation-modal">
         <div class="modal-content">
@@ -252,7 +1145,7 @@
                 <h3 style="color: #e53e3e;">⚠️ DANGER: Clear All Data</h3>
                 <span class="close" onclick="closeClearAllModal()">&times;</span>
             </div>
-            
+
             <div class="confirmation-step">
                 <h4>This action will:</h4>
                 <ul>
@@ -261,7 +1154,7 @@
                     <li>May take several minutes for large datasets</li>
                 </ul>
             </div>
-            
+
             <div class="confirmation-step">
                 <h4>Before proceeding:</h4>
                 <ol>
@@ -270,13 +1163,13 @@
                     <li>Verify no critical processes are running</li>
                 </ol>
             </div>
-            
+
             <div class="confirmation-step">
                 <p><strong>Type "DELETE ALL DATA" to confirm:</strong></p>
                 <input type="text" id="clearAllConfirmation" class="confirmation-input" placeholder="Type confirmation phrase here">
                 <p id="clearAllStatus" style="margin-top: 10px; font-weight: bold;"></p>
             </div>
-            
+
             <div style="text-align: right; margin-top: 20px;">
                 <button onclick="closeClearAllModal()" style="background-color: #95a5a6; margin-right: 10px;">Cancel</button>
                 <button id="clearAllExecute" onclick="executeClearAll()" class="danger-button" disabled>
@@ -285,12 +1178,890 @@
             </div>
         </div>
     </div>
-    
+
     <!-- JavaScript Modules -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="app.js?v=key-decode-fix"></script>
     <script src="data-analysis.js?v=key-decode-fix"></script>
     <script src="display.js?v=key-decode-fix"></script>
     <script src="pagination.js"></script>
     <script src="modals.js"></script>
+    <script>
+        // Global variables for new dashboard features
+        let dashboardSocket;
+        let clusterRefreshInterval;
+        let nodeRefreshInterval;
+        let replicationRefreshInterval;
+        let transactionChart;
+        let latencyChart;
+        let lagTrendsChart;
+        let replicationHealthChart;
+        let currentNodeId = 1; // Default node for Node Details tab
+
+        // Tab switching functionality
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Remove active class from all tab buttons
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(button => button.classList.remove('active'));
+
+            // Show selected tab content
+            let tabElement;
+            switch(tabName) {
+                case 'browse':
+                    tabElement = document.getElementById('browseTab');
+                    break;
+                case 'clear':
+                    tabElement = document.getElementById('clearTab');
+                    break;
+                case 'settings':
+                    tabElement = document.getElementById('settingsTab');
+                    break;
+                case 'cluster':
+                    tabElement = document.getElementById('clusterTab');
+                    initializeClusterDashboard();
+                    break;
+                case 'nodeDetails':
+                    tabElement = document.getElementById('nodeDetailsTab');
+                    initializeNodeDetails();
+                    break;
+                case 'replication':
+                    tabElement = document.getElementById('replicationTab');
+                    initializeReplicationMonitor();
+                    break;
+            }
+
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+
+            // Add active class to clicked tab button
+            const clickedButton = document.querySelector(`[onclick="showTab('${tabName}')"]`);
+            if (clickedButton) {
+                clickedButton.classList.add('active');
+            }
+        }
+
+        // Initialize cluster dashboard
+        function initializeClusterDashboard() {
+            if (!dashboardSocket) {
+                dashboardSocket = io();
+                dashboardSocket.on('connect', () => {
+                    console.log('Connected to dashboard server');
+                });
+                dashboardSocket.on('cluster-update', (data) => {
+                    updateClusterDashboard(data);
+                });
+            }
+
+            refreshClusterDashboard();
+            if (clusterRefreshInterval) clearInterval(clusterRefreshInterval);
+            clusterRefreshInterval = setInterval(refreshClusterDashboard, 10000);
+        }
+
+        async function refreshClusterDashboard() {
+            try {
+                const [healthResponse, statsResponse] = await Promise.all([
+                    fetch('/api/cluster/health'),
+                    fetch('/api/cluster/stats?detailed=true')
+                ]);
+
+                const healthData = await healthResponse.json();
+                const statsData = await statsResponse.json();
+
+                if (healthData.success) {
+                    updateClusterDashboard(healthData.data);
+                }
+
+                if (statsData.success) {
+                    updateClusterDatabaseStats(statsData.data);
+                }
+
+                document.getElementById('cluster-last-updated').textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('Error refreshing cluster dashboard:', error);
+                showClusterAlert('Failed to refresh dashboard data', 'danger');
+            }
+        }
+
+        function updateClusterDashboard(data) {
+            // Update overview metrics
+            document.getElementById('cluster-total-nodes').textContent = data.total_nodes_count || 0;
+            document.getElementById('cluster-healthy-nodes').textContent = data.healthy_nodes_count || 0;
+            document.getElementById('cluster-current-leader').textContent = data.current_leader_id !== null ? `Node ${data.current_leader_id}` : 'None';
+            document.getElementById('cluster-current-term').textContent = data.current_term || 0;
+
+            // Update cluster health
+            const healthElement = document.getElementById('cluster-health');
+            const healthCard = document.getElementById('cluster-health-card');
+            const healthIcon = document.getElementById('cluster-health-icon');
+            const status = data.cluster_status || 'unknown';
+
+            healthElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+            // Update health card styling
+            healthCard.className = 'card dashboard-card';
+            healthIcon.className = 'fas fa-2x';
+
+            switch (status) {
+                case 'healthy':
+                    healthCard.classList.add('bg-success', 'text-white');
+                    healthIcon.classList.add('fa-shield-alt', 'opacity-75');
+                    break;
+                case 'degraded':
+                    healthCard.classList.add('bg-warning', 'text-dark');
+                    healthIcon.classList.add('fa-exclamation-triangle', 'opacity-75');
+                    break;
+                case 'unhealthy':
+                    healthCard.classList.add('bg-danger', 'text-white');
+                    healthIcon.classList.add('fa-times-circle', 'opacity-75');
+                    break;
+                default:
+                    healthCard.classList.add('bg-secondary', 'text-white');
+                    healthIcon.classList.add('fa-question-circle', 'opacity-75');
+            }
+
+            // Update nodes grid
+            updateClusterNodesGrid(data.nodes || []);
+        }
+
+        function updateClusterNodesGrid(nodes) {
+            const grid = document.getElementById('cluster-nodes-grid');
+            grid.innerHTML = '';
+
+            nodes.forEach(node => {
+                const nodeCard = document.createElement('div');
+                nodeCard.className = 'col-md-4 col-lg-3 mb-3';
+
+                const statusClass = getStatusClass(node.status);
+                const leaderBadge = node.is_leader ? '<span class="leader-badge">LEADER</span>' : '';
+
+                nodeCard.innerHTML = `
+                    <div class="card node-card h-100" onclick="viewNodeDetails(${node.node_id})">
+                        <div class="card-body text-center position-relative">
+                            ${leaderBadge}
+                            <i class="fas fa-server fa-2x mb-2 text-primary"></i>
+                            <h6 class="card-title">Node ${node.node_id}</h6>
+                            <p class="card-text">
+                                <span class="status-indicator ${statusClass}"></span>
+                                ${node.status.charAt(0).toUpperCase() + node.status.slice(1)}
+                            </p>
+                            <small class="text-muted">${node.endpoint || 'N/A'}</small>
+                            ${node.status === 'unreachable' ? '<div class="alert-badge">!</div>' : ''}
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(nodeCard);
+            });
+        }
+
+        async function updateClusterDatabaseStats(stats) {
+            document.getElementById('cluster-total-keys').textContent = stats.total_keys?.toLocaleString() || '0';
+            document.getElementById('cluster-total-size').textContent = formatBytes(stats.total_size_bytes || 0);
+            document.getElementById('cluster-active-transactions').textContent = stats.active_transactions || 0;
+            document.getElementById('cluster-cache-hit-rate').textContent = stats.cache_hit_rate_percent ? `${stats.cache_hit_rate_percent}%` : 'N/A';
+            document.getElementById('cluster-avg-response-time').textContent = stats.average_response_time_ms ? `${stats.average_response_time_ms} ms` : 'N/A';
+            document.getElementById('cluster-compaction-pending').textContent = formatBytes(stats.compaction_pending_bytes || 0);
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case 'healthy': return 'status-healthy';
+                case 'degraded': return 'status-degraded';
+                case 'unhealthy': return 'status-unhealthy';
+                case 'unreachable': return 'status-unreachable';
+                default: return 'status-unreachable';
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function viewNodeDetails(nodeId) {
+            currentNodeId = nodeId;
+            showTab('nodeDetails');
+        }
+
+        function showClusterAlert(message, type) {
+            const alertContainer = document.getElementById('cluster-alerts-container');
+            const alertId = 'alert-' + Date.now();
+
+            const alert = document.createElement('div');
+            alert.id = alertId;
+            alert.className = `alert alert-${type} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            alertContainer.appendChild(alert);
+
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement && alertElement.parentNode) {
+                    alertElement.remove();
+                }
+            }, 5000);
+        }
+
+        function showClusterDiagnostics() {
+            alert('Cluster diagnostic details would be shown here. This feature can be expanded to show detailed cluster diagnostics.');
+        }
+
+        // Initialize node details
+        function initializeNodeDetails() {
+            document.getElementById('node-name').textContent = `Node ${currentNodeId}`;
+            document.getElementById('node-id-detail').textContent = currentNodeId;
+
+            initializeNodeCharts();
+            loadNodeData();
+
+            if (nodeRefreshInterval) clearInterval(nodeRefreshInterval);
+            nodeRefreshInterval = setInterval(loadNodeData, 10000);
+        }
+
+        function initializeNodeCharts() {
+            // Transaction History Chart
+            const transactionCtx = document.getElementById('nodeTransactionChart').getContext('2d');
+            transactionChart = new Chart(transactionCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Transactions/sec',
+                        data: [],
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Latency Chart
+            const latencyCtx = document.getElementById('nodeLatencyChart').getContext('2d');
+            latencyChart = new Chart(latencyCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Latency (ms)',
+                        data: [],
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadNodeData() {
+            try {
+                const [nodeResponse, healthResponse] = await Promise.all([
+                    fetch(`/api/cluster/nodes/${currentNodeId}`),
+                    fetch('/api/cluster/health')
+                ]);
+
+                const nodeData = await nodeResponse.json();
+                const healthData = await healthResponse.json();
+
+                if (nodeData.success) {
+                    updateNodeData(nodeData.data);
+                }
+
+                if (healthData.success) {
+                    // Find this node in the cluster health data
+                    const thisNode = healthData.data.nodes?.find(n => n.node_id == currentNodeId);
+                    if (thisNode) {
+                        updateNodeStatus(thisNode);
+                    }
+                }
+
+                document.getElementById('node-loading-state').classList.add('d-none');
+                document.getElementById('node-content').classList.remove('d-none');
+                document.getElementById('node-last-updated').textContent = new Date().toLocaleTimeString();
+
+            } catch (error) {
+                console.error('Error loading node data:', error);
+                alert('Failed to load node data');
+            }
+        }
+
+        function updateNodeData(data) {
+            // Update basic info
+            document.getElementById('node-endpoint').textContent = data.endpoint || 'N/A';
+
+            // Update metrics with mock data
+            updateNodeMetrics();
+            updateNodeConnectionPool();
+            updateNodeRecentTransactions();
+            updateNodeActivityTimeline();
+            updateNodeCharts();
+        }
+
+        function updateNodeStatus(nodeData) {
+            const statusBadge = document.getElementById('node-status-badge');
+            const leaderBadge = document.getElementById('node-leader-badge');
+
+            // Update status
+            const status = nodeData.status || 'unknown';
+            statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            statusBadge.className = `node-status-badge status-${status}`;
+
+            // Update leader indicator
+            if (nodeData.is_leader) {
+                leaderBadge.classList.remove('d-none');
+                document.getElementById('node-role').textContent = 'Leader';
+            } else {
+                leaderBadge.classList.add('d-none');
+                document.getElementById('node-role').textContent = 'Follower';
+            }
+
+            // Update other node info
+            document.getElementById('node-term').textContent = nodeData.term || '-';
+            document.getElementById('node-last-heartbeat').textContent = new Date().toLocaleString();
+            document.getElementById('node-join-time').textContent = new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toLocaleString();
+        }
+
+        function updateNodeMetrics() {
+            // Mock data for demonstration
+            document.getElementById('node-uptime-value').textContent = Math.floor(Math.random() * 30) + 'd';
+            document.getElementById('node-connections-value').textContent = Math.floor(Math.random() * 100) + 10;
+            document.getElementById('node-transactions-value').textContent = Math.floor(Math.random() * 1000) + 100;
+            document.getElementById('node-latency-value').textContent = (Math.random() * 10 + 1).toFixed(1);
+        }
+
+        function updateNodeConnectionPool() {
+            const active = Math.floor(Math.random() * 50) + 10;
+            const max = 100;
+            const idle = Math.floor(Math.random() * 20) + 5;
+            const errors = Math.floor(Math.random() * 5);
+            const usage = Math.floor((active / max) * 100);
+
+            document.getElementById('node-active-connections').textContent = active;
+            document.getElementById('node-max-pool-size').textContent = max;
+            document.getElementById('node-idle-connections').textContent = idle;
+            document.getElementById('node-connection-errors').textContent = errors;
+            document.getElementById('node-pool-usage-percent').textContent = `${usage}%`;
+            document.getElementById('node-pool-usage-bar').style.width = `${usage}%`;
+
+            // Update progress bar color based on usage
+            const progressBar = document.getElementById('node-pool-usage-bar');
+            progressBar.className = 'progress-bar';
+            if (usage > 80) {
+                progressBar.classList.add('bg-danger');
+            } else if (usage > 60) {
+                progressBar.classList.add('bg-warning');
+            } else {
+                progressBar.classList.add('bg-success');
+            }
+        }
+
+        function updateNodeRecentTransactions() {
+            const container = document.getElementById('node-recent-transactions');
+            const transactions = [];
+
+            // Generate mock transactions
+            for (let i = 0; i < 10; i++) {
+                const types = ['GET', 'PUT', 'DELETE', 'RANGE'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                const timestamp = new Date(Date.now() - Math.random() * 60000);
+                const latency = (Math.random() * 50 + 1).toFixed(1);
+
+                transactions.push({
+                    type,
+                    timestamp,
+                    latency,
+                    key: `key_${Math.floor(Math.random() * 1000)}`
+                });
+            }
+
+            container.innerHTML = transactions.map(tx => `
+                <div class="transaction-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${tx.type}</strong> ${tx.key}
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">${tx.latency}ms</small><br>
+                            <small class="text-muted">${tx.timestamp.toLocaleTimeString()}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateNodeActivityTimeline() {
+            const container = document.getElementById('node-activity-timeline');
+            const activities = [
+                { time: new Date(), event: 'Node started successfully', type: 'success' },
+                { time: new Date(Date.now() - 300000), event: 'Elected as cluster leader', type: 'info' },
+                { time: new Date(Date.now() - 600000), event: 'Joined cluster', type: 'info' },
+                { time: new Date(Date.now() - 900000), event: 'Connection pool initialized', type: 'success' },
+                { time: new Date(Date.now() - 1200000), event: 'Database connection established', type: 'success' }
+            ];
+
+            container.innerHTML = activities.map(activity => `
+                <div class="timeline-item">
+                    <div class="fw-bold">${activity.event}</div>
+                    <small class="text-muted">${activity.time.toLocaleString()}</small>
+                </div>
+            `).join('');
+        }
+
+        function updateNodeCharts() {
+            const now = new Date();
+            const timeLabels = [];
+            const transactionData = [];
+            const latencyData = [];
+
+            // Generate mock chart data
+            for (let i = 9; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 30000);
+                timeLabels.push(time.toLocaleTimeString());
+                transactionData.push(Math.floor(Math.random() * 100) + 50);
+                latencyData.push(Math.random() * 20 + 5);
+            }
+
+            // Update transaction chart
+            if (transactionChart) {
+                transactionChart.data.labels = timeLabels;
+                transactionChart.data.datasets[0].data = transactionData;
+                transactionChart.update('none');
+            }
+
+            // Update latency chart
+            if (latencyChart) {
+                latencyChart.data.labels = timeLabels;
+                latencyChart.data.datasets[0].data = latencyData;
+                latencyChart.update('none');
+            }
+        }
+
+        function refreshNodeData() {
+            loadNodeData();
+        }
+
+        function showNodeConnectionDetails() {
+            alert('Connection details would be shown here. This feature can be expanded to show detailed connection information.');
+        }
+
+        function showNodeDiagnostics() {
+            alert('Node diagnostics would be run here. This feature can be expanded to show detailed diagnostic information.');
+        }
+
+        function exportNodeReport() {
+            alert('Node report export would be implemented here. This feature can be expanded to generate downloadable reports.');
+        }
+
+        // Initialize replication monitor
+        function initializeReplicationMonitor() {
+            initializeReplicationCharts();
+            loadReplicationData();
+
+            if (replicationRefreshInterval) clearInterval(replicationRefreshInterval);
+            replicationRefreshInterval = setInterval(loadReplicationData, 5000);
+        }
+
+        function initializeReplicationCharts() {
+            // Lag Trends Chart
+            const lagCtx = document.getElementById('lagTrendsChart').getContext('2d');
+            lagTrendsChart = new Chart(lagCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Lag (ms)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+
+            // Replication Health Chart (Doughnut)
+            const healthCtx = document.getElementById('replicationHealthChart').getContext('2d');
+            replicationHealthChart = new Chart(healthCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Synced', 'Syncing', 'Failed'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadReplicationData() {
+            try {
+                const response = await fetch('/api/cluster/replication');
+                const data = await response.json();
+
+                if (data.success) {
+                    updateReplicationData(data.data);
+                } else {
+                    // Mock data for demonstration
+                    const mockData = {
+                        consensusActive: true,
+                        currentTerm: 5,
+                        nodeStates: {
+                            '0': 'leader',
+                            '1': 'follower',
+                            '2': 'follower'
+                        },
+                        replicationLag: {
+                            '1': 15,
+                            '2': 8
+                        }
+                    };
+                    updateReplicationData(mockData);
+                }
+
+                document.getElementById('repl-last-updated').textContent = new Date().toLocaleTimeString();
+
+            } catch (error) {
+                console.error('Error loading replication data:', error);
+                // Use mock data on error
+                const mockData = {
+                    consensusActive: true,
+                    currentTerm: 5,
+                    nodeStates: {
+                        '0': 'leader',
+                        '1': 'follower',
+                        '2': 'follower'
+                    },
+                    replicationLag: {
+                        '1': 15,
+                        '2': 8
+                    }
+                };
+                updateReplicationData(mockData);
+                document.getElementById('repl-last-updated').textContent = new Date().toLocaleTimeString();
+            }
+        }
+
+        function updateReplicationData(data) {
+            updateReplicationOverview(data);
+            updateReplicationNodesGrid(data);
+            updateReplicationStatistics(data);
+            updateReplicationCharts(data);
+            updateReplicationPendingOperations();
+            updateReplicationFailoverHistory();
+        }
+
+        function updateReplicationOverview(data) {
+            // Consensus status
+            const consensusElement = document.getElementById('repl-consensus-status');
+            if (data.consensusActive) {
+                consensusElement.className = 'consensus-indicator consensus-active';
+                consensusElement.innerHTML = '<i class="fas fa-check-circle"></i><br>Consensus Active';
+            } else {
+                consensusElement.className = 'consensus-indicator consensus-inactive';
+                consensusElement.innerHTML = '<i class="fas fa-times-circle"></i><br>Consensus Inactive';
+            }
+
+            // Current term
+            document.getElementById('repl-current-term').textContent = `Term: ${data.currentTerm || 0}`;
+
+            // Count active followers
+            const followers = Object.values(data.nodeStates || {}).filter(state => state === 'follower').length;
+            document.getElementById('repl-active-followers').textContent = followers;
+
+            // Calculate average lag
+            const lagValues = Object.values(data.replicationLag || {});
+            const avgLag = lagValues.length > 0 ?
+                Math.round(lagValues.reduce((a, b) => a + b, 0) / lagValues.length) : 0;
+            document.getElementById('repl-replication-lag').textContent = `${avgLag}ms`;
+        }
+
+        function updateReplicationNodesGrid(data) {
+            const grid = document.getElementById('repl-nodes-replication-grid');
+            grid.innerHTML = '';
+
+            const nodeStates = data.nodeStates || {};
+            const replicationLag = data.replicationLag || {};
+
+            Object.entries(nodeStates).forEach(([nodeId, state], index) => {
+                const lag = replicationLag[nodeId] || 0;
+                const lagClass = lag < 10 ? 'lag-low' : lag < 50 ? 'lag-medium' : 'lag-high';
+                const syncClass = lag < 10 ? 'sync-synced' : lag < 50 ? 'sync-syncing' : 'sync-failed';
+
+                const cardClass = state === 'leader' ? 'leader' :
+                                state === 'follower' ? 'follower' : 'unreachable';
+
+                const nodeCard = document.createElement('div');
+                nodeCard.className = 'col-md-4 mb-3';
+
+                const isLast = index === Object.keys(nodeStates).length - 1;
+                const arrow = !isLast ? '<i class="fas fa-arrow-right replication-arrow"></i>' : '';
+
+                nodeCard.innerHTML = `
+                    <div class="node-replication-card ${cardClass} p-3 position-relative">
+                        <div class="text-center">
+                            <h6 class="mb-2">
+                                <i class="fas fa-server"></i> Node ${nodeId}
+                                ${state === 'leader' ? '<i class="fas fa-crown text-warning ms-1"></i>' : ''}
+                            </h6>
+                            <div class="mb-2">
+                                <span class="sync-status ${syncClass}"></span>
+                                <span class="text-capitalize">${state}</span>
+                            </div>
+                            <div class="lag-indicator ${lagClass}">
+                                Lag: ${lag}ms
+                            </div>
+                        </div>
+                        ${arrow}
+                    </div>
+                `;
+
+                grid.appendChild(nodeCard);
+            });
+        }
+
+        function updateReplicationStatistics(data) {
+            // Mock statistics for demonstration
+            document.getElementById('repl-ops-replicated').textContent = (Math.floor(Math.random() * 10000) + 1000).toLocaleString();
+            document.getElementById('repl-replication-rate').textContent = Math.floor(Math.random() * 100) + 50;
+            document.getElementById('repl-pending-count').textContent = Math.floor(Math.random() * 20);
+
+            const nodeStates = data.nodeStates || {};
+            const syncedNodes = Object.values(nodeStates).filter(state => state !== 'unreachable').length;
+            document.getElementById('repl-sync-nodes').textContent = syncedNodes;
+
+            document.getElementById('repl-last-commit').textContent = new Date(Date.now() - Math.random() * 60000).toLocaleTimeString();
+            document.getElementById('repl-commit-rate').textContent = `${Math.floor(Math.random() * 20) + 80}%`;
+        }
+
+        function updateReplicationCharts(data) {
+            updateReplicationLagTrendsChart(data);
+            updateReplicationHealthChart(data);
+        }
+
+        function updateReplicationLagTrendsChart(data) {
+            const now = new Date();
+            const timeLabels = [];
+
+            // Generate time labels (last 10 data points)
+            for (let i = 9; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 30000);
+                timeLabels.push(time.toLocaleTimeString());
+            }
+
+            const datasets = [];
+            const nodeStates = data.nodeStates || {};
+            const colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8'];
+
+            Object.entries(nodeStates).forEach(([nodeId, state], index) => {
+                if (state !== 'leader') {
+                    const lagData = [];
+                    for (let i = 0; i < 10; i++) {
+                        lagData.push(Math.random() * 50 + 5);
+                    }
+
+                    datasets.push({
+                        label: `Node ${nodeId}`,
+                        data: lagData,
+                        borderColor: colors[index % colors.length],
+                        backgroundColor: colors[index % colors.length] + '20',
+                        tension: 0.4
+                    });
+                }
+            });
+
+            if (lagTrendsChart) {
+                lagTrendsChart.data.labels = timeLabels;
+                lagTrendsChart.data.datasets = datasets;
+                lagTrendsChart.update('none');
+            }
+        }
+
+        function updateReplicationHealthChart(data) {
+            const nodeStates = data.nodeStates || {};
+            const lagData = data.replicationLag || {};
+
+            let synced = 0, syncing = 0, failed = 0;
+
+            Object.entries(nodeStates).forEach(([nodeId, state]) => {
+                if (state === 'unreachable') {
+                    failed++;
+                } else {
+                    const lag = lagData[nodeId] || 0;
+                    if (lag < 10) {
+                        synced++;
+                    } else {
+                        syncing++;
+                    }
+                }
+            });
+
+            if (replicationHealthChart) {
+                replicationHealthChart.data.datasets[0].data = [synced, syncing, failed];
+                replicationHealthChart.update('none');
+            }
+        }
+
+        function updateReplicationPendingOperations() {
+            const container = document.getElementById('repl-pending-operations');
+            const operations = [];
+
+            // Generate mock pending operations
+            const operationTypes = ['PUT', 'DELETE', 'SET'];
+            for (let i = 0; i < Math.floor(Math.random() * 10) + 3; i++) {
+                operations.push({
+                    id: Math.floor(Math.random() * 10000),
+                    type: operationTypes[Math.floor(Math.random() * operationTypes.length)],
+                    key: `key_${Math.floor(Math.random() * 1000)}`,
+                    timestamp: new Date(Date.now() - Math.random() * 300000),
+                    status: Math.random() > 0.7 ? 'pending' : 'committed'
+                });
+            }
+
+            container.innerHTML = operations.map(op => `
+                <div class="operation-item operation-${op.status}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${op.type}</strong> ${op.key}
+                            <br><small class="text-muted">ID: ${op.id}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-${op.status === 'pending' ? 'warning' : 'success'}">${op.status}</span>
+                            <br><small class="text-muted">${op.timestamp.toLocaleTimeString()}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateReplicationFailoverHistory() {
+            const container = document.getElementById('repl-failover-timeline');
+            const events = [
+                {
+                    time: new Date(),
+                    event: 'Replication monitoring active',
+                    type: 'success',
+                    details: 'All nodes synchronized successfully'
+                },
+                {
+                    time: new Date(Date.now() - 1800000),
+                    event: 'Node 2 rejoined cluster',
+                    type: 'success',
+                    details: 'Node 2 completed catch-up replication'
+                },
+                {
+                    time: new Date(Date.now() - 3600000),
+                    event: 'Failover initiated',
+                    type: 'critical',
+                    details: 'Node 1 became unreachable, Node 0 elected as leader'
+                },
+                {
+                    time: new Date(Date.now() - 7200000),
+                    event: 'Consensus term updated',
+                    type: 'info',
+                    details: 'Election term incremented to current value'
+                }
+            ];
+
+            container.innerHTML = events.map(event => `
+                <div class="failover-item ${event.type}">
+                    <div class="fw-bold">${event.event}</div>
+                    <div class="text-muted mb-1">${event.details}</div>
+                    <small class="text-muted">${event.time.toLocaleString()}</small>
+                </div>
+            `).join('');
+        }
+
+        function refreshReplicationData() {
+            loadReplicationData();
+        }
+
+        function showReplicationDetails() {
+            alert('Detailed replication view would be shown here. This feature can be expanded to show comprehensive replication metrics.');
+        }
+
+        function pauseReplication() {
+            if (confirm('Are you sure you want to pause replication? This may affect data consistency.')) {
+                alert('Replication pause functionality would be implemented here.');
+            }
+        }
+
+        function resumeReplication() {
+            alert('Replication resume functionality would be implemented here.');
+        }
+
+        function triggerFailover() {
+            if (confirm('Are you sure you want to trigger a manual failover? This will change the cluster leader.')) {
+                alert('Manual failover functionality would be implemented here.');
+            }
+        }
+
+        function exportReplicationReport() {
+            alert('Replication report export would be implemented here. This feature can generate detailed replication reports.');
+        }
+
+        // Cleanup intervals on page unload
+        window.addEventListener('beforeunload', () => {
+            if (clusterRefreshInterval) clearInterval(clusterRefreshInterval);
+            if (nodeRefreshInterval) clearInterval(nodeRefreshInterval);
+            if (replicationRefreshInterval) clearInterval(replicationRefreshInterval);
+        });
+
+        // Initialize the first tab on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // The browse tab is already active by default
+        });
+    </script>
 </body>
 </html>
