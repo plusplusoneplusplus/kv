@@ -4,7 +4,9 @@ members = [
     "crates/benchmark",
     "crates/kv-storage-api",
     "crates/kv-storage-rocksdb",
-    "crates/kv-storage-mockdb"
+    "crates/kv-storage-mockdb",
+    "crates/consensus-api",
+    "crates/consensus-mock"
 ]
 resolver = "2"
 
