@@ -236,6 +236,14 @@ impl KvStoreExecutor {
                 let result = self.database.set_fault_injection(config).await;
                 Ok(OperationResult::OpResult(result))
             }
+
+            // Diagnostic operations - these are handled at the routing manager level
+            // and should not reach the executor, but we need to handle them to avoid compile errors
+            KvOperation::GetClusterHealth
+            | KvOperation::GetDatabaseStats { .. }
+            | KvOperation::GetNodeInfo { .. } => {
+                Err(RoutingError::DatabaseError("Diagnostic operations should be handled at routing level".to_string()))
+            }
         }
     }
 

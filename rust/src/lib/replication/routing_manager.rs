@@ -1,11 +1,14 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use kv_storage_api::KvDatabase;
 use kv_storage_rocksdb::config::DeploymentMode;
 use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
-use crate::lib::cluster::ClusterManager;
+use crate::lib::cluster::{ClusterManager, NodeStatus as ClusterNodeStatus};
+use crate::generated::kvstore::{ClusterHealth, DatabaseStats, NodeStatus};
 use super::errors::{RoutingError, RoutingResult};
 use super::executor::KvStoreExecutor;
+use thrift::OrderedFloat;
 
 /// Central routing manager that decides how to handle operations based on deployment mode
 /// and operation type. In Phase 1, this simply forwards all operations to the local database.
@@ -248,6 +251,149 @@ impl RoutingManager {
                 let result = self.database.set_fault_injection(config).await;
                 Ok(OperationResult::OpResult(result))
             }
+
+            // Diagnostic operations for cluster management
+            KvOperation::GetClusterHealth => {
+                self.handle_get_cluster_health().await
+            }
+
+            KvOperation::GetDatabaseStats { include_detailed } => {
+                self.handle_get_database_stats(include_detailed).await
+            }
+
+            KvOperation::GetNodeInfo { node_id } => {
+                self.handle_get_node_info(node_id).await
+            }
+        }
+    }
+
+    /// Handle cluster health diagnostic request
+    async fn handle_get_cluster_health(&self) -> RoutingResult<OperationResult> {
+        let nodes = self.cluster_manager.get_all_nodes().await;
+        let mut node_statuses = Vec::new();
+        let mut healthy_count = 0;
+        let mut leader_info = None;
+
+        for (node_id, node_info) in nodes {
+            let status_str = match node_info.status {
+                ClusterNodeStatus::Healthy => {
+                    healthy_count += 1;
+                    "healthy"
+                }
+                ClusterNodeStatus::Degraded => "degraded",
+                ClusterNodeStatus::Unreachable => "unreachable",
+                ClusterNodeStatus::Unknown => "unknown",
+            };
+
+            let uptime = SystemTime::now()
+                .duration_since(node_info.last_seen)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
+            let node_status = NodeStatus::new(
+                node_id as i32,
+                node_info.endpoint.clone(),
+                status_str.to_string(),
+                node_info.is_leader,
+                node_info.last_seen
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                node_info.term as i64,
+                Some(uptime),
+            );
+
+            if node_info.is_leader {
+                leader_info = Some(node_status.clone());
+            }
+
+            node_statuses.push(node_status);
+        }
+
+        let total_count = node_statuses.len() as i32;
+        let cluster_status = if healthy_count == total_count {
+            "healthy"
+        } else if healthy_count > 0 {
+            "degraded"
+        } else {
+            "unhealthy"
+        };
+
+        let current_term = self.cluster_manager.get_all_nodes().await
+            .values()
+            .map(|n| n.term)
+            .max()
+            .unwrap_or(0) as i64;
+
+        let cluster_health = ClusterHealth::new(
+            node_statuses,
+            healthy_count,
+            total_count,
+            leader_info,
+            cluster_status.to_string(),
+            current_term,
+        );
+
+        Ok(OperationResult::ClusterHealthResult(cluster_health))
+    }
+
+    /// Handle database statistics diagnostic request
+    async fn handle_get_database_stats(&self, _include_detailed: bool) -> RoutingResult<OperationResult> {
+        // Get basic database statistics
+        // For now, we'll return mock data - in a real implementation, this would
+        // query RocksDB statistics and the database state
+        
+        let stats = DatabaseStats::new(
+            0,  // total_keys - would need to scan or maintain counter
+            0,  // total_size_bytes - would query RocksDB size
+            0,  // write_operations_count - would maintain counter
+            0,  // read_operations_count - would maintain counter
+            OrderedFloat(0.0),  // average_response_time_ms - would maintain moving average
+            0,  // active_transactions - would track active transactions
+            0,  // committed_transactions - would maintain counter
+            0,  // aborted_transactions - would maintain counter
+            Some(0),  // cache_hit_rate_percent - would query RocksDB cache stats
+            Some(0),  // compaction_pending_bytes - would query RocksDB compaction stats
+        );
+
+        Ok(OperationResult::DatabaseStatsResult(stats))
+    }
+
+
+    /// Handle node information diagnostic request
+    async fn handle_get_node_info(&self, node_id: Option<u32>) -> RoutingResult<OperationResult> {
+        let target_node_id = node_id.unwrap_or_else(|| self.node_id.unwrap_or(0));
+        let nodes = self.cluster_manager.get_all_nodes().await;
+
+        if let Some(node_info) = nodes.get(&target_node_id) {
+            let status_str = match node_info.status {
+                ClusterNodeStatus::Healthy => "healthy",
+                ClusterNodeStatus::Degraded => "degraded",
+                ClusterNodeStatus::Unreachable => "unreachable",
+                ClusterNodeStatus::Unknown => "unknown",
+            };
+
+            let uptime = SystemTime::now()
+                .duration_since(node_info.last_seen)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
+            let node_status = NodeStatus::new(
+                target_node_id as i32,
+                node_info.endpoint.clone(),
+                status_str.to_string(),
+                node_info.is_leader,
+                node_info.last_seen
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                node_info.term as i64,
+                Some(uptime),
+            );
+
+            Ok(OperationResult::NodeInfoResult(node_status))
+        } else {
+            Err(RoutingError::DatabaseError(format!("Node {} not found", target_node_id)))
         }
     }
 }

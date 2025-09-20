@@ -539,6 +539,102 @@ impl TransactionalKVSyncHandler for ThriftKvAdapter {
         }
     }
 
+    // Diagnostic API endpoints for cluster management
+
+    fn handle_get_cluster_health(&self, req: GetClusterHealthRequest) -> thrift::Result<GetClusterHealthResponse> {
+        // TODO: Implement authentication check
+        if let Some(_auth_token) = req.auth_token {
+            // For now, accept any non-empty token
+        }
+
+        let operation = KvOperation::GetClusterHealth;
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::ClusterHealthResult(cluster_health)) => {
+                Ok(GetClusterHealthResponse::new(
+                    true,
+                    Some(cluster_health),
+                    None
+                ))
+            }
+            Err(e) => Ok(GetClusterHealthResponse::new(
+                false,
+                None,
+                Some(e.to_string())
+            )),
+            _ => Ok(GetClusterHealthResponse::new(
+                false,
+                None,
+                Some("Unexpected result type".to_string())
+            )),
+        }
+    }
+
+    fn handle_get_database_stats(&self, req: GetDatabaseStatsRequest) -> thrift::Result<GetDatabaseStatsResponse> {
+        // TODO: Implement authentication check
+        if let Some(_auth_token) = req.auth_token {
+            // For now, accept any non-empty token
+        }
+
+        let include_detailed = req.include_detailed_stats.unwrap_or(false);
+        let operation = KvOperation::GetDatabaseStats { include_detailed };
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::DatabaseStatsResult(stats)) => {
+                Ok(GetDatabaseStatsResponse::new(
+                    true,
+                    Some(stats),
+                    None
+                ))
+            }
+            Err(e) => Ok(GetDatabaseStatsResponse::new(
+                false,
+                None,
+                Some(e.to_string())
+            )),
+            _ => Ok(GetDatabaseStatsResponse::new(
+                false,
+                None,
+                Some("Unexpected result type".to_string())
+            )),
+        }
+    }
+
+
+    fn handle_get_node_info(&self, req: GetNodeInfoRequest) -> thrift::Result<GetNodeInfoResponse> {
+        // TODO: Implement authentication check
+        if let Some(_auth_token) = req.auth_token {
+            // For now, accept any non-empty token
+        }
+
+        let operation = KvOperation::GetNodeInfo {
+            node_id: req.node_id.map(|id| id as u32),
+        };
+        let result = self.execute_operation(operation);
+
+        match result {
+            Ok(OperationResult::NodeInfoResult(node_info)) => {
+                Ok(GetNodeInfoResponse::new(
+                    true,
+                    Some(node_info),
+                    None
+                ))
+            }
+            Err(e) => Ok(GetNodeInfoResponse::new(
+                false,
+                None,
+                Some(e.to_string())
+            )),
+            _ => Ok(GetNodeInfoResponse::new(
+                false,
+                None,
+                Some("Unexpected result type".to_string())
+            )),
+        }
+    }
+
     // Health check
 
     fn handle_ping(&self, req: PingRequest) -> thrift::Result<PingResponse> {
