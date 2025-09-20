@@ -15,6 +15,8 @@ pub enum RoutingError {
     NodeUnavailable,
     /// Invalid operation for current state
     InvalidOperation(String),
+    /// Sequence error for state machine operations
+    SequenceError(String),
 }
 
 impl fmt::Display for RoutingError {
@@ -31,6 +33,7 @@ impl fmt::Display for RoutingError {
             RoutingError::Timeout => write!(f, "Operation timed out"),
             RoutingError::NodeUnavailable => write!(f, "Node unavailable"),
             RoutingError::InvalidOperation(msg) => write!(f, "Invalid operation: {}", msg),
+            RoutingError::SequenceError(msg) => write!(f, "Sequence error: {}", msg),
         }
     }
 }

@@ -1,75 +1,82 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::HashMap;
+use tokio::sync::{RwLock, oneshot};
 
 use kv_storage_api::KvDatabase;
-use kv_storage_rocksdb::config::DeploymentMode;
-use crate::lib::operations::{KvOperation, DatabaseOperation, OperationType, OperationResult};
+use crate::lib::operations::{KvOperation, OperationResult};
 use super::errors::{RoutingError, RoutingResult};
-use super::executor::KvStoreExecutor;
 
-/// Central routing manager that decides how to handle operations based on deployment mode
-/// and operation type. In Phase 1, this simply forwards all operations to the local database.
-/// Future phases will add consensus-based routing for write operations.
-pub struct RoutingManager {
+/// State Machine Executor that applies consensus decisions to the local database.
+/// This component is responsible for:
+/// - Tracking the sequence of applied operations to maintain consistency
+/// - Applying operations to the local database in the correct order
+/// - Managing pending operation responses for synchronous request handling
+/// - Separating local execution from consensus application
+pub struct KvStoreExecutor {
+    /// The underlying database where operations are applied
     database: Arc<dyn KvDatabase>,
-    deployment_mode: DeploymentMode,
-    #[allow(dead_code)]
-    node_id: Option<u32>,
-    /// State machine executor for applying consensus operations
-    /// Currently unused but prepared for consensus integration
-    #[allow(dead_code)]
-    executor: Arc<KvStoreExecutor>,
+
+    /// Sequence number of the last applied operation
+    /// This ensures operations are applied in the correct order
+    applied_sequence: Arc<AtomicU64>,
+
+    /// Pending responses for operations waiting for consensus
+    /// Maps sequence number to response sender
+    pending_responses: Arc<RwLock<HashMap<u64, oneshot::Sender<OperationResult>>>>,
 }
 
-impl RoutingManager {
-    /// Create a new routing manager
-    pub fn new(
-        database: Arc<dyn KvDatabase>,
-        deployment_mode: DeploymentMode,
-        node_id: Option<u32>,
-    ) -> Self {
-        let executor = Arc::new(KvStoreExecutor::new(database.clone()));
-
+impl KvStoreExecutor {
+    /// Create a new State Machine Executor
+    pub fn new(database: Arc<dyn KvDatabase>) -> Self {
         Self {
             database,
-            deployment_mode,
-            node_id,
-            executor,
+            applied_sequence: Arc::new(AtomicU64::new(0)),
+            pending_responses: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    /// Get a reference to the state machine executor
-    /// This will be used by consensus integration in future phases
-    pub fn get_executor(&self) -> Arc<KvStoreExecutor> {
-        self.executor.clone()
+    /// Get the current applied sequence number
+    pub fn get_applied_sequence(&self) -> u64 {
+        self.applied_sequence.load(Ordering::SeqCst)
     }
 
-    /// Route an operation based on its type and current deployment mode
-    pub async fn route_operation(&self, operation: KvOperation) -> RoutingResult<OperationResult> {
-        match self.deployment_mode {
-            DeploymentMode::Standalone => {
-                // In standalone mode, execute everything locally
-                self.execute_locally(operation).await
-            }
-            DeploymentMode::Replicated => {
-                // In Phase 1 of replicated mode, still execute locally
-                // TODO: In future phases, route writes through consensus
-                match operation.operation_type() {
-                    OperationType::Read => {
-                        // Read operations can be served locally
-                        self.execute_locally(operation).await
-                    }
-                    OperationType::Write => {
-                        // Write operations - for now execute locally
-                        // TODO: Route through consensus in future phases
-                        self.execute_locally(operation).await
-                    }
-                }
-            }
+    /// Check if an operation with the given sequence has been applied
+    pub fn is_applied(&self, sequence: u64) -> bool {
+        self.get_applied_sequence() >= sequence
+    }
+
+    /// Apply an operation to the local database as part of the state machine
+    /// This method should only be called by the consensus system when an operation
+    /// has been agreed upon by the cluster.
+    pub async fn apply_operation(&self, sequence: u64, operation: KvOperation) -> RoutingResult<OperationResult> {
+        // Ensure operations are applied in order
+        let expected_sequence = self.get_applied_sequence() + 1;
+        if sequence != expected_sequence {
+            return Err(RoutingError::SequenceError(format!(
+                "Expected sequence {}, got {}",
+                expected_sequence, sequence
+            )));
         }
+
+        // Apply the operation to the database
+        let result = self.execute_on_database(operation).await?;
+
+        // Update the applied sequence atomically
+        self.applied_sequence.store(sequence, Ordering::SeqCst);
+
+        // Notify any pending request waiting for this operation
+        if let Some(sender) = self.pending_responses.write().await.remove(&sequence) {
+            // Ignore if the receiver has been dropped
+            let _ = sender.send(result.clone());
+        }
+
+        Ok(result)
     }
 
-    /// Execute an operation directly on the local database
-    async fn execute_locally(&self, operation: KvOperation) -> RoutingResult<OperationResult> {
+    /// Execute an operation directly on the database
+    /// This is similar to the routing manager's execute_locally but focused on state machine execution
+    async fn execute_on_database(&self, operation: KvOperation) -> RoutingResult<OperationResult> {
         match operation {
             KvOperation::Get { key, column_family } => {
                 let result = self.database.get(&key, column_family.as_deref()).await
@@ -170,30 +177,22 @@ impl RoutingManager {
             }
 
             KvOperation::SetVersionstampedKey { key_prefix, value, column_family } => {
-                // For versionstamped operations, we need to generate the key
-                // The key_prefix should contain placeholder bytes (usually null bytes) that we replace
-                // with the versionstamp. In FoundationDB, this is typically 10 bytes.
+                // Generate versionstamped key
                 let timestamp = self.database.get_read_version().await;
                 let mut full_key = key_prefix;
 
-                // Find the placeholder bytes (usually trailing null bytes) and replace them
-                // This is a simplified implementation - in reality, FoundationDB has specific rules
-                // about where the versionstamp goes. For this test, we'll replace the last 10 bytes
-                // if they exist and are null bytes.
                 if full_key.len() >= 10 {
                     let len = full_key.len();
                     let last_10 = &full_key[len-10..];
                     if last_10.iter().all(|&b| b == 0) {
-                        // Replace the last 10 bytes with timestamp (8 bytes) + 2-byte transaction order
                         full_key.truncate(len - 10);
-                        full_key.extend_from_slice(&timestamp.to_be_bytes()); // 8 bytes
-                        full_key.extend_from_slice(&[0u8, 0u8]); // 2 bytes for transaction order
+                        full_key.extend_from_slice(&timestamp.to_be_bytes());
+                        full_key.extend_from_slice(&[0u8, 0u8]);
                     }
                 }
 
                 let put_result = self.database.put(&full_key, &value, column_family.as_deref()).await;
 
-                // Return AtomicCommitResult with generated key
                 let atomic_result = kv_storage_api::AtomicCommitResult {
                     success: put_result.success,
                     error: put_result.error,
@@ -206,26 +205,22 @@ impl RoutingManager {
             }
 
             KvOperation::SetVersionstampedValue { key, value_prefix, column_family } => {
-                // For versionstamped values, we need to generate the value
-                // Similar to keys, we replace placeholder bytes with the versionstamp
+                // Generate versionstamped value
                 let timestamp = self.database.get_read_version().await;
                 let mut full_value = value_prefix;
 
-                // Find the placeholder bytes (usually trailing null bytes) and replace them
                 if full_value.len() >= 10 {
                     let len = full_value.len();
                     let last_10 = &full_value[len-10..];
                     if last_10.iter().all(|&b| b == 0) {
-                        // Replace the last 10 bytes with timestamp (8 bytes) + 2-byte transaction order
                         full_value.truncate(len - 10);
-                        full_value.extend_from_slice(&timestamp.to_be_bytes()); // 8 bytes
-                        full_value.extend_from_slice(&[0u8, 0u8]); // 2 bytes for transaction order
+                        full_value.extend_from_slice(&timestamp.to_be_bytes());
+                        full_value.extend_from_slice(&[0u8, 0u8]);
                     }
                 }
 
                 let put_result = self.database.put(&key, &full_value, column_family.as_deref()).await;
 
-                // Return AtomicCommitResult with generated value
                 let atomic_result = kv_storage_api::AtomicCommitResult {
                     success: put_result.success,
                     error: put_result.error,
@@ -243,28 +238,42 @@ impl RoutingManager {
             }
         }
     }
+
+    /// Register a pending response for an operation that will be processed through consensus
+    /// Returns a receiver that will get the result once the operation is applied
+    pub async fn register_pending_operation(&self, sequence: u64) -> oneshot::Receiver<OperationResult> {
+        let (sender, receiver) = oneshot::channel();
+        self.pending_responses.write().await.insert(sequence, sender);
+        receiver
+    }
+
+    /// Check if there are any pending operations waiting for responses
+    pub async fn has_pending_operations(&self) -> bool {
+        !self.pending_responses.read().await.is_empty()
+    }
+
+    /// Get the count of pending operations
+    pub async fn pending_operations_count(&self) -> usize {
+        self.pending_responses.read().await.len()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use kv_storage_rocksdb::config::DeploymentMode;
     use kv_storage_api::{GetResult, OpResult, GetRangeResult, AtomicCommitRequest, AtomicCommitResult, FaultInjectionConfig};
-    use std::collections::HashMap;
     use std::sync::Mutex;
 
     #[derive(Debug)]
     struct MockDatabase {
         data: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
-        version_counter: std::sync::atomic::AtomicU64,
     }
 
     impl MockDatabase {
         fn new() -> Self {
             Self {
                 data: Mutex::new(HashMap::new()),
-                version_counter: std::sync::atomic::AtomicU64::new(1),
             }
         }
     }
@@ -305,98 +314,42 @@ mod tests {
             }
         }
 
-        async fn list_keys(&self, prefix: &[u8], limit: u32, _column_family: Option<&str>) -> Result<Vec<Vec<u8>>, String> {
-            let data = self.data.lock().unwrap();
-            let mut matching_keys: Vec<Vec<u8>> = data
-                .keys()
-                .filter(|key| key.starts_with(prefix))
-                .cloned()
-                .collect();
-            matching_keys.sort();
-            matching_keys.truncate(limit as usize);
-            Ok(matching_keys)
+        async fn list_keys(&self, _prefix: &[u8], _limit: u32, _column_family: Option<&str>) -> Result<Vec<Vec<u8>>, String> {
+            Ok(vec![])
         }
 
         async fn get_range(
             &self,
-            begin_key: &[u8],
-            end_key: &[u8],
+            _begin_key: &[u8],
+            _end_key: &[u8],
             _begin_offset: i32,
-            begin_or_equal: bool,
+            _begin_or_equal: bool,
             _end_offset: i32,
-            end_or_equal: bool,
-            limit: Option<i32>,
+            _end_or_equal: bool,
+            _limit: Option<i32>,
             _column_family: Option<&str>,
         ) -> Result<GetRangeResult, String> {
-            let data = self.data.lock().unwrap();
-            let mut key_values: Vec<kv_storage_api::KeyValue> = data
-                .iter()
-                .filter(|(key, _)| {
-                    let include_start = if begin_or_equal {
-                        key.as_slice() >= begin_key
-                    } else {
-                        key.as_slice() > begin_key
-                    };
-                    let include_end = if end_or_equal {
-                        key.as_slice() <= end_key
-                    } else {
-                        key.as_slice() < end_key
-                    };
-                    include_start && include_end
-                })
-                .map(|(k, v)| kv_storage_api::KeyValue {
-                    key: k.clone(),
-                    value: v.clone(),
-                })
-                .collect();
-
-            key_values.sort_by(|a, b| a.key.cmp(&b.key));
-
-            if let Some(limit) = limit {
-                if limit > 0 {
-                    key_values.truncate(limit as usize);
-                }
-            }
-
             Ok(GetRangeResult {
-                key_values,
+                key_values: vec![],
                 success: true,
                 error: String::new(),
                 has_more: false,
             })
         }
 
-        async fn atomic_commit(&self, request: AtomicCommitRequest) -> AtomicCommitResult {
-            let mut data = self.data.lock().unwrap();
-
-            for operation in request.operations {
-                match operation.op_type.as_str() {
-                    "PUT" => {
-                        if let Some(value) = operation.value {
-                            data.insert(operation.key, value);
-                        }
-                    }
-                    "DELETE" => {
-                        data.remove(&operation.key);
-                    }
-                    _ => {}
-                }
-            }
-
-            let committed_version = self.version_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
+        async fn atomic_commit(&self, _request: AtomicCommitRequest) -> AtomicCommitResult {
             AtomicCommitResult {
                 success: true,
                 error: String::new(),
                 error_code: None,
-                committed_version: Some(committed_version),
+                committed_version: Some(1),
                 generated_keys: Vec::new(),
                 generated_values: Vec::new(),
             }
         }
 
         async fn get_read_version(&self) -> u64 {
-            self.version_counter.load(std::sync::atomic::Ordering::SeqCst)
+            1
         }
 
         async fn snapshot_read(&self, key: &[u8], _read_version: u64, column_family: Option<&str>) -> Result<GetResult, String> {
@@ -428,111 +381,156 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_routing_manager_standalone_mode() {
+    async fn test_executor_creation() {
         let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
+        let executor = KvStoreExecutor::new(mock_db);
 
-        // Test GET operation
-        let get_op = KvOperation::Get {
-            key: b"test_key".to_vec(),
-            column_family: None,
-        };
-
-        let result = routing_manager.route_operation(get_op).await;
-        assert!(result.is_ok());
-
-        // Test SET operation
-        let set_op = KvOperation::Set {
-            key: b"test_key".to_vec(),
-            value: b"test_value".to_vec(),
-            column_family: None,
-        };
-
-        let result = routing_manager.route_operation(set_op).await;
-        assert!(result.is_ok());
-
-        // Verify the value was set
-        let get_op = KvOperation::Get {
-            key: b"test_key".to_vec(),
-            column_family: None,
-        };
-
-        let result = routing_manager.route_operation(get_op).await;
-        assert!(result.is_ok());
-
-        if let Ok(OperationResult::GetResult(Ok(get_result))) = result {
-            assert!(get_result.found);
-            assert_eq!(get_result.value, b"test_value");
-        } else {
-            panic!("Expected successful get result");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_routing_manager_replicated_mode() {
-        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Replicated, Some(1));
-
-        // Test that replicated mode works the same as standalone for now
-        let set_op = KvOperation::Set {
-            key: b"replicated_key".to_vec(),
-            value: b"replicated_value".to_vec(),
-            column_family: None,
-        };
-
-        let result = routing_manager.route_operation(set_op).await;
-        assert!(result.is_ok());
-
-        let get_op = KvOperation::Get {
-            key: b"replicated_key".to_vec(),
-            column_family: None,
-        };
-
-        let result = routing_manager.route_operation(get_op).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_routing_manager_ping_operation() {
-        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
-
-        let ping_op = KvOperation::Ping {
-            message: Some(b"hello".to_vec()),
-            timestamp: Some(12345),
-        };
-
-        let result = routing_manager.route_operation(ping_op).await;
-        assert!(result.is_ok());
-
-        if let Ok(OperationResult::PingResult { message, client_timestamp, server_timestamp }) = result {
-            assert_eq!(message, b"hello");
-            assert_eq!(client_timestamp, 12345);
-            assert!(server_timestamp > 0);
-        } else {
-            panic!("Expected successful ping result");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_routing_manager_executor_integration() {
-        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
-        let routing_manager = RoutingManager::new(mock_db, DeploymentMode::Standalone, None);
-
-        // Verify executor is available and functional
-        let executor = routing_manager.get_executor();
         assert_eq!(executor.get_applied_sequence(), 0);
-        assert!(!executor.has_pending_operations().await);
+        assert!(!executor.is_applied(1));
+        assert!(executor.is_applied(0));
+    }
 
-        // The executor should be able to apply operations
-        let op = KvOperation::Set {
-            key: b"test_key".to_vec(),
-            value: b"test_value".to_vec(),
+    #[tokio::test]
+    async fn test_applied_sequence_tracking() {
+        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
+        let executor = KvStoreExecutor::new(mock_db);
+
+        // Initially no operations applied
+        assert_eq!(executor.get_applied_sequence(), 0);
+
+        // Test sequence checking
+        assert!(executor.is_applied(0));  // 0 is considered "applied" (initial state)
+        assert!(!executor.is_applied(1)); // 1 is not applied yet
+        assert!(!executor.is_applied(5)); // 5 is not applied yet
+    }
+
+    #[tokio::test]
+    async fn test_apply_operation_sequence_tracking() {
+        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
+        let executor = KvStoreExecutor::new(mock_db);
+
+        // Test applying operations in sequence
+        let op1 = KvOperation::Set {
+            key: b"key1".to_vec(),
+            value: b"value1".to_vec(),
             column_family: None,
         };
 
-        let result = executor.apply_operation(1, op).await;
+        let result = executor.apply_operation(1, op1).await;
         assert!(result.is_ok());
         assert_eq!(executor.get_applied_sequence(), 1);
+        assert!(executor.is_applied(1));
+        assert!(!executor.is_applied(2));
+
+        // Apply second operation
+        let op2 = KvOperation::Set {
+            key: b"key2".to_vec(),
+            value: b"value2".to_vec(),
+            column_family: None,
+        };
+
+        let result = executor.apply_operation(2, op2).await;
+        assert!(result.is_ok());
+        assert_eq!(executor.get_applied_sequence(), 2);
+        assert!(executor.is_applied(2));
+        assert!(!executor.is_applied(3));
+    }
+
+    #[tokio::test]
+    async fn test_apply_operation_out_of_sequence_error() {
+        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
+        let executor = KvStoreExecutor::new(mock_db);
+
+        // Try to apply operation 3 before 1 and 2
+        let op = KvOperation::Set {
+            key: b"key".to_vec(),
+            value: b"value".to_vec(),
+            column_family: None,
+        };
+
+        let result = executor.apply_operation(3, op).await;
+        assert!(result.is_err());
+
+        if let Err(RoutingError::SequenceError(msg)) = result {
+            assert!(msg.contains("Expected sequence 1, got 3"));
+        } else {
+            panic!("Expected SequenceError, got {:?}", result);
+        }
+
+        // Sequence should remain unchanged
+        assert_eq!(executor.get_applied_sequence(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pending_operation_management() {
+        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
+        let executor = KvStoreExecutor::new(mock_db);
+
+        // Initially no pending operations
+        assert!(!executor.has_pending_operations().await);
+        assert_eq!(executor.pending_operations_count().await, 0);
+
+        // Register a pending operation
+        let receiver = executor.register_pending_operation(1).await;
+        assert!(executor.has_pending_operations().await);
+        assert_eq!(executor.pending_operations_count().await, 1);
+
+        // Apply the operation, which should notify the pending receiver
+        let op = KvOperation::Set {
+            key: b"key".to_vec(),
+            value: b"value".to_vec(),
+            column_family: None,
+        };
+
+        let apply_result = executor.apply_operation(1, op).await;
+        assert!(apply_result.is_ok());
+
+        // The pending operation should have been removed
+        assert!(!executor.has_pending_operations().await);
+        assert_eq!(executor.pending_operations_count().await, 0);
+
+        // The receiver should have gotten the result
+        let received_result = receiver.await;
+        assert!(received_result.is_ok());
+
+        match received_result.unwrap() {
+            OperationResult::OpResult(op_result) => {
+                assert!(op_result.success);
+            }
+            _ => panic!("Expected OpResult"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_operation_through_executor() {
+        let mock_db = Arc::new(MockDatabase::new()) as Arc<dyn KvDatabase>;
+        let executor = KvStoreExecutor::new(mock_db);
+
+        // First, set a value through the executor
+        let set_op = KvOperation::Set {
+            key: b"test_key".to_vec(),
+            value: b"test_value".to_vec(),
+            column_family: None,
+        };
+
+        let result = executor.apply_operation(1, set_op).await;
+        assert!(result.is_ok());
+
+        // Now get the value
+        let get_op = KvOperation::Get {
+            key: b"test_key".to_vec(),
+            column_family: None,
+        };
+
+        let result = executor.apply_operation(2, get_op).await;
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            OperationResult::GetResult(Ok(get_result)) => {
+                assert!(get_result.found);
+                assert_eq!(get_result.value, b"test_value");
+            }
+            _ => panic!("Expected successful GetResult"),
+        }
     }
 }
