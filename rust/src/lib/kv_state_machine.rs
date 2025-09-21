@@ -1,12 +1,11 @@
-use consensus_api::{ConsensusResult, ConsensusError, LogEntry, NodeId, ConsensusNode};
-use consensus_mock::{MockConsensusNode, StateMachine};
+use consensus_api::{ConsensusResult, NodeId, ConsensusEngine, StateMachine, ConsensusError, LogEntry};
+use consensus_mock::MockConsensusEngine;
 use kv_storage_api::KvDatabase;
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::lib::operations::{KvOperation, OperationResult, DatabaseOperation};
+use crate::lib::operations::{KvOperation, OperationResult};
 use crate::lib::replication::executor::KvStoreExecutor;
 
 /// KV-specific state machine that delegates to KvStoreExecutor
@@ -26,111 +25,43 @@ impl KvStateMachine {
     pub fn new(executor: Arc<KvStoreExecutor>) -> Self {
         Self { executor }
     }
-
-    /// Validate that only write operations go through consensus
-    fn validate_operation(&self, operation: &KvOperation) -> Result<(), String> {
-        if operation.is_read_only() {
-            return Err("Read operations should not go through consensus".to_string());
-        }
-        Ok(())
-    }
-
-    /// Create a snapshot of the current state
-    fn create_snapshot(&self) -> Result<Vec<u8>, String> {
-        let snapshot_data = KvSnapshot {
-            last_applied_sequence: self.executor.get_applied_sequence(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-        };
-
-        bincode::serialize(&snapshot_data)
-            .map_err(|e| format!("Failed to serialize snapshot: {}", e))
-    }
-
-    /// Restore from a snapshot (placeholder - real implementation would restore database state)
-    fn restore_from_snapshot(&self, snapshot: &[u8]) -> Result<(), String> {
-        let _snapshot_data: KvSnapshot = bincode::deserialize(snapshot)
-            .map_err(|e| format!("Failed to deserialize snapshot: {}", e))?;
-
-        // In a real implementation, this would restore the database state
-        // For now, we just validate that the snapshot is valid
-        debug!("Snapshot restore validated");
-        Ok(())
-    }
 }
 
 impl StateMachine for KvStateMachine {
     fn apply(&self, entry: &LogEntry) -> ConsensusResult<Vec<u8>> {
-        // Deserialize the operation from the log entry
-        let operation: KvOperation = bincode::deserialize(&entry.data)
-            .map_err(|e| ConsensusError::SerializationError {
-                message: format!("Failed to deserialize KV operation: {}", e),
-            })?;
-
-        // Validate the operation
-        self.validate_operation(&operation)
-            .map_err(|e| ConsensusError::Other { message: e })?;
-
-        // For the consensus state machine, we just validate and return the operation
-        // The actual application to the database happens asynchronously via a different path
-        debug!("State machine applying operation at index {}", entry.index);
-
-        // Return the operation data - the async execution will happen in the wrapper
+        // For now, just return the entry data (the actual application happens in the executor)
+        debug!("KV state machine applying entry at index {}", entry.index);
         Ok(entry.data.clone())
     }
 
     fn snapshot(&self) -> ConsensusResult<Vec<u8>> {
-        self.create_snapshot()
-            .map_err(|e| ConsensusError::Other { message: e })
+        // Create a simple snapshot with the current applied sequence
+        let snapshot_data = format!("kv_snapshot:{}", self.executor.get_applied_sequence());
+        Ok(snapshot_data.into_bytes())
     }
 
     fn restore_snapshot(&self, snapshot: &[u8]) -> ConsensusResult<()> {
-        self.restore_from_snapshot(snapshot)
-            .map_err(|e| ConsensusError::Other { message: e })
+        // Validate snapshot format
+        let snapshot_str = String::from_utf8_lossy(snapshot);
+        if snapshot_str.starts_with("kv_snapshot:") {
+            debug!("KV state machine restored from snapshot: {}", snapshot_str);
+            Ok(())
+        } else {
+            Err(ConsensusError::Other {
+                message: "Invalid KV snapshot format".to_string(),
+            })
+        }
     }
 }
 
-/// Snapshot format for the KV state machine
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct KvSnapshot {
-    last_applied_sequence: u64,
-    timestamp: u64,
-}
 
-/// Wrapper to make Arc<KvStateMachine> implement StateMachine
-struct StateMachineWrapper {
-    inner: Arc<KvStateMachine>,
-}
 
-impl std::fmt::Debug for StateMachineWrapper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StateMachineWrapper")
-            .field("inner", &self.inner)
-            .finish()
-    }
-}
-
-impl StateMachine for StateMachineWrapper {
-    fn apply(&self, entry: &LogEntry) -> ConsensusResult<Vec<u8>> {
-        self.inner.apply(entry)
-    }
-
-    fn snapshot(&self) -> ConsensusResult<Vec<u8>> {
-        self.inner.snapshot()
-    }
-
-    fn restore_snapshot(&self, snapshot: &[u8]) -> ConsensusResult<()> {
-        self.inner.restore_snapshot(snapshot)
-    }
-}
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Consensus-enabled KV database that routes operations appropriately
 pub struct ConsensusKvDatabase {
-    consensus_node: Arc<RwLock<MockConsensusNode>>,
+    consensus_engine: Arc<RwLock<MockConsensusEngine>>,
     executor: Arc<KvStoreExecutor>,
     next_sequence: AtomicU64,
 }
@@ -152,35 +83,31 @@ impl ConsensusKvDatabase {
         // Create the executor that will handle actual database operations
         let executor = Arc::new(KvStoreExecutor::new(database));
 
-        // Create the state machine that delegates to the executor
-        let state_machine = Arc::new(KvStateMachine::new(executor.clone()));
+        // Create the KV state machine
+        let kv_state_machine = Box::new(KvStateMachine::new(executor.clone()));
 
-        // Create a wrapper that implements StateMachine for Arc<KvStateMachine>
-        let state_machine_wrapper = StateMachineWrapper {
-            inner: state_machine.clone(),
-        };
-
-        let consensus_node = Arc::new(RwLock::new(
-            MockConsensusNode::new(node_id, Box::new(state_machine_wrapper))
+        // Create the consensus engine with the KV state machine
+        let consensus_engine = Arc::new(RwLock::new(
+            MockConsensusEngine::new(node_id, kv_state_machine)
         ));
 
         Self {
-            consensus_node,
+            consensus_engine,
             executor,
             next_sequence: AtomicU64::new(1),
         }
     }
 
-    /// Start the consensus node
+    /// Start the consensus engine
     pub async fn start(&self) -> ConsensusResult<()> {
-        let mut node = self.consensus_node.write();
-        node.start().await
+        let mut engine = self.consensus_engine.write();
+        engine.start().await
     }
 
-    /// Stop the consensus node
+    /// Stop the consensus engine
     pub async fn stop(&self) -> ConsensusResult<()> {
-        let mut node = self.consensus_node.write();
-        node.stop().await
+        let mut engine = self.consensus_engine.write();
+        engine.stop().await
     }
 
     /// Execute a KV operation through consensus
@@ -197,8 +124,8 @@ impl ConsensusKvDatabase {
 
         // Propose the operation through consensus
         let response = {
-            let node = self.consensus_node.read();
-            node.propose(operation_data).await
+            let engine = self.consensus_engine.read();
+            engine.propose(operation_data).await
                 .map_err(|e| format!("Consensus proposal failed: {}", e))?
         };
 
@@ -209,8 +136,8 @@ impl ConsensusKvDatabase {
         // Wait for the operation to be committed
         if let Some(index) = response.index {
             let _committed_data = {
-                let node = self.consensus_node.read();
-                node.wait_for_commit(index).await
+                let engine = self.consensus_engine.read();
+                engine.wait_for_commit(index).await
                     .map_err(|e| format!("Failed to wait for commit: {}", e))?
             };
 
@@ -226,13 +153,13 @@ impl ConsensusKvDatabase {
         }
     }
 
-    /// Get the current consensus node information
+    /// Get the current consensus engine information
     pub fn consensus_info(&self) -> (NodeId, bool, u64, u64) {
-        let node = self.consensus_node.read();
+        let engine = self.consensus_engine.read();
         (
-            node.node_id().clone(),
-            node.is_leader(),
-            node.current_term(),
+            engine.node_id().clone(),
+            engine.is_leader(),
+            engine.current_term(),
             self.executor.get_applied_sequence(),
         )
     }

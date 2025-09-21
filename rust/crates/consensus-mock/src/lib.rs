@@ -1,3 +1,3 @@
 pub mod mock_node;
 
-pub use mock_node::{MockConsensusNode, StateMachine};
+pub use mock_node::{MockConsensusEngine, ConsensusMessage, ConsensusMessageBus};
