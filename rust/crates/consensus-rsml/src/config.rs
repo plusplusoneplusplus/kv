@@ -3,8 +3,11 @@
 //! This module defines configuration structures that extend the generic
 //! consensus configuration with RSML-specific options and validation.
 
-use consensus_api::{ConsensusConfig, NodeId};
+use consensus_api::ConsensusConfig;
+#[cfg(feature = "tcp")]
+use consensus_api::NodeId;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tcp")]
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -48,7 +51,7 @@ pub struct TransportConfig {
 }
 
 /// Available transport types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TransportType {
     /// In-memory transport for testing
     InMemory,

@@ -167,7 +167,7 @@ mod tests {
         };
 
         let consensus_error: ConsensusError = rsml_error.clone().into();
-        match consensus_error {
+        match &consensus_error {
             ConsensusError::Other { message } => {
                 assert!(message.contains("Network error with node 'node-1'"));
             }

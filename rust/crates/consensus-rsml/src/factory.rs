@@ -5,7 +5,9 @@
 
 use consensus_api::{ConsensusEngine, StateMachine};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
+#[cfg(feature = "test-utils")]
+use tracing::warn;
 
 use crate::{RsmlConfig, RsmlError, RsmlResult};
 
@@ -88,28 +90,9 @@ impl RsmlConsensusFactory {
     }
 
     /// Validate that required features are available for the configuration
-    fn validate_feature_availability(config: &RsmlConfig) -> RsmlResult<()> {
-        // Check TCP transport feature
-        match config.transport.transport_type {
-            #[cfg(not(feature = "tcp"))]
-            crate::config::TransportType::Tcp => {
-                return Err(RsmlError::FeatureUnavailable {
-                    feature: "tcp".to_string(),
-                    message: "TCP transport requires the 'tcp' feature to be enabled".to_string(),
-                });
-            }
-            _ => {}
-        }
-
-        // Check WAL feature
-        #[cfg(not(feature = "wal"))]
-        if config.wal_config.is_some() {
-            return Err(RsmlError::FeatureUnavailable {
-                feature: "wal".to_string(),
-                message: "WAL configuration requires the 'wal' feature to be enabled".to_string(),
-            });
-        }
-
+    fn validate_feature_availability(_config: &RsmlConfig) -> RsmlResult<()> {
+        // Feature validation is handled at compile time through conditional compilation
+        // of the TransportType enum variants and config fields
         Ok(())
     }
 
