@@ -80,14 +80,16 @@ jobs:
         cd rust
         # Force download and build all dependencies
         cargo fetch
-        cargo check --workspace
+        # Exclude RSML features since private submodule is not available in CI
+        cargo check --workspace --no-default-features --features ffi
       env:
         CARGO_INCREMENTAL: 1
 
     - name: Build Rust components
       run: |
         cd rust
-        cargo build --bin server --bin thrift-server
+        # Build without RSML features
+        cargo build --bin server --bin thrift-server --no-default-features --features ffi
       env:
         CARGO_INCREMENTAL: 1
 
@@ -116,4 +118,5 @@ jobs:
     - name: Run Rust tests
       run: |
         cd rust
-        cargo test --workspace
+        # Run tests without RSML features
+        cargo test --workspace --no-default-features --features ffi

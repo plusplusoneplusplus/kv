@@ -28,8 +28,9 @@ pub use lib::replication::{RoutingManager, RoutingError, RoutingResult};
 pub use lib::kv_state_machine::{KvStateMachine, ConsensusKvDatabase};
 
 // Conditionally re-export RSML consensus types when the feature is enabled
-#[cfg(feature = "rsml")]
-pub use consensus_rsml::{RsmlFactoryBuilder, RsmlError, RsmlConfig};
+// RSML exports removed - requires manual consensus-rsml dependency setup
+// #[cfg(feature = "rsml")]
+// pub use consensus_rsml::{RsmlFactoryBuilder, RsmlError, RsmlConfig};
 
 // Re-export generated Thrift types with prefix to avoid conflicts
 pub use generated::kvstore::{

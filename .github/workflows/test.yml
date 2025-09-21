@@ -70,7 +70,8 @@ jobs:
       run: |
         cd rust
         cargo fetch
-        cargo check --workspace
+        # Exclude RSML features since private submodule is not available in CI
+        cargo check --workspace --no-default-features --features ffi
       env:
         CARGO_INCREMENTAL: 1
 
@@ -79,8 +80,9 @@ jobs:
         cd rust
         # Run tests excluding client integration tests that require a server
         # This excludes the client_integration_tests which need localhost:9090
-        cargo test --workspace --lib --bins
-        cargo test --test consensus_tests
+        # Also exclude RSML features since private submodule is not available in CI
+        cargo test --workspace --lib --bins --no-default-features --features ffi
+        cargo test --test consensus_tests --no-default-features --features ffi
 
   test-benchmark:
     name: Test Benchmark (Thrift)
@@ -145,14 +147,16 @@ jobs:
       run: |
         cd rust
         cargo fetch
-        cargo check --workspace
+        # Exclude RSML features since private submodule is not available in CI
+        cargo check --workspace --no-default-features --features ffi
       env:
         CARGO_INCREMENTAL: 1
 
     - name: Build Thrift server (debug)
       run: |
         cd rust
-        cargo build --bin thrift-server
+        # Build without RSML features
+        cargo build --bin thrift-server --no-default-features --features ffi
       env:
         CARGO_INCREMENTAL: 1
 
