@@ -7,7 +7,7 @@ describe('Full-Stack Integration Tests', () => {
     let baseUrl;
 
     // Increase timeout for integration tests - servers can take time to start
-    jest.setTimeout(180000); // 3 minutes for CI environments
+    jest.setTimeout(300000); // 5 minutes for CI environments
 
     beforeAll(async () => {
         serverManager = new TestServerManager();

@@ -87,14 +87,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback - assume server is ready after 10 seconds
+            // Timeout fallback - assume server is ready after 30 seconds (for CI)
             setTimeout(() => {
                 if (this.thriftServer && this.thriftServer.pid) {
                     resolve();
                 } else {
-                    reject(new Error('Thrift server startup timeout after 10 seconds'));
+                    reject(new Error('Thrift server startup timeout after 30 seconds'));
                 }
-            }, 10000);
+            }, 30000);
         });
     }
 
@@ -146,14 +146,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback - give Node.js server time to start
+            // Timeout fallback - give Node.js server time to start (for CI)
             setTimeout(() => {
                 if (this.nodeServer && this.nodeServer.pid) {
                     resolve();
                 } else {
-                    reject(new Error('Node.js server startup timeout after 10 seconds'));
+                    reject(new Error('Node.js server startup timeout after 20 seconds'));
                 }
-            }, 10000);
+            }, 20000);
         });
     }
 
@@ -161,8 +161,8 @@ class TestServerManager {
      * Wait for servers to be healthy
      */
     async waitForServersReady() {
-        const maxRetries = 30; // Reduced for faster CI
-        const retryDelay = 1000; // Shorter delay between retries
+        const maxRetries = 60; // Longer for CI environments
+        const retryDelay = 2000; // 2 second delay between retries
 
         console.log('Waiting for servers to be ready...');
 
