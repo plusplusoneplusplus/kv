@@ -180,6 +180,31 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler thrift-compiler
+
+    - name: Cache CMake build directory
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          nodejs/thrift
+        key: cmake-build-nodejs-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'thrift/**') }}
+        restore-keys: |
+          cmake-build-nodejs-${{ runner.os }}-
+
+    - name: Generate protocol files
+      run: |
+        cmake -B build -S .
+        cmake --build build --target generate_thrift
+
+    - name: Copy generated files to expected location
+      run: |
+        mkdir -p nodejs/thrift
+        cp nodejs/generated/*.js nodejs/thrift/
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
