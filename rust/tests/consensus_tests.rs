@@ -19,7 +19,7 @@ async fn test_consensus_kv_basic_write_operations() {
     );
 
     // Create consensus-enabled KV database
-    let consensus_db = ConsensusKvDatabase::new("node-1".to_string(), database.clone());
+    let consensus_db = ConsensusKvDatabase::new_with_mock("node-1".to_string(), database.clone());
 
     // Start the consensus node
     consensus_db.start().await.unwrap();
@@ -67,7 +67,7 @@ async fn test_consensus_read_operations_bypass_consensus() {
         ).unwrap()
     );
 
-    let consensus_db = ConsensusKvDatabase::new("node-1".to_string(), database.clone());
+    let consensus_db = ConsensusKvDatabase::new_with_mock("node-1".to_string(), database.clone());
     consensus_db.start().await.unwrap();
 
     // First, set a value directly in the database
@@ -110,7 +110,7 @@ fn test_consensus_info() {
         ).unwrap()
     );
 
-    let consensus_db = ConsensusKvDatabase::new("test-node".to_string(), database);
+    let consensus_db = ConsensusKvDatabase::new_with_mock("test-node".to_string(), database);
 
     let (node_id, is_leader, term, applied_index) = consensus_db.consensus_info();
     assert_eq!(node_id, "test-node");

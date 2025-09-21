@@ -58,7 +58,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Consensus-enabled KV database that routes operations appropriately
 pub struct ConsensusKvDatabase {
-    consensus_engine: Arc<RwLock<MockConsensusEngine>>,
+    consensus_engine: Arc<RwLock<Box<dyn ConsensusEngine>>>,
     executor: Arc<KvStoreExecutor>,
     next_sequence: AtomicU64,
 }
@@ -74,25 +74,34 @@ impl std::fmt::Debug for ConsensusKvDatabase {
 impl ConsensusKvDatabase {
     /// Create a new consensus-enabled KV database
     pub fn new(
-        node_id: NodeId,
+        consensus_engine: Box<dyn ConsensusEngine>,
         database: Arc<dyn KvDatabase>
     ) -> Self {
         // Create the executor that will handle actual database operations
         let executor = Arc::new(KvStoreExecutor::new(database));
 
-        // Create the KV state machine
-        let kv_state_machine = Box::new(KvStateMachine::new(executor.clone()));
-
-        // Create the consensus engine with the KV state machine
-        let consensus_engine = Arc::new(RwLock::new(
-            MockConsensusEngine::new(node_id, kv_state_machine)
-        ));
-
         Self {
-            consensus_engine,
+            consensus_engine: Arc::new(RwLock::new(consensus_engine)),
             executor,
             next_sequence: AtomicU64::new(1),
         }
+    }
+
+    /// Create a new consensus-enabled KV database with mock consensus (for testing)
+    pub fn new_with_mock(
+        node_id: NodeId,
+        database: Arc<dyn KvDatabase>
+    ) -> Self {
+        // Create the executor that will handle actual database operations
+        let executor = Arc::new(KvStoreExecutor::new(database.clone()));
+
+        // Create the KV state machine
+        let kv_state_machine = Box::new(KvStateMachine::new(executor.clone()));
+
+        // Create the mock consensus engine with the KV state machine
+        let consensus_engine = Box::new(MockConsensusEngine::new(node_id, kv_state_machine));
+
+        Self::new(consensus_engine, database)
     }
 
     /// Start the consensus engine
