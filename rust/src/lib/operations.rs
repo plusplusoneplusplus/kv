@@ -125,7 +125,10 @@ impl DatabaseOperation for KvOperation {
 }
 
 /// Results returned by operations
-#[derive(Debug, Clone)]
+/// Note: Diagnostic operation results (ClusterHealth, DatabaseStats, NodeStatus)
+/// are not serializable as they come from generated code without Serialize derives.
+/// These operations should bypass consensus entirely.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationResult {
     GetResult(Result<GetResult, String>),
     GetRangeResult(GetRangeResult),
@@ -138,11 +141,16 @@ pub enum OperationResult {
         server_timestamp: i64,
     },
 
-    // Diagnostic operation results
+    // Diagnostic operation results - these should never go through consensus
+    // and are handled separately to avoid serialization issues
+    #[serde(skip)]
     ClusterHealthResult(ClusterHealth),
+    #[serde(skip)]
     DatabaseStatsResult(DatabaseStats),
+    #[serde(skip)]
     NodeInfoResult(NodeStatus),
 }
+
 
 #[cfg(test)]
 mod tests {

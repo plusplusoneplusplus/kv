@@ -5,7 +5,7 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::lib::operations::{KvOperation, OperationResult};
+use crate::lib::operations::{KvOperation, OperationResult, DatabaseOperation};
 use crate::lib::replication::executor::KvStoreExecutor;
 
 /// KV-specific state machine that delegates to KvStoreExecutor
@@ -29,9 +29,50 @@ impl KvStateMachine {
 
 impl StateMachine for KvStateMachine {
     fn apply(&self, entry: &LogEntry) -> ConsensusResult<Vec<u8>> {
-        // For now, just return the entry data (the actual application happens in the executor)
         debug!("KV state machine applying entry at index {}", entry.index);
-        Ok(entry.data.clone())
+
+        // Deserialize the operation from the log entry
+        let operation: KvOperation = bincode::deserialize(&entry.data)
+            .map_err(|e| ConsensusError::Other {
+                message: format!("Failed to deserialize operation: {}", e),
+            })?;
+
+        // For followers in multi-node consensus, we need to actually execute the operation
+        // We use a blocking approach since StateMachine::apply is synchronous
+        let result = match tokio::runtime::Handle::try_current() {
+            Ok(rt) => {
+                // We're in an async context, use block_in_place to avoid blocking the runtime
+                tokio::task::block_in_place(|| {
+                    rt.block_on(async {
+                        self.executor.apply_operation(entry.index, operation).await
+                    })
+                })
+            }
+            Err(_) => {
+                // We're not in an async context, create a new runtime
+                let rt = tokio::runtime::Runtime::new().map_err(|e| ConsensusError::Other {
+                    message: format!("Failed to create runtime: {}", e),
+                })?;
+                rt.block_on(async {
+                    self.executor.apply_operation(entry.index, operation).await
+                })
+            }
+        };
+
+        let operation_result = result.map_err(|e| ConsensusError::Other {
+            message: format!("Failed to apply operation: {}", e),
+        })?;
+
+        // Serialize the result directly
+        // Note: Diagnostic operations (ClusterHealth, DatabaseStats, NodeInfo)
+        // should not go through consensus anyway, so this should only handle
+        // serializable operation results
+        let result_data = bincode::serialize(&operation_result)
+            .map_err(|e| ConsensusError::Other {
+                message: format!("Failed to serialize result: {}", e),
+            })?;
+
+        Ok(result_data)
     }
 
     fn snapshot(&self) -> ConsensusResult<Vec<u8>> {
@@ -54,13 +95,10 @@ impl StateMachine for KvStateMachine {
     }
 }
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 /// Consensus-enabled KV database that routes operations appropriately
 pub struct ConsensusKvDatabase {
     consensus_engine: Arc<RwLock<Box<dyn ConsensusEngine>>>,
     executor: Arc<KvStoreExecutor>,
-    next_sequence: AtomicU64,
 }
 
 impl std::fmt::Debug for ConsensusKvDatabase {
@@ -83,7 +121,6 @@ impl ConsensusKvDatabase {
         Self {
             consensus_engine: Arc::new(RwLock::new(consensus_engine)),
             executor,
-            next_sequence: AtomicU64::new(1),
         }
     }
 
@@ -116,10 +153,39 @@ impl ConsensusKvDatabase {
         engine.stop().await
     }
 
-    /// Execute a KV operation through consensus
+    /// Execute a KV operation through the appropriate path
     pub async fn execute_operation(&self, operation: KvOperation) -> Result<OperationResult, String> {
-        debug!("Executing operation through consensus: {:?}", operation);
-        self.execute_write_operation(operation).await
+        debug!("Executing operation: {:?}", operation);
+
+        // Diagnostic operations bypass consensus entirely
+        match &operation {
+            KvOperation::GetClusterHealth |
+            KvOperation::GetDatabaseStats { .. } |
+            KvOperation::GetNodeInfo { .. } => {
+                // Execute diagnostic operations directly without consensus
+                self.executor.execute_on_database(operation).await
+                    .map_err(|e| format!("Diagnostic operation failed: {}", e))
+            }
+            _ => {
+                if operation.is_read_only() {
+                    // Read operations go directly to the database for eventual consistency
+                    self.execute_read_operation(operation).await
+                } else {
+                    // Write operations go through consensus
+                    self.execute_write_operation(operation).await
+                }
+            }
+        }
+    }
+
+    /// Execute a read operation directly against the database (eventual consistency)
+    async fn execute_read_operation(&self, operation: KvOperation) -> Result<OperationResult, String> {
+        debug!("Executing read operation directly: {:?}", operation);
+
+        // For read operations, we can reuse the executor's database execution logic
+        // without going through the consensus sequence tracking, since reads don't modify state
+        self.executor.execute_on_database(operation).await
+            .map_err(|e| format!("Read operation failed: {}", e))
     }
 
     /// Execute an operation through the consensus protocol
@@ -141,17 +207,19 @@ impl ConsensusKvDatabase {
 
         // Wait for the operation to be committed
         if let Some(index) = response.index {
-            let _committed_data = {
+            let committed_data = {
                 let engine = self.consensus_engine.read();
                 engine.wait_for_commit(index).await
                     .map_err(|e| format!("Failed to wait for commit: {}", e))?
             };
 
-            // Now actually apply the operation to the database using the executor
-            // Use our own sequence counter to ensure proper ordering
-            let sequence = self.next_sequence.fetch_add(1, Ordering::SeqCst);
-            let result = self.executor.apply_operation(sequence, operation).await
-                .map_err(|e| format!("Failed to apply operation to database: {}", e))?;
+            // Deserialize the committed operation
+            let committed_operation: KvOperation = bincode::deserialize(&committed_data)
+                .map_err(|e| format!("Failed to deserialize committed operation: {}", e))?;
+
+            // Now execute the operation through the executor using the consensus index as sequence
+            let result = self.executor.apply_operation(index, committed_operation).await
+                .map_err(|e| format!("Failed to apply committed operation: {}", e))?;
 
             Ok(result)
         } else {

@@ -41,6 +41,11 @@ impl KvStoreExecutor {
         self.applied_sequence.load(Ordering::SeqCst)
     }
 
+    /// Get access to the underlying database
+    pub fn database(&self) -> &Arc<dyn KvDatabase> {
+        &self.database
+    }
+
     /// Check if an operation with the given sequence has been applied
     pub fn is_applied(&self, sequence: u64) -> bool {
         self.get_applied_sequence() >= sequence
@@ -76,7 +81,7 @@ impl KvStoreExecutor {
 
     /// Execute an operation directly on the database
     /// This is similar to the routing manager's execute_locally but focused on state machine execution
-    async fn execute_on_database(&self, operation: KvOperation) -> RoutingResult<OperationResult> {
+    pub async fn execute_on_database(&self, operation: KvOperation) -> RoutingResult<OperationResult> {
         match operation {
             KvOperation::Get { key, column_family } => {
                 let result = self.database.get(&key, column_family.as_deref()).await
