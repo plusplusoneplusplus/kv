@@ -132,7 +132,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct ConsensusKvDatabase {
     consensus_node: Arc<RwLock<MockConsensusNode>>,
     executor: Arc<KvStoreExecutor>,
-    state_machine: Arc<KvStateMachine>,
     next_sequence: AtomicU64,
 }
 
@@ -168,7 +167,6 @@ impl ConsensusKvDatabase {
         Self {
             consensus_node,
             executor,
-            state_machine,
             next_sequence: AtomicU64::new(1),
         }
     }
