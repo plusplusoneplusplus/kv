@@ -323,8 +323,8 @@ impl RoutingManager {
     async fn handle_get_database_stats(&self, include_detailed: bool) -> RoutingResult<OperationResult> {
         // Try to get actual database statistics from RocksDB
         // In Phase 1, we provide basic statistics. Future phases will add more detailed metrics.
-        
-        let (total_keys, total_size_bytes, cache_hit_rate, compaction_pending) = 
+
+        let (total_keys, total_size_bytes, cache_hit_rate, compaction_pending) =
             if include_detailed {
                 // In Phase 1, provide reasonable default values for detailed statistics
                 // Future phases will query actual RocksDB properties for:
@@ -359,11 +359,10 @@ impl RoutingManager {
         Ok(OperationResult::DatabaseStatsResult(stats))
     }
 
-
     /// Handle node information diagnostic request
     async fn handle_get_node_info(&self, node_id: Option<u32>) -> RoutingResult<OperationResult> {
         let target_node_id = node_id.unwrap_or_else(|| self.cluster_manager.get_node_id());
-        
+
         // Use the new ClusterManager method
         if let Some(node_info) = self.cluster_manager.get_node_info(target_node_id).await {
             let status_str = match node_info.status {
