@@ -108,9 +108,6 @@ fn create_command_data(command: CounterCommand) -> Vec<u8> {
     bincode::serialize(&command).unwrap()
 }
 
-fn deserialize_response(data: &[u8]) -> CounterResponse {
-    bincode::deserialize(data).unwrap()
-}
 
 #[tokio::test]
 async fn test_mock_consensus_with_counter() {
