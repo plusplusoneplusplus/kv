@@ -16,7 +16,6 @@ struct TestCluster {
 struct TestNode {
     node_id: String,
     database: Arc<dyn KvDatabase>,
-    executor: Arc<KvStoreExecutor>,
     consensus: MockConsensusEngine,
     _temp_dir: TempDir, // Keep temp dir alive
 }
@@ -50,7 +49,7 @@ impl TestCluster {
             );
             
             let executor = Arc::new(KvStoreExecutor::new(database.clone()));
-            let state_machine = Box::new(KvStateMachine::new(executor.clone()));
+            let state_machine = Box::new(KvStateMachine::new(executor));
             
             let consensus = if i == 0 {
                 // Leader node
@@ -71,7 +70,6 @@ impl TestCluster {
             nodes.push(TestNode {
                 node_id,
                 database,
-                executor,
                 consensus,
                 _temp_dir: temp_dir,
             });
