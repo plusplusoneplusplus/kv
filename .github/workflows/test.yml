@@ -175,6 +175,7 @@ jobs:
   test-nodejs:
     name: Test Node.js Web Dashboard
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
     - name: Checkout code
@@ -240,6 +241,7 @@ jobs:
         npm ci
 
     - name: Run Node.js tests
+      timeout-minutes: 10
       run: |
         cd nodejs
         npm test

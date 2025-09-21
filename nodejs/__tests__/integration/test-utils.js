@@ -87,12 +87,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback - assume server is ready after 5 seconds
+            // Timeout fallback - assume server is ready after 15 seconds
             setTimeout(() => {
                 if (this.thriftServer && this.thriftServer.pid) {
                     resolve();
+                } else {
+                    reject(new Error('Thrift server startup timeout after 15 seconds'));
                 }
-            }, 5000);
+            }, 15000);
         });
     }
 
@@ -144,12 +146,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback
+            // Timeout fallback - give Node.js server more time in CI
             setTimeout(() => {
                 if (this.nodeServer && this.nodeServer.pid) {
                     resolve();
+                } else {
+                    reject(new Error('Node.js server startup timeout after 15 seconds'));
                 }
-            }, 5000);
+            }, 15000);
         });
     }
 
@@ -157,8 +161,8 @@ class TestServerManager {
      * Wait for servers to be healthy
      */
     async waitForServersReady() {
-        const maxRetries = 30;
-        const retryDelay = 1000;
+        const maxRetries = 60; // Increased for CI environments
+        const retryDelay = 2000; // Longer delay between retries
 
         console.log('Waiting for servers to be ready...');
 
@@ -211,13 +215,13 @@ class TestServerManager {
                 this.nodeServer.on('exit', resolve);
                 this.nodeServer.kill('SIGTERM');
 
-                // Force kill after 5 seconds
+                // Force kill after 3 seconds (faster cleanup)
                 setTimeout(() => {
                     if (this.nodeServer) {
                         this.nodeServer.kill('SIGKILL');
                     }
                     resolve();
-                }, 5000);
+                }, 3000);
             }));
         }
 
@@ -226,13 +230,13 @@ class TestServerManager {
                 this.thriftServer.on('exit', resolve);
                 this.thriftServer.kill('SIGTERM');
 
-                // Force kill after 5 seconds
+                // Force kill after 3 seconds (faster cleanup)
                 setTimeout(() => {
                     if (this.thriftServer) {
                         this.thriftServer.kill('SIGKILL');
                     }
                     resolve();
-                }, 5000);
+                }, 3000);
             }));
         }
 

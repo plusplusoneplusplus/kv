@@ -43,7 +43,7 @@
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": ["text", "lcov", "html"],
-    "testTimeout": 60000,
+    "testTimeout": 180000,
     "maxWorkers": 1
   }
 }
