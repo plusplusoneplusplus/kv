@@ -27,12 +27,14 @@ let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 
 // Security configuration (authentication removed)
 
-// Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: { error: 'Too many requests, please try again later.' }
-});
+// Rate limiting (disabled in test environment)
+const limiter = process.env.NODE_ENV === 'test' ? 
+    (req, res, next) => next() : // No rate limiting in tests
+    rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 100, // limit each IP to 100 requests per windowMs
+        message: { error: 'Too many requests, please try again later.' }
+    });
 
 // Middleware
 app.use(helmet({
@@ -379,15 +381,17 @@ app.get('/api/cluster/replication', async (req, res) => {
     }
 });
 
-// Real-time data broadcast (every 5 seconds)
-setInterval(async () => {
-    try {
-        const clusterHealth = await getClusterHealthData();
-        io.to('dashboard').emit('cluster-update', clusterHealth);
-    } catch (error) {
-        console.error('Error broadcasting cluster update:', error);
-    }
-}, 5000);
+// Real-time data broadcast (every 5 seconds) - disabled in test environment
+if (process.env.NODE_ENV !== 'test') {
+    setInterval(async () => {
+        try {
+            const clusterHealth = await getClusterHealthData();
+            io.to('dashboard').emit('cluster-update', clusterHealth);
+        } catch (error) {
+            console.error('Error broadcasting cluster update:', error);
+        }
+    }, 5000);
+}
 
 // Home page - serve original index.html
 app.get('/', (req, res) => {
@@ -749,11 +753,17 @@ app.post('/api/admin/update-endpoint', (req, res) => {
     }
 });
 
-server.listen(PORT, () => {
-    console.log(`KV Store Admin Dashboard running on port ${PORT}`);
-    console.log(`Connecting to Thrift server at ${THRIFT_HOST}:${THRIFT_PORT}`);
-    console.log(`Unified Admin Portal: http://localhost:${PORT}/`);
-    console.log(`  • Cluster Monitoring & Data Browser integrated`);
-    console.log(`  • Real-time updates via WebSocket enabled`);
-    console.log(`  • No authentication required`);
-});
+// Export the app for testing
+module.exports = app;
+
+// Only start the server if this file is run directly
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`KV Store Admin Dashboard running on port ${PORT}`);
+        console.log(`Connecting to Thrift server at ${THRIFT_HOST}:${THRIFT_PORT}`);
+        console.log(`Unified Admin Portal: http://localhost:${PORT}/`);
+        console.log(`  • Cluster Monitoring & Data Browser integrated`);
+        console.log(`  • Real-time updates via WebSocket enabled`);
+        console.log(`  • No authentication required`);
+    });
+}
