@@ -74,22 +74,13 @@ jobs:
       env:
         CARGO_INCREMENTAL: 1
 
-    - name: Run Rust tests
+    - name: Run Rust tests (excluding client integration tests)
       run: |
         cd rust
-        # Run tests and capture output, checking for actual test failures
-        set +e  # Don't exit on error
-        OUTPUT=$(cargo test --workspace --verbose -- --test-threads=1 2>&1)
-        EXIT_CODE=$?
-        echo "$OUTPUT"
-        # Check if all tests passed (look for the success message)
-        if echo "$OUTPUT" | grep -q "test result: ok"; then
-          echo "All tests passed successfully"
-          exit 0
-        else
-          echo "Some tests failed"
-          exit $EXIT_CODE
-        fi
+        # Run tests excluding client integration tests that require a server
+        # This excludes the client_integration_tests which need localhost:9090
+        cargo test --workspace --lib --bins
+        cargo test --test consensus_tests
 
   test-benchmark:
     name: Test Benchmark (Thrift)

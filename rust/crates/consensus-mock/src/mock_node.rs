@@ -330,13 +330,6 @@ mod tests {
             }
         }
 
-        fn get_applied_entries(&self) -> Vec<LogEntry> {
-            self.applied_entries.lock().unwrap().clone()
-        }
-
-        fn applied_count(&self) -> usize {
-            self.applied_entries.lock().unwrap().len()
-        }
     }
 
     impl StateMachine for TestStateMachine {
