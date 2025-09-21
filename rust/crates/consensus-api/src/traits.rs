@@ -19,7 +19,7 @@ pub struct ProposeResponse {
     pub leader_id: Option<NodeId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogEntry {
     pub index: Index,
     pub term: Term,
