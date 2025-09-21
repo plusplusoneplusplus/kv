@@ -54,9 +54,6 @@ impl StateMachine for KvStateMachine {
     }
 }
 
-
-
-
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Consensus-enabled KV database that routes operations appropriately

@@ -171,3 +171,56 @@ jobs:
       run: |
         cd rust
         cargo test -p kv-benchmark --verbose -- --nocapture
+
+  test-nodejs:
+    name: Test Node.js Web Dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler thrift-compiler
+
+    - name: Cache CMake build directory
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          nodejs/generated
+          nodejs/thrift
+        key: cmake-build-nodejs-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'thrift/**') }}
+        restore-keys: |
+          cmake-build-nodejs-${{ runner.os }}-
+
+    - name: Generate protocol files
+      run: |
+        cmake -B build -S .
+        cmake --build build --target generate_thrift
+
+    - name: Copy generated files to expected location
+      run: |
+        mkdir -p nodejs/thrift
+        cp nodejs/generated/*.js nodejs/thrift/
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: nodejs/package-lock.json
+
+    - name: Install Node.js dependencies
+      run: |
+        cd nodejs
+        npm ci
+
+    - name: Run Node.js tests
+      run: |
+        cd nodejs
+        npm test
+      env:
+        NODE_ENV: test
