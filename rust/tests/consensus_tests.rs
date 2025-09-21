@@ -1,8 +1,213 @@
 use rocksdb_server::{ConsensusKvDatabase, KvOperation, OperationResult, TransactionalKvDatabase, Config};
 use kv_storage_api::KvDatabase;
-use consensus_api::traits::ConsensusEngine;
+use consensus_api::{traits::ConsensusEngine, ConsensusResult, ProposeResponse};
 use std::sync::Arc;
 use tempfile::TempDir;
+use consensus_mock::{MockConsensusEngine, ConsensusMessageBus};
+use rocksdb_server::lib::kv_state_machine::KvStateMachine;
+use rocksdb_server::lib::replication::executor::KvStoreExecutor;
+
+/// Test cluster abstraction to simplify multi-node consensus testing
+struct TestCluster {
+    nodes: Vec<TestNode>,
+    message_bus: Arc<ConsensusMessageBus>,
+}
+
+struct TestNode {
+    node_id: String,
+    database: Arc<dyn KvDatabase>,
+    executor: Arc<KvStoreExecutor>,
+    consensus: MockConsensusEngine,
+    _temp_dir: TempDir, // Keep temp dir alive
+}
+
+impl TestCluster {
+    /// Create a new test cluster with the specified number of nodes
+    /// The first node will be the leader, the rest will be followers
+    async fn new(node_count: usize) -> Self {
+        assert!(node_count > 0, "Must have at least one node");
+        
+        let message_bus = Arc::new(ConsensusMessageBus::new());
+        let mut nodes = Vec::new();
+        
+        for i in 0..node_count {
+            let node_id = if i == 0 {
+                "leader-node".to_string()
+            } else {
+                format!("follower{}-node", i)
+            };
+            
+            let temp_dir = TempDir::new().unwrap();
+            let db_path = temp_dir.path().join(format!("{}_db", node_id));
+            let config = Config::default();
+            
+            let database: Arc<dyn KvDatabase> = Arc::new(
+                TransactionalKvDatabase::new(
+                    db_path.to_str().unwrap(),
+                    &config,
+                    &["default"]
+                ).unwrap()
+            );
+            
+            let executor = Arc::new(KvStoreExecutor::new(database.clone()));
+            let state_machine = Box::new(KvStateMachine::new(executor.clone()));
+            
+            let consensus = if i == 0 {
+                // Leader node
+                MockConsensusEngine::with_message_bus(
+                    node_id.clone(),
+                    state_machine,
+                    message_bus.clone()
+                )
+            } else {
+                // Follower node
+                MockConsensusEngine::follower_with_message_bus(
+                    node_id.clone(),
+                    state_machine,
+                    message_bus.clone()
+                )
+            };
+            
+            nodes.push(TestNode {
+                node_id,
+                database,
+                executor,
+                consensus,
+                _temp_dir: temp_dir,
+            });
+        }
+        
+        Self {
+            nodes,
+            message_bus,
+        }
+    }
+    
+    /// Set up cluster membership between all nodes
+    async fn setup_cluster_membership(&mut self) {
+        let node_count = self.nodes.len();
+        
+        for i in 0..node_count {
+            for j in 0..node_count {
+                if i != j {
+                    let other_node_id = self.nodes[j].node_id.clone();
+                    let port = 9090 + j;
+                    let address = format!("localhost:{}", port);
+                    
+                    self.nodes[i].consensus.add_node(other_node_id, address).await.unwrap();
+                }
+            }
+        }
+    }
+    
+    /// Start all nodes in the cluster
+    async fn start(&mut self) {
+        for node in &mut self.nodes {
+            node.consensus.start().await.unwrap();
+        }
+        
+        // Clear any initial cluster setup messages
+        self.message_bus.clear_messages();
+    }
+    
+    /// Stop all nodes in the cluster
+    async fn stop(&mut self) {
+        for node in &mut self.nodes {
+            node.consensus.stop().await.unwrap();
+        }
+    }
+    
+    /// Get the leader node (first node)
+    fn leader(&mut self) -> &mut TestNode {
+        &mut self.nodes[0]
+    }
+    
+    /// Get all follower nodes
+    fn followers(&mut self) -> &mut [TestNode] {
+        &mut self.nodes[1..]
+    }
+    
+    /// Process messages on all follower nodes (simulate message delivery)
+    async fn process_messages(&mut self) {
+        for node in self.followers() {
+            node.consensus.process_messages().await.unwrap();
+        }
+    }
+    
+    /// Execute a KV operation through the leader and replicate to followers
+    async fn execute_operation(&mut self, operation: KvOperation) -> ConsensusResult<ProposeResponse> {
+        let operation_data = bincode::serialize(&operation).unwrap();
+        let result = self.leader().consensus.propose(operation_data).await;
+        
+        // Process messages on followers to simulate replication
+        self.process_messages().await;
+        
+        result
+    }
+    
+    /// Set a key-value pair across the cluster
+    async fn set(&mut self, key: &[u8], value: &[u8]) -> ConsensusResult<ProposeResponse> {
+        let operation = KvOperation::Set {
+            key: key.to_vec(),
+            value: value.to_vec(),
+            column_family: None,
+        };
+        self.execute_operation(operation).await
+    }
+    
+    /// Delete a key across the cluster
+    async fn delete(&mut self, key: &[u8]) -> ConsensusResult<ProposeResponse> {
+        let operation = KvOperation::Delete {
+            key: key.to_vec(),
+            column_family: None,
+        };
+        self.execute_operation(operation).await
+    }
+    
+    /// Verify that a key-value pair exists on all nodes
+    async fn verify_key_exists(&self, key: &[u8], expected_value: &[u8]) {
+        for node in &self.nodes {
+            let get_result = node.database.get(key, None).await.unwrap();
+            assert!(get_result.found, "Key {:?} should be found in {} database", key, node.node_id);
+            assert_eq!(get_result.value, expected_value, "Value should match in {} database", node.node_id);
+        }
+    }
+    
+    /// Verify that a key does not exist on any node
+    async fn verify_key_not_exists(&self, key: &[u8]) {
+        for node in &self.nodes {
+            let get_result = node.database.get(key, None).await.unwrap();
+            assert!(!get_result.found, "Key {:?} should not be found in {} database", key, node.node_id);
+        }
+    }
+    
+    /// Verify consensus state consistency across all nodes
+    fn verify_consensus_consistency(&self, expected_applied_count: u64) {
+        // Verify node roles
+        assert!(self.nodes[0].consensus.is_leader(), "First node should be leader");
+        for i in 1..self.nodes.len() {
+            assert!(!self.nodes[i].consensus.is_leader(), "Node {} should be follower", i);
+        }
+        
+        // Verify all nodes are on the same term
+        let leader_term = self.nodes[0].consensus.current_term();
+        for i in 1..self.nodes.len() {
+            let follower_term = self.nodes[i].consensus.current_term();
+            assert_eq!(leader_term, follower_term, "All nodes should be on the same term");
+        }
+        
+        // Verify all nodes have applied the same number of operations
+        for (i, node) in self.nodes.iter().enumerate() {
+            let applied = node.consensus.last_applied_index();
+            assert_eq!(applied, expected_applied_count, "Node {} should have applied {} operations", i, expected_applied_count);
+        }
+    }
+    
+    /// Get the number of nodes in the cluster
+    fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_consensus_kv_basic_write_operations() {
@@ -190,317 +395,120 @@ async fn test_consensus_end_to_end_set_get_flow() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multi_node_consensus_follower_execution() {
-    use consensus_mock::{MockConsensusEngine, ConsensusMessageBus};
-    use rocksdb_server::lib::kv_state_machine::KvStateMachine;
-    use rocksdb_server::lib::replication::executor::KvStoreExecutor;
-    use std::sync::Arc;
+    // Create a 2-node test cluster (1 leader + 1 follower)
+    let mut cluster = TestCluster::new(2).await;
+    
+    // Set up cluster membership and start all nodes
+    cluster.setup_cluster_membership().await;
+    cluster.start().await;
 
-    // Create shared message bus for communication between nodes
-    let message_bus = Arc::new(ConsensusMessageBus::new());
+    // Test setting a key-value pair across the cluster
+    let test_key = b"multi_node_key";
+    let test_value = b"multi_node_value";
+    
+    let set_result = cluster.set(test_key, test_value).await.unwrap();
+    assert!(set_result.success, "Set operation should succeed on leader");
+    
+    // Verify the key-value exists on all nodes
+    cluster.verify_key_exists(test_key, test_value).await;
+    
+    // Verify consensus state consistency (1 operation applied)
+    cluster.verify_consensus_consistency(1);
 
-    // Create temporary databases for leader and follower
-    let leader_temp_dir = TempDir::new().unwrap();
-    let leader_db_path = leader_temp_dir.path().join("leader_db");
-    let config = Config::default();
-    let leader_database: Arc<dyn KvDatabase> = Arc::new(
-        TransactionalKvDatabase::new(
-            leader_db_path.to_str().unwrap(),
-            &config,
-            &["default"]
-        ).unwrap()
-    );
-
-    let follower_temp_dir = TempDir::new().unwrap();
-    let follower_db_path = follower_temp_dir.path().join("follower_db");
-    let follower_database: Arc<dyn KvDatabase> = Arc::new(
-        TransactionalKvDatabase::new(
-            follower_db_path.to_str().unwrap(),
-            &config,
-            &["default"]
-        ).unwrap()
-    );
-
-    // Create leader consensus node
-    let leader_executor = Arc::new(KvStoreExecutor::new(leader_database.clone()));
-    let leader_state_machine = Box::new(KvStateMachine::new(leader_executor.clone()));
-    let mut leader_consensus = MockConsensusEngine::with_message_bus(
-        "leader-node".to_string(),
-        leader_state_machine,
-        message_bus.clone()
-    );
-
-    // Create follower consensus node
-    let follower_executor = Arc::new(KvStoreExecutor::new(follower_database.clone()));
-    let follower_state_machine = Box::new(KvStateMachine::new(follower_executor.clone()));
-    let mut follower_consensus = MockConsensusEngine::follower_with_message_bus(
-        "follower-node".to_string(),
-        follower_state_machine,
-        message_bus.clone()
-    );
-
-    // Add follower to leader's cluster membership
-    leader_consensus.add_node("follower-node".to_string(), "localhost:9091".to_string()).await.unwrap();
-    follower_consensus.add_node("leader-node".to_string(), "localhost:9090".to_string()).await.unwrap();
-
-    // Start both nodes
-    leader_consensus.start().await.unwrap();
-    follower_consensus.start().await.unwrap();
-
-    // Create the operation to propose
-    let operation = KvOperation::Set {
-        key: b"multi_node_key".to_vec(),
-        value: b"multi_node_value".to_vec(),
-        column_family: None,
-    };
-
-    // Serialize the operation
-    let operation_data = bincode::serialize(&operation).unwrap();
-
-    // Leader proposes the operation
-    let response = leader_consensus.propose(operation_data).await.unwrap();
-    assert!(response.success, "Proposal should succeed on leader");
-
-    // Process messages on follower (simulate message delivery)
-    follower_consensus.process_messages().await.unwrap();
-
-    // Verify leader applied the operation
-    assert_eq!(leader_consensus.last_applied_index(), 1);
-
-    // Verify follower applied the operation
-    assert_eq!(follower_consensus.last_applied_index(), 1);
-
-    // Verify the operation was actually executed on follower's database
-    let get_result = follower_database.get(b"multi_node_key", None).await.unwrap();
-    assert!(get_result.found, "Key should be found in follower database");
-    assert_eq!(get_result.value, b"multi_node_value", "Value should match in follower database");
-
-    // Verify the operation was also executed on leader's database
-    let leader_get_result = leader_database.get(b"multi_node_key", None).await.unwrap();
-    assert!(leader_get_result.found, "Key should be found in leader database");
-    assert_eq!(leader_get_result.value, b"multi_node_value", "Value should match in leader database");
-
-    // Stop both nodes
-    leader_consensus.stop().await.unwrap();
-    follower_consensus.stop().await.unwrap();
+    // Stop all nodes
+    cluster.stop().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_three_node_consensus_kv_replication() {
-    use consensus_mock::{MockConsensusEngine, ConsensusMessageBus};
-    use rocksdb_server::lib::kv_state_machine::KvStateMachine;
-    use rocksdb_server::lib::replication::executor::KvStoreExecutor;
-    use std::sync::Arc;
+    // Create a 3-node test cluster (1 leader + 2 followers)
+    let mut cluster = TestCluster::new(3).await;
+    
+    // Set up cluster membership and start all nodes
+    cluster.setup_cluster_membership().await;
+    cluster.start().await;
 
-    // Create shared message bus for communication between all nodes
-    let message_bus = Arc::new(ConsensusMessageBus::new());
-
-    // Create temporary databases for leader and two followers
-    let leader_temp_dir = TempDir::new().unwrap();
-    let leader_db_path = leader_temp_dir.path().join("leader_db");
-
-    let follower1_temp_dir = TempDir::new().unwrap();
-    let follower1_db_path = follower1_temp_dir.path().join("follower1_db");
-
-    let follower2_temp_dir = TempDir::new().unwrap();
-    let follower2_db_path = follower2_temp_dir.path().join("follower2_db");
-
-    let config = Config::default();
-
-    // Create databases for all three nodes
-    let leader_database: Arc<dyn KvDatabase> = Arc::new(
-        TransactionalKvDatabase::new(
-            leader_db_path.to_str().unwrap(),
-            &config,
-            &["default"]
-        ).unwrap()
-    );
-
-    let follower1_database: Arc<dyn KvDatabase> = Arc::new(
-        TransactionalKvDatabase::new(
-            follower1_db_path.to_str().unwrap(),
-            &config,
-            &["default"]
-        ).unwrap()
-    );
-
-    let follower2_database: Arc<dyn KvDatabase> = Arc::new(
-        TransactionalKvDatabase::new(
-            follower2_db_path.to_str().unwrap(),
-            &config,
-            &["default"]
-        ).unwrap()
-    );
-
-    // Create executors and state machines for all three nodes
-    let leader_executor = Arc::new(KvStoreExecutor::new(leader_database.clone()));
-    let leader_state_machine = Box::new(KvStateMachine::new(leader_executor.clone()));
-    let mut leader_consensus = MockConsensusEngine::with_message_bus(
-        "leader-node".to_string(),
-        leader_state_machine,
-        message_bus.clone()
-    );
-
-    let follower1_executor = Arc::new(KvStoreExecutor::new(follower1_database.clone()));
-    let follower1_state_machine = Box::new(KvStateMachine::new(follower1_executor.clone()));
-    let mut follower1_consensus = MockConsensusEngine::follower_with_message_bus(
-        "follower1-node".to_string(),
-        follower1_state_machine,
-        message_bus.clone()
-    );
-
-    let follower2_executor = Arc::new(KvStoreExecutor::new(follower2_database.clone()));
-    let follower2_state_machine = Box::new(KvStateMachine::new(follower2_executor.clone()));
-    let mut follower2_consensus = MockConsensusEngine::follower_with_message_bus(
-        "follower2-node".to_string(),
-        follower2_state_machine,
-        message_bus.clone()
-    );
-
-    // Set up cluster membership - each node knows about the others
-    leader_consensus.add_node("follower1-node".to_string(), "localhost:9091".to_string()).await.unwrap();
-    leader_consensus.add_node("follower2-node".to_string(), "localhost:9092".to_string()).await.unwrap();
-
-    follower1_consensus.add_node("leader-node".to_string(), "localhost:9090".to_string()).await.unwrap();
-    follower1_consensus.add_node("follower2-node".to_string(), "localhost:9092".to_string()).await.unwrap();
-
-    follower2_consensus.add_node("leader-node".to_string(), "localhost:9090".to_string()).await.unwrap();
-    follower2_consensus.add_node("follower1-node".to_string(), "localhost:9091".to_string()).await.unwrap();
-
-    // Start all three nodes
-    leader_consensus.start().await.unwrap();
-    follower1_consensus.start().await.unwrap();
-    follower2_consensus.start().await.unwrap();
-
-    // Clear any initial cluster setup messages
-    message_bus.clear_messages();
-
-    // Test 1: Leader sets a key-value pair
-    let test_key1 = b"three_node_key1".to_vec();
-    let test_value1 = b"three_node_value1".to_vec();
-
-    let set_operation1 = KvOperation::Set {
-        key: test_key1.clone(),
-        value: test_value1.clone(),
-        column_family: None,
-    };
-
-    // Serialize the operation for consensus
-    let operation1_data = bincode::serialize(&set_operation1).unwrap();
-
-    // Leader proposes the operation
-    let set_result1 = leader_consensus.propose(operation1_data).await.unwrap();
+    // Test 1: Set a key-value pair across the cluster
+    let test_key1 = b"three_node_key1";
+    let test_value1 = b"three_node_value1";
+    
+    let set_result1 = cluster.set(test_key1, test_value1).await.unwrap();
     assert!(set_result1.success, "Set operation should succeed on leader");
+    
+    // Verify the key-value exists on all nodes
+    cluster.verify_key_exists(test_key1, test_value1).await;
 
-    // Process messages on both followers (simulate message delivery)
-    follower1_consensus.process_messages().await.unwrap();
-    follower2_consensus.process_messages().await.unwrap();
-
-    // Verify the key-value exists on all databases
-    for (name, database) in [
-        ("leader", &leader_database),
-        ("follower1", &follower1_database),
-        ("follower2", &follower2_database)
-    ] {
-        let get_result = database.get(&test_key1, None).await.unwrap();
-        assert!(get_result.found, "Key should be found in {} database", name);
-        assert_eq!(get_result.value, test_value1, "Value should match in {} database", name);
-    }
-
-    // Test 2: Leader sets another key-value pair to test ordering
-    let test_key2 = b"three_node_key2".to_vec();
-    let test_value2 = b"three_node_value2".to_vec();
-
-    let set_operation2 = KvOperation::Set {
-        key: test_key2.clone(),
-        value: test_value2.clone(),
-        column_family: None,
-    };
-
-    let operation2_data = bincode::serialize(&set_operation2).unwrap();
-    let set_result2 = leader_consensus.propose(operation2_data).await.unwrap();
+    // Test 2: Set another key-value pair to test ordering
+    let test_key2 = b"three_node_key2";
+    let test_value2 = b"three_node_value2";
+    
+    let set_result2 = cluster.set(test_key2, test_value2).await.unwrap();
     assert!(set_result2.success, "Second set operation should succeed on leader");
-
-    // Process messages on both followers again
-    follower1_consensus.process_messages().await.unwrap();
-    follower2_consensus.process_messages().await.unwrap();
-
+    
     // Verify both keys exist on all nodes
-    for (key, expected_value) in [(&test_key1, &test_value1), (&test_key2, &test_value2)] {
-        for (name, database) in [
-            ("leader", &leader_database),
-            ("follower1", &follower1_database),
-            ("follower2", &follower2_database)
-        ] {
-            let get_result = database.get(key, None).await.unwrap();
-            assert!(get_result.found, "Key {:?} should be found in {} database", key, name);
-            assert_eq!(get_result.value, *expected_value, "Value should match in {} database", name);
-        }
-    }
+    cluster.verify_key_exists(test_key1, test_value1).await;
+    cluster.verify_key_exists(test_key2, test_value2).await;
 
-    // Test 3: Leader deletes a key
-    let delete_operation = KvOperation::Delete {
-        key: test_key1.clone(),
-        column_family: None,
-    };
-
-    let delete_data = bincode::serialize(&delete_operation).unwrap();
-    let delete_result = leader_consensus.propose(delete_data).await.unwrap();
+    // Test 3: Delete a key across the cluster
+    let delete_result = cluster.delete(test_key1).await.unwrap();
     assert!(delete_result.success, "Delete operation should succeed on leader");
-
-    // Process messages on both followers
-    follower1_consensus.process_messages().await.unwrap();
-    follower2_consensus.process_messages().await.unwrap();
-
+    
     // Verify the key is deleted on all nodes
-    for (name, database) in [
-        ("leader", &leader_database),
-        ("follower1", &follower1_database),
-        ("follower2", &follower2_database)
-    ] {
-        let get_result = database.get(&test_key1, None).await.unwrap();
-        assert!(!get_result.found, "Key should be deleted from {} database", name);
-    }
-
+    cluster.verify_key_not_exists(test_key1).await;
+    
     // Verify the second key still exists on all nodes
-    for (name, database) in [
-        ("leader", &leader_database),
-        ("follower1", &follower1_database),
-        ("follower2", &follower2_database)
-    ] {
-        let get_result = database.get(&test_key2, None).await.unwrap();
-        assert!(get_result.found, "Second key should still exist on {} database", name);
-        assert_eq!(get_result.value, test_value2, "Second key value should match on {} database", name);
-    }
+    cluster.verify_key_exists(test_key2, test_value2).await;
 
     // Verify consensus state consistency across all nodes
-    assert_eq!(leader_consensus.node_id(), "leader-node");
-    assert_eq!(follower1_consensus.node_id(), "follower1-node");
-    assert_eq!(follower2_consensus.node_id(), "follower2-node");
-
-    assert!(leader_consensus.is_leader(), "Leader should be marked as leader");
-    assert!(!follower1_consensus.is_leader(), "Follower1 should not be marked as leader");
-    assert!(!follower2_consensus.is_leader(), "Follower2 should not be marked as leader");
-
-    // All nodes should be on the same term
-    let leader_term = leader_consensus.current_term();
-    let follower1_term = follower1_consensus.current_term();
-    let follower2_term = follower2_consensus.current_term();
-    assert_eq!(leader_term, follower1_term, "All nodes should be on the same term");
-    assert_eq!(leader_term, follower2_term, "All nodes should be on the same term");
-
-    // All nodes should have applied the same number of operations (3 total: 2 sets + 1 delete)
-    let leader_applied = leader_consensus.last_applied_index();
-    let follower1_applied = follower1_consensus.last_applied_index();
-    let follower2_applied = follower2_consensus.last_applied_index();
-
-    assert_eq!(leader_applied, 3, "Leader should have applied 3 operations");
-    assert_eq!(follower1_applied, 3, "Follower1 should have applied 3 operations");
-    assert_eq!(follower2_applied, 3, "Follower2 should have applied 3 operations");
+    // (3 total operations: 2 sets + 1 delete)
+    cluster.verify_consensus_consistency(3);
 
     // Stop all nodes
-    leader_consensus.stop().await.unwrap();
-    follower1_consensus.stop().await.unwrap();
-    follower2_consensus.stop().await.unwrap();
+    cluster.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_five_node_consensus_cluster() {
+    // Demonstrate how easy it is to create larger clusters with TestCluster
+    let mut cluster = TestCluster::new(5).await;
+    
+    // Set up cluster membership and start all nodes
+    cluster.setup_cluster_membership().await;
+    cluster.start().await;
+
+    // Test multiple operations across a 5-node cluster
+    let operations = vec![
+        (b"key1".as_slice(), b"value1".as_slice()),
+        (b"key2".as_slice(), b"value2".as_slice()),
+        (b"key3".as_slice(), b"value3".as_slice()),
+    ];
+    
+    // Set all key-value pairs
+    for (key, value) in &operations {
+        let result = cluster.set(key, value).await.unwrap();
+        assert!(result.success, "Set operation should succeed for key {:?}", key);
+    }
+    
+    // Verify all keys exist on all 5 nodes
+    for (key, value) in &operations {
+        cluster.verify_key_exists(key, value).await;
+    }
+    
+    // Delete one key
+    let delete_result = cluster.delete(b"key2").await.unwrap();
+    assert!(delete_result.success, "Delete operation should succeed");
+    
+    // Verify deletion
+    cluster.verify_key_not_exists(b"key2").await;
+    
+    // Verify other keys still exist
+    cluster.verify_key_exists(b"key1".as_slice(), b"value1".as_slice()).await;
+    cluster.verify_key_exists(b"key3".as_slice(), b"value3".as_slice()).await;
+    
+    // Verify consensus consistency (3 sets + 1 delete = 4 operations)
+    cluster.verify_consensus_consistency(4);
+    
+    cluster.stop().await;
 }
 
 #[test]
