@@ -171,3 +171,30 @@ jobs:
       run: |
         cd rust
         cargo test -p kv-benchmark --verbose -- --nocapture
+
+  test-nodejs:
+    name: Test Node.js Web Dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: nodejs/package-lock.json
+
+    - name: Install Node.js dependencies
+      run: |
+        cd nodejs
+        npm ci
+
+    - name: Run Node.js tests
+      run: |
+        cd nodejs
+        npm test
+      env:
+        NODE_ENV: test
