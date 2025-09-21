@@ -6,7 +6,8 @@ members = [
     "crates/kv-storage-rocksdb",
     "crates/kv-storage-mockdb",
     "crates/consensus-api",
-    "crates/consensus-mock"
+    "crates/consensus-mock",
+    "crates/consensus-rsml"
 ]
 resolver = "2"
 
@@ -65,6 +66,7 @@ kv-storage-rocksdb = { path = "crates/kv-storage-rocksdb" }
 kv-storage-mockdb = { path = "crates/kv-storage-mockdb" }
 consensus-api = { path = "crates/consensus-api" }
 consensus-mock = { path = "crates/consensus-mock" }
+consensus-rsml = { path = "crates/consensus-rsml", optional = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
@@ -95,6 +97,7 @@ tonic-build = { workspace = true }
 [features]
 default = ["ffi"]
 ffi = []
+rsml = ["consensus-rsml"]
 
 [profile.test]
 # Run tests sequentially (no parallelism)
