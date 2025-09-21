@@ -87,14 +87,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback - assume server is ready after 15 seconds
+            // Timeout fallback - assume server is ready after 10 seconds
             setTimeout(() => {
                 if (this.thriftServer && this.thriftServer.pid) {
                     resolve();
                 } else {
-                    reject(new Error('Thrift server startup timeout after 15 seconds'));
+                    reject(new Error('Thrift server startup timeout after 10 seconds'));
                 }
-            }, 15000);
+            }, 10000);
         });
     }
 
@@ -146,14 +146,14 @@ class TestServerManager {
                 }
             });
 
-            // Timeout fallback - give Node.js server more time in CI
+            // Timeout fallback - give Node.js server time to start
             setTimeout(() => {
                 if (this.nodeServer && this.nodeServer.pid) {
                     resolve();
                 } else {
-                    reject(new Error('Node.js server startup timeout after 15 seconds'));
+                    reject(new Error('Node.js server startup timeout after 10 seconds'));
                 }
-            }, 15000);
+            }, 10000);
         });
     }
 
@@ -161,8 +161,8 @@ class TestServerManager {
      * Wait for servers to be healthy
      */
     async waitForServersReady() {
-        const maxRetries = 60; // Increased for CI environments
-        const retryDelay = 2000; // Longer delay between retries
+        const maxRetries = 30; // Reduced for faster CI
+        const retryDelay = 1000; // Shorter delay between retries
 
         console.log('Waiting for servers to be ready...');
 
@@ -170,7 +170,7 @@ class TestServerManager {
             try {
                 // Check Node.js server health
                 const response = await axios.get(`http://localhost:${this.nodePort}/api/health`, {
-                    timeout: 2000
+                    timeout: 1000
                 });
 
                 if (response.status === 200) {
