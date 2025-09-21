@@ -57,7 +57,17 @@ cargo build --release
 
 # Build with C FFI support
 cargo build --release --features ffi
+
+# Build with RSML consensus support (requires private RSML library)
+cargo build --features rsml
 ```
+
+### Feature Flags
+- **`ffi`** (default): Enables C FFI bindings for client SDK
+- **`rsml`**: Enables RSML consensus implementation (requires access to private RSML library)
+  - Use `cargo build --features rsml` to build with RSML support
+  - CI builds exclude this feature by default to avoid dependency issues
+  - When enabled, provides access to `RsmlFactoryBuilder`, `RsmlError`, and `RsmlConfig` types
 
 ### Running Servers
 ```bash

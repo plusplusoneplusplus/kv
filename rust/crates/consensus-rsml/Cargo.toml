@@ -1,0 +1,28 @@
+[package]
+name = "consensus-rsml"
+version = "0.1.0"
+edition = "2021"
+description = "RSML consensus implementation for KV store"
+authors = ["KV Development Team"]
+
+[dependencies]
+consensus-api = { path = "../consensus-api" }
+rsml = { path = "../../../third_party/RSML" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde_json = "1.0"
+
+[features]
+default = []
+tcp = ["rsml/tcp_transport"]
+wal = []
+test-utils = ["rsml/testing"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = "0.4"
+tracing-subscriber = { workspace = true }
