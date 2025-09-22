@@ -9,7 +9,10 @@ use tracing::info;
 #[cfg(feature = "test-utils")]
 use tracing::warn;
 
-use crate::{RsmlConfig, RsmlResult, RsmlConsensusEngine};
+use crate::{RsmlConfig, RsmlResult};
+
+#[cfg(feature = "rsml")]
+use crate::RsmlConsensusEngine;
 
 /// Factory for creating RSML consensus engines
 ///
@@ -49,6 +52,7 @@ impl RsmlConsensusFactory {
     /// # Returns
     /// * `Ok(Box<dyn ConsensusEngine>)` - Successfully created consensus engine
     /// * `Err(RsmlError)` - Engine creation failed
+    #[cfg(feature = "rsml")]
     pub async fn create_engine(
         &self,
         state_machine: Arc<dyn StateMachine>,
@@ -65,6 +69,24 @@ impl RsmlConsensusFactory {
                 self.create_tcp_engine(state_machine).await
             }
         }
+    }
+
+    /// Create a consensus engine with the given state machine (stub for when rsml feature is disabled)
+    ///
+    /// # Arguments
+    /// * `state_machine` - Application state machine implementation
+    ///
+    /// # Returns
+    /// * `Err(RsmlError)` - RSML feature not enabled
+    #[cfg(not(feature = "rsml"))]
+    pub async fn create_engine(
+        &self,
+        _state_machine: Arc<dyn StateMachine>,
+    ) -> RsmlResult<Box<dyn ConsensusEngine>> {
+        Err(crate::RsmlError::ConfigurationError {
+            field: "rsml".to_string(),
+            message: "RSML feature not enabled. Enable with --features rsml".to_string(),
+        })
     }
 
     /// Get a reference to the factory's configuration
@@ -97,6 +119,7 @@ impl RsmlConsensusFactory {
     }
 
     /// Create an in-memory consensus engine for testing
+    #[cfg(feature = "rsml")]
     async fn create_in_memory_engine(
         &self,
         state_machine: Arc<dyn StateMachine>,
@@ -110,7 +133,7 @@ impl RsmlConsensusFactory {
     }
 
     /// Create a TCP-based consensus engine for production
-    #[cfg(feature = "tcp")]
+    #[cfg(all(feature = "rsml", feature = "tcp"))]
     async fn create_tcp_engine(
         &self,
         state_machine: Arc<dyn StateMachine>,
