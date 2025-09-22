@@ -202,6 +202,7 @@ impl TestCluster {
     }
 
     /// Get the number of nodes in the cluster
+    #[allow(dead_code)]
     fn node_count(&self) -> usize {
         self.nodes.len()
     }
