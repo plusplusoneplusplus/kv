@@ -8,6 +8,9 @@ members = [
     "crates/consensus-api",
     "crates/consensus-mock"
 ]
+exclude = [
+    "crates/consensus-rsml"
+]
 # Note: consensus-rsml is excluded from workspace members as it depends on private RSML submodule
 # It can be manually included for local development when the RSML submodule is available
 resolver = "2"
