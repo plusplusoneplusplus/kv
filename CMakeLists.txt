@@ -133,8 +133,8 @@ endif()
 
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin server
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi --bin server
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -144,8 +144,8 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin thrift-server
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi --bin thrift-server
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -155,8 +155,8 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} -p kv-benchmark
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi -p kv-benchmark
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -187,7 +187,7 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --features ffi
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists
     COMMAND ls -la "${KV_LIB_DIR}/"
