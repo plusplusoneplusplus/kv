@@ -75,18 +75,19 @@ function processRawData(rawKeyValues) {
     });
 }
 
-// Initialize the page
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize the page after components are loaded
+function initializeApp() {
     testConnection();
     loadKeys();
-    
+    initializeSettings();
+
     // Setup confirmation input listener
     const confirmationInput = document.getElementById('clearAllConfirmation');
     if (confirmationInput) {
         confirmationInput.addEventListener('input', function() {
             const executeButton = document.getElementById('clearAllExecute');
             const statusText = document.getElementById('clearAllStatus');
-            
+
             if (this.value === 'DELETE ALL DATA') {
                 executeButton.disabled = false;
                 statusText.textContent = 'Ready to execute';
@@ -98,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-});
+}
 
 // Connection management
 async function testConnection() {
@@ -412,7 +413,4 @@ window.onclick = function(event) {
     }
 }
 
-// Initialize settings when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    initializeSettings();
-});
+// This initialization will be called by component-loader.js after components are loaded
