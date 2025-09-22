@@ -1,4 +1,5 @@
 pub mod test_cluster;
+pub mod cluster_test_utils;
 
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command};

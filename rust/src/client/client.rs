@@ -219,6 +219,117 @@ impl KvStoreClient {
         })
     }
     
+    /// Get cluster health information
+    pub fn get_cluster_health_sync(&self, request: GetClusterHealthRequest) -> KvResult<GetClusterHealthResponse> {
+        if self.config.debug_mode {
+            log_network_operation("get_cluster_health request", None);
+        }
+
+        let start_time = Instant::now();
+        let client = Arc::clone(&self.client);
+        let debug_mode = self.config.debug_mode;
+
+        let response = std::thread::spawn(move || {
+            client.lock().get_cluster_health(request)
+        })
+        .join()
+        .map_err(|e| {
+            let error_msg = format!("Thread join error: {:?}", e);
+            if debug_mode {
+                log_error("get_cluster_health task", &error_msg);
+            }
+            KvError::Unknown(error_msg)
+        })?
+        .map_err(|e| {
+            if debug_mode {
+                log_error("get_cluster_health thrift", &format!("{:?}", e));
+            }
+            KvError::from(e)
+        })?;
+
+        let operation_time = start_time.elapsed().as_millis() as u64;
+        if debug_mode {
+            log_operation_timing("get_cluster_health", operation_time);
+            log_network_operation("get_cluster_health response", None);
+        }
+
+        Ok(response)
+    }
+
+    /// Get database statistics
+    pub fn get_database_stats_sync(&self, request: GetDatabaseStatsRequest) -> KvResult<GetDatabaseStatsResponse> {
+        if self.config.debug_mode {
+            log_network_operation("get_database_stats request", None);
+        }
+
+        let start_time = Instant::now();
+        let client = Arc::clone(&self.client);
+        let debug_mode = self.config.debug_mode;
+
+        let response = std::thread::spawn(move || {
+            client.lock().get_database_stats(request)
+        })
+        .join()
+        .map_err(|e| {
+            let error_msg = format!("Thread join error: {:?}", e);
+            if debug_mode {
+                log_error("get_database_stats task", &error_msg);
+            }
+            KvError::Unknown(error_msg)
+        })?
+        .map_err(|e| {
+            if debug_mode {
+                log_error("get_database_stats thrift", &format!("{:?}", e));
+            }
+            KvError::from(e)
+        })?;
+
+        let operation_time = start_time.elapsed().as_millis() as u64;
+        if debug_mode {
+            log_operation_timing("get_database_stats", operation_time);
+            log_network_operation("get_database_stats response", None);
+        }
+
+        Ok(response)
+    }
+
+    /// Get node information
+    pub fn get_node_info_sync(&self, request: GetNodeInfoRequest) -> KvResult<GetNodeInfoResponse> {
+        if self.config.debug_mode {
+            log_network_operation("get_node_info request", None);
+        }
+
+        let start_time = Instant::now();
+        let client = Arc::clone(&self.client);
+        let debug_mode = self.config.debug_mode;
+
+        let response = std::thread::spawn(move || {
+            client.lock().get_node_info(request)
+        })
+        .join()
+        .map_err(|e| {
+            let error_msg = format!("Thread join error: {:?}", e);
+            if debug_mode {
+                log_error("get_node_info task", &error_msg);
+            }
+            KvError::Unknown(error_msg)
+        })?
+        .map_err(|e| {
+            if debug_mode {
+                log_error("get_node_info thrift", &format!("{:?}", e));
+            }
+            KvError::from(e)
+        })?;
+
+        let operation_time = start_time.elapsed().as_millis() as u64;
+        if debug_mode {
+            log_operation_timing("get_node_info", operation_time);
+            log_network_operation("get_node_info response", None);
+        }
+
+        Ok(response)
+    }
+
     /// Create a new client with connection pooling (for high-throughput scenarios)
     pub fn connect_with_pool(address: &str, pool_size: usize) -> KvResult<ClientPool> {
         Self::connect_with_pool_and_config(address, pool_size, ClientConfig::default())
@@ -283,5 +394,20 @@ impl ClientPool {
     /// Begin a read transaction using a pooled client
     pub fn begin_read_transaction(&self, read_version: Option<i64>) -> KvFuture<ReadTransaction> {
         self.get_client().begin_read_transaction(read_version)
+    }
+
+    /// Get cluster health using a pooled client
+    pub fn get_cluster_health_sync(&self, request: GetClusterHealthRequest) -> KvResult<GetClusterHealthResponse> {
+        self.get_client().get_cluster_health_sync(request)
+    }
+
+    /// Get database statistics using a pooled client
+    pub fn get_database_stats_sync(&self, request: GetDatabaseStatsRequest) -> KvResult<GetDatabaseStatsResponse> {
+        self.get_client().get_database_stats_sync(request)
+    }
+
+    /// Get node information using a pooled client
+    pub fn get_node_info_sync(&self, request: GetNodeInfoRequest) -> KvResult<GetNodeInfoResponse> {
+        self.get_client().get_node_info_sync(request)
     }
 }
