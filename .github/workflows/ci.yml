@@ -70,37 +70,14 @@ jobs:
         restore-keys: |
           googletest-${{ runner.os }}-
 
-    - name: Generate protocol files
+    - name: Build everything with CMake
       run: |
         cmake -B build -S .
-        cmake --build build --target generate_thrift
-
-    - name: Build Rust dependencies first
-      run: |
-        cd rust
-        # Force download and build all dependencies
-        cargo fetch
-        # Exclude RSML features since private submodule is not available in CI
-        cargo check --workspace --no-default-features --features ffi
-      env:
-        CARGO_INCREMENTAL: 1
-
-    - name: Build Rust components
-      run: |
-        cd rust
-        # Build without RSML features
-        cargo build --bin server --bin thrift-server --no-default-features --features ffi
-      env:
-        CARGO_INCREMENTAL: 1
-
-    - name: Build FFI library and tests
-      run: |
-        cmake --build build --target rust_client_lib cpp_ffi_test
+        cmake --build build
 
     - name: Start Thrift server for tests
       run: |
-        cd rust
-        cargo run --bin thrift-server &
+        ./build/bin/rocksdbserver-thrift &
         # Wait for server to start
         for i in {1..30}; do
           if nc -z localhost 9090 2>/dev/null; then
@@ -112,8 +89,7 @@ jobs:
 
     - name: Run FFI tests
       run: |
-        cd build/bin
-        ./cpp_ffi_test
+        ./build/bin/cpp_ffi_test
 
     - name: Run Rust tests
       run: |

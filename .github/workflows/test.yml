@@ -29,7 +29,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev cmake build-essential
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -61,19 +61,10 @@ jobs:
         restore-keys: |
           cmake-build-${{ runner.os }}-
 
-    - name: Generate protocol files
+    - name: Build everything with CMake
       run: |
         cmake -B build -S .
-        cmake --build build --target generate_thrift
-
-    - name: Build Rust dependencies first
-      run: |
-        cd rust
-        cargo fetch
-        # Exclude RSML features since private submodule is not available in CI
-        cargo check --workspace --no-default-features --features ffi
-      env:
-        CARGO_INCREMENTAL: 1
+        cmake --build build
 
     - name: Run Rust tests (excluding client integration tests)
       run: |
@@ -105,7 +96,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev
+        sudo apt-get install -y protobuf-compiler thrift-compiler librocksdb-dev cmake build-essential
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -138,31 +129,14 @@ jobs:
         restore-keys: |
           cmake-build-${{ runner.os }}-
 
-    - name: Generate protocol files
+    - name: Build everything with CMake
       run: |
         cmake -B build -S .
-        cmake --build build --target generate_thrift
-
-    - name: Build Rust dependencies first
-      run: |
-        cd rust
-        cargo fetch
-        # Exclude RSML features since private submodule is not available in CI
-        cargo check --workspace --no-default-features --features ffi
-      env:
-        CARGO_INCREMENTAL: 1
-
-    - name: Build Thrift server (debug)
-      run: |
-        cd rust
-        # Build without RSML features
-        cargo build --bin thrift-server --no-default-features --features ffi
-      env:
-        CARGO_INCREMENTAL: 1
+        cmake --build build
 
     - name: Run benchmark crate tests
       env:
-        THRIFT_SERVER_BIN: ./rust/target/debug/thrift-server
+        THRIFT_SERVER_BIN: ./build/bin/rocksdbserver-thrift
       run: |
         cd rust
         cargo test -p kv-benchmark --verbose -- --nocapture
@@ -191,10 +165,10 @@ jobs:
         restore-keys: |
           cmake-build-nodejs-${{ runner.os }}-
 
-    - name: Generate protocol files
+    - name: Build everything with CMake
       run: |
         cmake -B build -S .
-        cmake --build build --target generate_thrift
+        cmake --build build
 
     - name: Copy generated files to expected location
       run: |
