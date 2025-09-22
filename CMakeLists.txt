@@ -117,6 +117,15 @@ else()
     set(CARGO_TARGET_DIR "debug")
 endif()
 
+# Determine feature flags based on WITH_RSML environment variable
+if(DEFINED ENV{WITH_RSML} AND "$ENV{WITH_RSML}" STREQUAL "true")
+    set(CARGO_FEATURE_FLAGS "--features rsml,ffi")
+    message(STATUS "Building with RSML consensus features enabled")
+else()
+    set(CARGO_FEATURE_FLAGS "--no-default-features --features ffi")
+    message(STATUS "Building without RSML features (CI-compatible mode)")
+endif()
+
 set(CARGO_BUILD_JOB_COUNT "" CACHE STRING "Number of parallel jobs to pass to cargo (-j). Empty uses detected processor count.")
 if(CARGO_BUILD_JOB_COUNT STREQUAL "")
     ProcessorCount(_cargo_detected_jobs)
@@ -133,7 +142,7 @@ endif()
 
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi --bin server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} --bin server
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
@@ -144,7 +153,7 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi --bin thrift-server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} --bin thrift-server
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
@@ -155,7 +164,7 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi -p kv-benchmark
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} -p kv-benchmark
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
@@ -187,7 +196,7 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --no-default-features --features ffi
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists
     COMMAND ls -la "${KV_LIB_DIR}/"
@@ -371,8 +380,15 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -S ."
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build [--target TARGET]"
     COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Environment variables:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  WITH_RSML=true     - Enable RSML consensus features (requires private submodule)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  Default: false     - CI-compatible mode without RSML features"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "For release build:"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -S . -DCMAKE_BUILD_TYPE=Release"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "For RSML testing:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  WITH_RSML=true cmake --build build"
     COMMENT "Displaying help information"
 )
