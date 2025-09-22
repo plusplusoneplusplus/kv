@@ -200,7 +200,12 @@ impl TestCluster {
             assert_eq!(applied, expected_applied_count, "Node {} should have applied {} operations", i, expected_applied_count);
         }
     }
-    
+
+    /// Get the number of nodes in the cluster
+    #[allow(dead_code)]
+    fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
