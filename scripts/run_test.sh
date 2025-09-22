@@ -12,7 +12,6 @@ set -o pipefail
 THRIFT_SERVER_PORT=${THRIFT_SERVER_PORT:-9097}  # Default to 9097, can be overridden with env var
 SERVER_STARTUP_TIMEOUT=10
 TEST_DATA_PREFIX="test_"
-WITH_RSML=true  # Flag for RSML feature testing - enabled by default for manual testing
 
 # Ensure we're running from the scripts directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -170,39 +169,15 @@ test_ffi_interface() {
 # Test Rust workspace
 test_rust_workspace() {
     log_test "Testing Rust workspace"
+    log_info "Running cargo test --workspace in rust/ directory"
 
-    if [ "$WITH_RSML" = true ]; then
-        log_info "Running cargo test --workspace with RSML features in rust/ directory"
-        log_warn "RSML testing requires consensus-rsml to be added to workspace temporarily"
-
-        # Check if consensus-rsml is in workspace
-        if ! grep -q "consensus-rsml" ../rust/Cargo.toml; then
-            log_error "RSML feature requested but consensus-rsml not found in workspace"
-            log_error "Please add 'crates/consensus-rsml' to workspace members in rust/Cargo.toml"
-            log_error "And add 'consensus-rsml = { path = \"crates/consensus-rsml\", optional = true }' to dependencies"
-            log_error "And add 'rsml = [\"consensus-rsml\"]' to features"
-            return 1
-        fi
-
-        # Change to rust directory and run tests with RSML features
-        if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" cargo test --workspace --features rsml); then
-            log_success "Rust workspace tests with RSML completed successfully"
-            return 0
-        else
-            log_error "Rust workspace tests with RSML failed (see output above for details)"
-            return 1
-        fi
+    # Change to rust directory and run tests with correct server port
+    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" cargo test --workspace); then
+        log_success "Rust workspace tests completed successfully"
+        return 0
     else
-        log_info "Running cargo test --workspace in rust/ directory"
-
-        # Change to rust directory and run tests with correct server port
-        if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" cargo test --workspace); then
-            log_success "Rust workspace tests completed successfully"
-            return 0
-        else
-            log_error "Rust workspace tests failed (see output above for details)"
-            return 1
-        fi
+        log_error "Rust workspace tests failed (see output above for details)"
+        return 1
     fi
 }
 
@@ -239,16 +214,6 @@ run_all_tests() {
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --no-rsml)
-                WITH_RSML=false
-                log_info "RSML feature testing disabled via --no-rsml flag"
-                shift
-                ;;
-            --with-rsml)
-                WITH_RSML=true
-                log_info "RSML feature testing enabled via --with-rsml flag"
-                shift
-                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -268,11 +233,6 @@ main() {
     log_info "KV Store Functional Test Suite"
     log_info "=============================="
 
-    if [ "$WITH_RSML" = true ]; then
-        log_info "RSML feature testing: ENABLED"
-    else
-        log_info "RSML feature testing: DISABLED"
-    fi
     echo
 
     check_prerequisites
@@ -300,19 +260,16 @@ show_help() {
     echo "  - Thrift server integration"
     echo "  - Basic KV operations through FFI"
     echo "  - Rust workspace tests (cargo test --workspace)"
-    echo "  - RSML consensus feature testing (enabled by default)"
     echo
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
-    echo "  --with-rsml     Enable RSML feature testing (default)"
-    echo "  --no-rsml       Disable RSML feature testing"
     echo "  -h, --help      Show this help message"
     echo
     echo "The script will:"
     echo "  1. Start a Thrift server instance on port $THRIFT_SERVER_PORT"
     echo "  2. Run C++ FFI tests"
-    echo "  3. Run Rust workspace tests with/without RSML features"
+    echo "  3. Run Rust workspace tests"
     echo "  4. Clean up automatically"
     echo "  5. Report test results and exit with appropriate code"
     echo
@@ -326,7 +283,6 @@ show_help() {
     echo "  - Run 'cargo build --bin thrift-server' from rust/ directory"
     echo "  - Ensure port $THRIFT_SERVER_PORT is available"
     echo "  - Rust toolchain for workspace tests (cargo test)"
-    echo "  - For RSML testing: Add consensus-rsml to workspace and configure features"
 }
 
 # Parse arguments and execute main function
