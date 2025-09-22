@@ -4,16 +4,18 @@
 //! consensus-api framework. It implements the factory pattern for engine-agnostic
 //! usage while preserving RSML-specific error details and configuration options.
 
+pub mod config;
+pub mod engine;
 pub mod error;
 pub mod factory;
-pub mod config;
 
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
+pub use config::*;
+pub use engine::*;
 pub use error::*;
 pub use factory::*;
-pub use config::*;
 
 // Re-export key types from consensus-api for convenience
 pub use consensus_api::{ConsensusEngine, ConsensusConfig, StateMachine, ProposeResponse, LogEntry};
@@ -140,15 +142,15 @@ mod tests {
 
         // Step 1: Create a test cluster configuration
         let mut cluster_members = HashMap::new();
-        cluster_members.insert("node-1".to_string(), "localhost:8080".to_string());
-        cluster_members.insert("node-2".to_string(), "localhost:8081".to_string());
-        cluster_members.insert("node-3".to_string(), "localhost:8082".to_string());
+        cluster_members.insert("1".to_string(), "localhost:8080".to_string());
+        cluster_members.insert("2".to_string(), "localhost:8081".to_string());
+        cluster_members.insert("3".to_string(), "localhost:8082".to_string());
 
         println!("Created cluster with {} nodes", cluster_members.len());
 
         // Step 2: Create RSML consensus factory using in-memory transport
         let factory = RsmlFactoryBuilder::new()
-            .node_id("node-1".to_string())
+            .node_id("1".to_string())
             .cluster_members(cluster_members)
             .in_memory_transport()
             .batch_processing(true, 10)
@@ -165,15 +167,14 @@ mod tests {
         println!("Attempting to create consensus engine...");
 
         match factory.create_engine(state_machine.clone()).await {
-            Ok(_engine) => {
-                panic!("Engine creation should fail until RSML integration is complete");
-            }
-            Err(error) => {
-                println!("Failed to create consensus engine (expected until RSML integration is complete):");
-                println!("   Error: {}", error);
+            Ok(engine) => {
+                println!("Successfully created consensus engine!");
+                println!("   Engine type: {}", std::any::type_name_of_val(&*engine));
+                println!("   Node ID: {}", engine.node_id());
+                println!("   Current term: {}", engine.current_term());
+                println!("   Is leader: {}", engine.is_leader());
                 println!();
-                println!("This is expected behavior - the RSML engine implementation");
-                println!("   will be added in future issues. The factory pattern is working!");
+                println!("RSML consensus engine integration is working!");
 
                 // Verify that the factory and configuration are working
                 println!();
@@ -184,18 +185,17 @@ mod tests {
                 println!("   Batch processing: {}", factory.config().performance.batch_processing);
 
                 // Assert key aspects are working
-                assert_eq!(factory.config().base.node_id, "node-1");
+                assert_eq!(factory.config().base.node_id, "1");
                 assert_eq!(factory.config().base.cluster_members.len(), 3);
                 assert!(factory.config().performance.batch_processing);
 
-                // Verify error type
-                match error {
-                    RsmlError::InternalError { component, message } => {
-                        assert_eq!(component, "factory");
-                        assert!(message.contains("RSML consensus engine implementation not yet available"));
-                    }
-                    _ => panic!("Expected InternalError, got: {:?}", error),
-                }
+                // Verify engine basics
+                assert_eq!(engine.node_id(), "1");
+                assert_eq!(engine.current_term(), 1);
+                assert!(engine.is_leader());
+            }
+            Err(error) => {
+                panic!("Engine creation should now succeed with simplified implementation: {}", error);
             }
         }
 

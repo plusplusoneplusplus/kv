@@ -9,7 +9,7 @@ use tracing::info;
 #[cfg(feature = "test-utils")]
 use tracing::warn;
 
-use crate::{RsmlConfig, RsmlError, RsmlResult};
+use crate::{RsmlConfig, RsmlResult, RsmlConsensusEngine};
 
 /// Factory for creating RSML consensus engines
 ///
@@ -99,23 +99,21 @@ impl RsmlConsensusFactory {
     /// Create an in-memory consensus engine for testing
     async fn create_in_memory_engine(
         &self,
-        _state_machine: Arc<dyn StateMachine>,
+        state_machine: Arc<dyn StateMachine>,
     ) -> RsmlResult<Box<dyn ConsensusEngine>> {
         info!("Creating in-memory RSML consensus engine");
 
-        // TODO: Implement actual RSML engine creation
-        // For now, return a placeholder that shows the structure
-        Err(RsmlError::InternalError {
-            component: "factory".to_string(),
-            message: "RSML consensus engine implementation not yet available".to_string(),
-        })
+        // Create the RSML consensus engine
+        let engine = RsmlConsensusEngine::new(self.config.clone(), state_machine).await?;
+
+        Ok(Box::new(engine))
     }
 
     /// Create a TCP-based consensus engine for production
     #[cfg(feature = "tcp")]
     async fn create_tcp_engine(
         &self,
-        _state_machine: Arc<dyn StateMachine>,
+        state_machine: Arc<dyn StateMachine>,
     ) -> RsmlResult<Box<dyn ConsensusEngine>> {
         info!("Creating TCP RSML consensus engine");
 
@@ -128,12 +126,10 @@ impl RsmlConsensusFactory {
         info!("TCP engine will bind to: {}", tcp_config.bind_address);
         info!("TCP engine cluster size: {}", tcp_config.cluster_addresses.len());
 
-        // TODO: Implement actual RSML TCP engine creation
-        // For now, return a placeholder that shows the structure
-        Err(RsmlError::InternalError {
-            component: "factory".to_string(),
-            message: "RSML TCP consensus engine implementation not yet available".to_string(),
-        })
+        // Create the RSML consensus engine with TCP transport
+        let engine = RsmlConsensusEngine::new(self.config.clone(), state_machine).await?;
+
+        Ok(Box::new(engine))
     }
 
     /// Create a factory with default configuration for the given node
@@ -283,7 +279,7 @@ mod tests {
         let factory = RsmlConsensusFactory::with_defaults("node-1".to_string(), cluster_members);
         assert!(factory.is_err());
 
-        if let Err(RsmlError::ConfigurationError { field, .. }) = factory {
+        if let Err(crate::RsmlError::ConfigurationError { field, .. }) = factory {
             assert_eq!(field, "base.cluster_members");
         }
     }
