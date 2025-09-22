@@ -1,3 +1,6 @@
+[workspace]
+# Empty workspace table to allow this crate to work independently
+
 [package]
 name = "consensus-rsml"
 version = "0.1.0"
@@ -8,12 +11,12 @@ authors = ["KV Development Team"]
 [dependencies]
 consensus-api = { path = "../consensus-api" }
 rsml = { path = "../../../third_party/RSML", optional = true }
-tokio = { workspace = true }
-async-trait = { workspace = true }
-serde = { workspace = true }
-uuid = { workspace = true, features = ["serde"] }
-anyhow = { workspace = true }
-tracing = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+anyhow = "1.0"
+tracing = "0.1"
 serde_json = "1.0"
 dashmap = "6.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -26,6 +29,6 @@ wal = []
 test-utils = ["rsml", "rsml/testing"]
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile = "3.8"
 tokio-test = "0.4"
-tracing-subscriber = { workspace = true }
+tracing-subscriber = "0.3"
