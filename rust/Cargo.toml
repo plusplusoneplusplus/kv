@@ -8,6 +8,9 @@ members = [
     "crates/consensus-api",
     "crates/consensus-mock"
 ]
+exclude = [
+    "crates/consensus-rsml"
+]
 # Note: consensus-rsml is excluded from workspace members as it depends on private RSML submodule
 # It can be manually included for local development when the RSML submodule is available
 resolver = "2"
@@ -67,7 +70,8 @@ kv-storage-rocksdb = { path = "crates/kv-storage-rocksdb" }
 kv-storage-mockdb = { path = "crates/kv-storage-mockdb" }
 consensus-api = { path = "crates/consensus-api" }
 consensus-mock = { path = "crates/consensus-mock" }
-# consensus-rsml dependency removed to prevent CI failures when private RSML submodule is not available
+# consensus-rsml = { path = "crates/consensus-rsml", optional = true }
+# Note: consensus-rsml dependency removed to prevent CI failures when private RSML submodule is not available
 # For local development with RSML, manually add: consensus-rsml = { path = "crates/consensus-rsml" }
 tokio = { workspace = true }
 tonic = { workspace = true }
