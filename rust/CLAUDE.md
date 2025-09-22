@@ -64,10 +64,13 @@ cargo build --features rsml
 
 ### Feature Flags
 - **`ffi`** (default): Enables C FFI bindings for client SDK
-- **`rsml`**: Enables RSML consensus implementation (requires access to private RSML library)
+- **`rsml`**: Enables RSML consensus implementation (manual local development only)
+  - **NOT enabled by default** to prevent CI failures with private dependencies
+  - Requires access to private RSML submodule: `git submodule update --init --recursive`
   - Use `cargo build --features rsml` to build with RSML support
-  - CI builds exclude this feature by default to avoid dependency issues
+  - Use `../scripts/run_test.sh` for testing (RSML enabled by default)
   - When enabled, provides access to `RsmlFactoryBuilder`, `RsmlError`, and `RsmlConfig` types
+  - CI builds explicitly exclude this feature to maintain public buildability
 
 ### Running Servers
 ```bash
@@ -107,6 +110,11 @@ cargo test client
 
 # C FFI tests (via CMake)
 cd .. && cmake --build build --target test_ffi
+
+# Test with RSML feature (manual local development only)
+cd ../scripts && ./run_test.sh
+# To disable RSML:
+cd ../scripts && ./run_test.sh --no-rsml
 ```
 
 ## Configuration

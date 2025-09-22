@@ -6,10 +6,10 @@ members = [
     "crates/kv-storage-rocksdb",
     "crates/kv-storage-mockdb",
     "crates/consensus-api",
-    "crates/consensus-mock"
+    "crates/consensus-mock",
+    "crates/consensus-rsml"
 ]
-# Note: consensus-rsml is excluded from workspace members as it depends on private RSML submodule
-# It can be manually included for local development when the RSML submodule is available
+# Note: consensus-rsml depends on private RSML submodule and should only be used with --features rsml
 resolver = "2"
 
 [workspace.dependencies]
@@ -67,8 +67,8 @@ kv-storage-rocksdb = { path = "crates/kv-storage-rocksdb" }
 kv-storage-mockdb = { path = "crates/kv-storage-mockdb" }
 consensus-api = { path = "crates/consensus-api" }
 consensus-mock = { path = "crates/consensus-mock" }
-# consensus-rsml dependency removed to prevent CI failures when private RSML submodule is not available
-# For local development with RSML, manually add: consensus-rsml = { path = "crates/consensus-rsml" }
+# consensus-rsml dependency is optional to prevent CI failures when private RSML submodule is not available
+consensus-rsml = { path = "crates/consensus-rsml", optional = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
@@ -99,8 +99,8 @@ tonic-build = { workspace = true }
 [features]
 default = ["ffi"]
 ffi = []
-# rsml feature removed - requires manual setup when consensus-rsml dependency is available
-# rsml = ["consensus-rsml"]
+# rsml feature for consensus-rsml integration - manually enabled only
+rsml = ["consensus-rsml"]
 
 [profile.test]
 # Run tests sequentially (no parallelism)
