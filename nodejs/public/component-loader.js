@@ -51,9 +51,14 @@ class ComponentLoader {
     static initializePostLoad() {
         // Any initialization that needs to happen after components are loaded
         // For example, setting up event listeners, initializing charts, etc.
-        
+
         // Re-establish tab functionality since we've loaded new HTML
         this.setupTabEventListeners();
+
+        // Initialize the main app after components are loaded
+        if (typeof initializeApp === 'function') {
+            initializeApp();
+        }
     }
 
     static setupTabEventListeners() {
