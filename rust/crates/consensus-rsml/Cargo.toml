@@ -7,7 +7,7 @@ authors = ["KV Development Team"]
 
 [dependencies]
 consensus-api = { path = "../consensus-api" }
-rsml = { path = "../../../third_party/RSML" }
+rsml = { path = "../../../third_party/RSML", optional = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -20,9 +20,10 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [features]
 default = []
-tcp = ["rsml/tcp_transport"]
+rsml = ["dep:rsml"]
+tcp = ["rsml", "rsml/tcp_transport"]
 wal = []
-test-utils = ["rsml/testing"]
+test-utils = ["rsml", "rsml/testing"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
