@@ -117,6 +117,18 @@ else()
     set(CARGO_TARGET_DIR "debug")
 endif()
 
+# Determine feature flags based on WITH_RSML environment variable
+if(DEFINED ENV{WITH_RSML} AND "$ENV{WITH_RSML}" STREQUAL "true")
+    message(WARNING "WITH_RSML=true specified but RSML features are commented out in Cargo.toml")
+    message(STATUS "To enable RSML: uncomment consensus-rsml dependency and rsml feature in rust/Cargo.toml")
+    set(CARGO_NO_DEFAULT_FEATURES "--no-default-features")
+    set(CARGO_FEATURES "--features" "ffi")
+else()
+    set(CARGO_NO_DEFAULT_FEATURES "--no-default-features")
+    set(CARGO_FEATURES "--features" "ffi")
+    message(STATUS "Building without RSML features (CI-compatible mode)")
+endif()
+
 set(CARGO_BUILD_JOB_COUNT "" CACHE STRING "Number of parallel jobs to pass to cargo (-j). Empty uses detected processor count.")
 if(CARGO_BUILD_JOB_COUNT STREQUAL "")
     ProcessorCount(_cargo_detected_jobs)
@@ -133,8 +145,8 @@ endif()
 
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin server
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} --bin server
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -144,8 +156,8 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin thrift-server
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} --bin thrift-server
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -155,8 +167,8 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} -p kv-benchmark
-    COMMAND ${CMAKE_COMMAND} -E copy 
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} -p kv-benchmark
+    COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
@@ -187,7 +199,7 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --features ffi
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists
     COMMAND ls -la "${KV_LIB_DIR}/"
@@ -371,8 +383,15 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -S ."
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build [--target TARGET]"
     COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Environment variables:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  WITH_RSML=true     - Enable RSML consensus features (requires private submodule)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  Default: false     - CI-compatible mode without RSML features"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "For release build:"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -S . -DCMAKE_BUILD_TYPE=Release"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "For RSML testing:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  WITH_RSML=true cmake --build build"
     COMMENT "Displaying help information"
 )
