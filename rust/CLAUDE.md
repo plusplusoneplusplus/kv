@@ -58,8 +58,11 @@ cargo build --release
 # Build with C FFI support
 cargo build --release --features ffi
 
-# Build with RSML consensus support (requires private RSML library)
+# Build with RSML consensus support (requires private RSML submodule)
 cargo build --features rsml
+
+# Or via CMake with environment variable
+WITH_RSML=true cmake --build build
 ```
 
 ### Feature Flags
@@ -68,6 +71,7 @@ cargo build --features rsml
   - **NOT enabled by default** to prevent CI failures with private dependencies
   - Requires access to private RSML submodule: `git submodule update --init --recursive`
   - Use `cargo build --features rsml` to build with RSML support
+  - Use `WITH_RSML=true cmake --build build` for CMake builds with RSML
   - Use `../scripts/run_test.sh` for testing (RSML enabled by default)
   - When enabled, provides access to `RsmlFactoryBuilder`, `RsmlError`, and `RsmlConfig` types
   - CI builds explicitly exclude this feature to maintain public buildability
