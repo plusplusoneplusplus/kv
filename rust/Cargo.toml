@@ -103,7 +103,8 @@ tonic-build = { workspace = true }
 [features]
 default = ["ffi"]
 ffi = []
-rsml = ["consensus-rsml"]
+# rsml feature removed - requires manual setup when consensus-rsml dependency is available
+# rsml = ["consensus-rsml"]
 
 [profile.test]
 # Run tests sequentially (no parallelism)
