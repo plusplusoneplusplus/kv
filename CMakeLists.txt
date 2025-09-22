@@ -119,10 +119,12 @@ endif()
 
 # Determine feature flags based on WITH_RSML environment variable
 if(DEFINED ENV{WITH_RSML} AND "$ENV{WITH_RSML}" STREQUAL "true")
-    set(CARGO_FEATURE_FLAGS "--features rsml,ffi")
+    set(CARGO_NO_DEFAULT_FEATURES "")
+    set(CARGO_FEATURES "--features" "rsml,ffi")
     message(STATUS "Building with RSML consensus features enabled")
 else()
-    set(CARGO_FEATURE_FLAGS "--no-default-features --features ffi")
+    set(CARGO_NO_DEFAULT_FEATURES "--no-default-features")
+    set(CARGO_FEATURES "--features" "ffi")
     message(STATUS "Building without RSML features (CI-compatible mode)")
 endif()
 
@@ -142,7 +144,7 @@ endif()
 
 # Rust gRPC server
 add_custom_target(rust_grpc_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} --bin server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} --bin server
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-rust"
@@ -153,7 +155,7 @@ add_custom_target(rust_grpc_server ALL
 
 # Rust Thrift server
 add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} --bin thrift-server
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} --bin thrift-server
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
         "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
@@ -164,7 +166,7 @@ add_custom_target(rust_thrift_server ALL
 
 # Rust benchmark tool
 add_custom_target(rust_benchmark ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS} -p kv-benchmark
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES} -p kv-benchmark
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/benchmark"
         "${CMAKE_BINARY_DIR}/bin/benchmark-rust"
@@ -196,7 +198,7 @@ endif()
 
 # Build the Rust client library
 add_custom_target(rust_client_lib ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_FEATURE_FLAGS}
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} ${CARGO_NO_DEFAULT_FEATURES} ${CARGO_FEATURES}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
     # List directory contents to verify source file exists
     COMMAND ls -la "${KV_LIB_DIR}/"
