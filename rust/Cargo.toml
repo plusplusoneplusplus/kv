@@ -6,10 +6,10 @@ members = [
     "crates/kv-storage-rocksdb",
     "crates/kv-storage-mockdb",
     "crates/consensus-api",
-    "crates/consensus-mock",
-    "crates/consensus-rsml"
+    "crates/consensus-mock"
 ]
-# Note: consensus-rsml depends on private RSML submodule and should only be used with --features rsml
+# Note: consensus-rsml is excluded from workspace members as it depends on private RSML submodule
+# It can be manually included for local development when the RSML submodule is available
 resolver = "2"
 
 [workspace.dependencies]
