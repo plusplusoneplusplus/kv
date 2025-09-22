@@ -68,7 +68,8 @@ kv-storage-mockdb = { path = "crates/kv-storage-mockdb" }
 consensus-api = { path = "crates/consensus-api" }
 consensus-mock = { path = "crates/consensus-mock" }
 # consensus-rsml dependency is optional to prevent CI failures when private RSML submodule is not available
-consensus-rsml = { path = "crates/consensus-rsml", optional = true }
+# Commented out to allow CI builds without private submodule - enable manually for RSML testing
+# consensus-rsml = { path = "crates/consensus-rsml", optional = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
@@ -100,7 +101,8 @@ tonic-build = { workspace = true }
 default = ["ffi"]
 ffi = []
 # rsml feature for consensus-rsml integration - manually enabled only
-rsml = ["consensus-rsml"]
+# Commented out to allow CI builds without private submodule - enable manually for RSML testing
+# rsml = ["consensus-rsml"]
 
 [profile.test]
 # Run tests sequentially (no parallelism)
