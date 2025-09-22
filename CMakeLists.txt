@@ -119,9 +119,10 @@ endif()
 
 # Determine feature flags based on WITH_RSML environment variable
 if(DEFINED ENV{WITH_RSML} AND "$ENV{WITH_RSML}" STREQUAL "true")
-    set(CARGO_NO_DEFAULT_FEATURES "")
-    set(CARGO_FEATURES "--features" "rsml,ffi")
-    message(STATUS "Building with RSML consensus features enabled")
+    message(WARNING "WITH_RSML=true specified but RSML features are commented out in Cargo.toml")
+    message(STATUS "To enable RSML: uncomment consensus-rsml dependency and rsml feature in rust/Cargo.toml")
+    set(CARGO_NO_DEFAULT_FEATURES "--no-default-features")
+    set(CARGO_FEATURES "--features" "ffi")
 else()
     set(CARGO_NO_DEFAULT_FEATURES "--no-default-features")
     set(CARGO_FEATURES "--features" "ffi")

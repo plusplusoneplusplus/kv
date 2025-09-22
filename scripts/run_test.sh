@@ -182,6 +182,14 @@ test_rust_workspace() {
             return 1
         fi
 
+        # Check if RSML feature is available in Cargo.toml
+        if ! grep -q '^rsml = ' ../rust/Cargo.toml; then
+            log_error "RSML feature requested but rsml feature is commented out in Cargo.toml"
+            log_error "Please uncomment 'consensus-rsml' dependency and 'rsml' feature in rust/Cargo.toml"
+            log_error "Then ensure the private RSML submodule is properly initialized"
+            return 1
+        fi
+
         # Check if RSML can be compiled by testing feature availability
         if ! (cd ../rust && cargo check --features rsml --quiet 2>/dev/null); then
             log_error "RSML feature requested but consensus-rsml cannot be compiled"

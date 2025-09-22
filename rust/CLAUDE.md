@@ -68,13 +68,13 @@ WITH_RSML=true cmake --build build
 ### Feature Flags
 - **`ffi`** (default): Enables C FFI bindings for client SDK
 - **`rsml`**: Enables RSML consensus implementation (manual local development only)
-  - **NOT enabled by default** to prevent CI failures with private dependencies
+  - **Commented out by default** to prevent CI failures with private dependencies
+  - To enable: Uncomment `consensus-rsml` dependency and `rsml` feature in `rust/Cargo.toml`
   - Requires access to private RSML submodule: `git submodule update --init --recursive`
-  - Use `cargo build --features rsml` to build with RSML support
-  - Use `WITH_RSML=true cmake --build build` for CMake builds with RSML
-  - Use `../scripts/run_test.sh` for testing (RSML enabled by default)
+  - After uncommenting: Use `cargo build --features rsml` to build with RSML support
+  - Use `../scripts/run_test.sh` for testing (RSML enabled by default when available)
   - When enabled, provides access to `RsmlFactoryBuilder`, `RsmlError`, and `RsmlConfig` types
-  - CI builds explicitly exclude this feature to maintain public buildability
+  - CI builds work without any RSML references for public buildability
 
 ### Running Servers
 ```bash
