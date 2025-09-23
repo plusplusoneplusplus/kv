@@ -180,4 +180,23 @@ impl KvDatabase for MockDatabase {
             error_code: None,
         }
     }
+
+    async fn get_database_statistics(&self) -> Result<std::collections::HashMap<String, u64>, String> {
+        let data = self.data.lock().unwrap();
+        let mut stats = std::collections::HashMap::new();
+
+        // Mock database statistics
+        stats.insert("total_keys".to_string(), data.len() as u64);
+        stats.insert("total_size_bytes".to_string(), (data.len() as u64) * 50); // Estimate 50 bytes per key
+        stats.insert("active_transactions".to_string(), 0);
+        stats.insert("committed_transactions".to_string(), 0);
+        stats.insert("aborted_transactions".to_string(), 0);
+        stats.insert("read_operations".to_string(), 0);
+        stats.insert("write_operations".to_string(), 0);
+        stats.insert("cache_hit_rate_percent".to_string(), 90);
+        stats.insert("compaction_pending_bytes".to_string(), 0);
+        stats.insert("average_response_time_ms".to_string(), 1);
+
+        Ok(stats)
+    }
 }
