@@ -176,7 +176,15 @@ function processClusterHealthData(clusterHealth) {
     processed.total_nodes_count = convertBufferValue(clusterHealth.total_nodes_count);
     processed.healthy_nodes_count = convertBufferValue(clusterHealth.healthy_nodes_count);
     processed.current_term = convertBufferValue(clusterHealth.current_term);
-    processed.current_leader_id = convertBufferValue(clusterHealth.current_leader_id);
+
+    // Handle current_leader_id - it might be in different places
+    if (clusterHealth.current_leader_id !== undefined) {
+        processed.current_leader_id = convertBufferValue(clusterHealth.current_leader_id);
+    } else if (clusterHealth.leader && clusterHealth.leader.node_id !== undefined) {
+        processed.current_leader_id = convertBufferValue(clusterHealth.leader.node_id);
+    } else {
+        processed.current_leader_id = null;
+    }
 
     // Process nodes array
     if (clusterHealth.nodes) {
@@ -187,6 +195,17 @@ function processClusterHealthData(clusterHealth) {
             term: convertBufferValue(node.term),
             uptime_seconds: convertBufferValue(node.uptime_seconds)
         }));
+    }
+
+    // Process leader object if it exists
+    if (clusterHealth.leader) {
+        processed.leader = {
+            ...clusterHealth.leader,
+            node_id: convertBufferValue(clusterHealth.leader.node_id),
+            last_seen_timestamp: convertBufferValue(clusterHealth.leader.last_seen_timestamp),
+            term: convertBufferValue(clusterHealth.leader.term),
+            uptime_seconds: convertBufferValue(clusterHealth.leader.uptime_seconds)
+        };
     }
 
     return processed;
@@ -252,7 +271,7 @@ async function getNodeInfoData(nodeId) {
 
 // Dashboard routes (serve unified admin dashboard)
 app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'cluster-dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Tab navigation routes

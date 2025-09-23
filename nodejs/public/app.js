@@ -303,6 +303,14 @@ function showTab(tabName, updateHistory = true) {
     if (targetButton) {
         targetButton.classList.add('active');
     }
+
+    // Initialize tab-specific functionality
+    if (tabName === 'cluster') {
+        // Initialize cluster dashboard when cluster tab is shown
+        if (typeof initializeClusterDashboard === 'function') {
+            initializeClusterDashboard();
+        }
+    }
 }
 
 // Settings management functions
