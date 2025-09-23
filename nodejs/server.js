@@ -218,6 +218,33 @@ async function getDatabaseStatsData(includeDetailed = false) {
 }
 
 // Helper function to get node info
+async function getNodeInfoData(nodeId) {
+    return new Promise((resolve, reject) => {
+        const client = createThriftClient();
+        const request = new kvstore_types.GetNodeInfoRequest({
+            node_id: nodeId
+        });
+
+        client.getNodeInfo(request, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            if (!result.success) {
+                reject(new Error(result.error || 'Failed to get node info'));
+                return;
+            }
+
+            const processedNodeInfo = {
+                ...result.node_info,
+                node_id: convertBufferValue(result.node_info.node_id),
+                uptime_seconds: convertBufferValue(result.node_info.uptime_seconds)
+            };
+            resolve(processedNodeInfo);
+        });
+    });
+}
 
 // Routes
 
@@ -304,7 +331,78 @@ app.get('/api/cluster/nodes', async (req, res) => {
     }
 });
 
+// Individual node info endpoint
+app.get('/api/cluster/nodes/:nodeId', async (req, res) => {
+    try {
+        const nodeId = parseInt(req.params.nodeId);
 
+        // Validate node ID parameter
+        if (isNaN(nodeId) || nodeId < 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid node ID'
+            });
+        }
+
+        const nodeInfo = await getNodeInfoData(nodeId);
+        res.json({
+            success: true,
+            data: nodeInfo
+        });
+    } catch (error) {
+        console.error('Error getting node info:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get node info',
+            details: error.message
+        });
+    }
+});
+
+// Replication status endpoint
+app.get('/api/cluster/replication', async (req, res) => {
+    try {
+        const clusterHealth = await getClusterHealthData();
+
+        // Process the cluster health data to extract replication information
+        const nodeStates = {};
+        const replicationLag = {};
+
+        if (clusterHealth.nodes) {
+            clusterHealth.nodes.forEach(node => {
+                const nodeId = node.node_id;
+                if (node.is_leader) {
+                    nodeStates[nodeId] = 'leader';
+                    replicationLag[nodeId] = 0; // Leader has no lag
+                } else {
+                    nodeStates[nodeId] = 'follower';
+                    replicationLag[nodeId] = 0; // For simplicity, assume no lag
+                }
+            });
+        }
+
+        // Determine if consensus is active (more than one node means consensus is needed)
+        const consensusActive = clusterHealth.nodes && clusterHealth.nodes.length > 1;
+
+        res.json({
+            success: true,
+            data: {
+                currentTerm: clusterHealth.current_term,
+                leaderId: clusterHealth.current_leader_id,
+                consensusActive: consensusActive,
+                nodeStates: nodeStates,
+                replicationLag: replicationLag
+            }
+        });
+    } catch (error) {
+        console.error('Error getting replication status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get replication status',
+            details: error.message
+        });
+    }
+});
 
 // Real-time data broadcast (every 5 seconds) - disabled in test environment
 if (process.env.NODE_ENV !== 'test') {
