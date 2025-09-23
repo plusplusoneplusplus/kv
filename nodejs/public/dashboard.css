@@ -255,3 +255,120 @@
 .operation-pending { border-left: 4px solid #ffc107; }
 .operation-committed { border-left: 4px solid #28a745; }
 .operation-failed { border-left: 4px solid #dc3545; }
+
+/* Enhanced Cluster UI Styles */
+.node-icon-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.status-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+.status-dot-healthy {
+    background-color: #28a745;
+}
+
+.status-dot-warning {
+    background-color: #ffc107;
+}
+
+.status-dot-danger {
+    background-color: #dc3545;
+}
+
+.pulse-healthy {
+    animation: pulse-dot 2s infinite;
+}
+
+.pulse-warning {
+    animation: pulse-dot 1.5s infinite;
+}
+
+.pulse-danger {
+    animation: pulse-dot 1s infinite;
+}
+
+@keyframes pulse-dot {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.leader-indicator {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: linear-gradient(45deg, #ffd700, #ffed4e);
+    color: #333;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.leader-glow {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3) !important;
+    animation: leader-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes leader-glow {
+    from { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+    to { box-shadow: 0 0 30px rgba(255, 215, 0, 0.6); }
+}
+
+.node-endpoint {
+    font-family: 'Courier New', monospace;
+}
+
+.status-badge {
+    border-radius: 15px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.last-seen {
+    margin-top: 8px;
+    font-style: italic;
+}
+
+.alert-pulse {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: #dc3545;
+    animation: alert-pulse 1s infinite;
+}
+
+@keyframes alert-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+.pulse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: pulse-dot 2s infinite;
+}
+
+.card {
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+}

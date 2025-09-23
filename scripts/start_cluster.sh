@@ -49,11 +49,14 @@ cleanup() {
     done
 
     # Clean up any remaining processes by name (fallback)
-    echo "Cleaning up any remaining thrift-server processes..."
+    echo "Cleaning up any remaining processes..."
     pkill -f "rocksdbserver-thrift" 2>/dev/null || true
+    pkill -f "node.*server.js" 2>/dev/null || true
 
     # Clean up log files
     rm -f /tmp/kv-multinode-*.log 2>/dev/null || true
+    rm -f /tmp/kv-singlenode-*.log 2>/dev/null || true
+    rm -f /tmp/kv-nodejs-*.log 2>/dev/null || true
 
     echo "✅ Cluster stopped"
     exit 0
@@ -75,6 +78,15 @@ cd "$PROJECT_ROOT"
 echo "Building..."
 cmake --build build --target rust_thrift_server
 
+# Start Node.js web server
+echo "Starting Node.js web server..."
+cd "$PROJECT_ROOT/nodejs"
+nohup node server.js > "/tmp/kv-nodejs-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+NODEJS_PID=$!
+NODE_PIDS+=($NODEJS_PID)
+echo "Node.js server started on port 3000 (PID: $NODEJS_PID)"
+cd "$PROJECT_ROOT"
+
 if [ "$NODE_COUNT" -eq 1 ]; then
     echo "Starting single node on port 9090..."
     # Single node mode - no config file needed
@@ -86,7 +98,8 @@ if [ "$NODE_COUNT" -eq 1 ]; then
 
     echo
     echo "🎉 Single-node server running:"
-    echo "  Server: localhost:9090 (PID: ${NODE_PIDS[0]})"
+    echo "  Node.js web server: localhost:3000 (PID: ${NODE_PIDS[0]})"
+    echo "  Thrift server: localhost:9090 (PID: ${NODE_PIDS[1]})"
 else
     # Multi-node cluster mode
     echo "Generating cluster configs..."
@@ -109,13 +122,54 @@ else
 # Configuration for Node $node in $NODE_COUNT-node cluster
 
 [database]
-base_path = "./data"
-path = "./data/multi-node"
-cache_size_mb = 64
-bloom_filter_bits_per_key = 10
-block_size_kb = 4
+base_path = "./data/multi-node-node-$node"
+
+[rocksdb]
 write_buffer_size_mb = 32
 max_write_buffer_number = 3
+block_cache_size_mb = 64
+block_size_kb = 4
+max_background_jobs = 6
+bytes_per_sync = 0
+dynamic_level_bytes = true
+
+[bloom_filter]
+enabled = true
+bits_per_key = 10
+
+[compression]
+l0_compression = "lz4"
+l1_compression = "lz4"
+bottom_compression = "zstd"
+
+[concurrency]
+max_read_concurrency = 32
+
+[compaction]
+compaction_priority = "min_overlapping_ratio"
+target_file_size_base_mb = 64
+target_file_size_multiplier = 2
+max_bytes_for_level_base_mb = 256
+max_bytes_for_level_multiplier = 10
+
+[cache]
+cache_index_and_filter_blocks = true
+pin_l0_filter_and_index_blocks_in_cache = true
+high_priority_pool_ratio = 0.2
+
+[memory]
+write_buffer_manager_limit_mb = 256
+enable_write_buffer_manager = true
+
+[logging]
+log_level = "info"
+max_log_file_size_mb = 10
+keep_log_file_num = 5
+
+[performance]
+statistics_level = "except_detailed_timers"
+enable_statistics = false
+stats_dump_period_sec = 600
 
 [deployment]
 mode = "replicated"
@@ -146,8 +200,10 @@ EOF
 
     echo
     echo "🎉 Cluster running:"
+    echo "  Node.js web server: localhost:3000 (PID: ${NODE_PIDS[0]})"
     for ((i=0; i<NODE_COUNT; i++)); do
-        echo "  Node $i: localhost:$((9090 + i)) (PID: ${NODE_PIDS[i]})"
+        thrift_pid_index=$((i + 1))
+        echo "  Thrift Node $i: localhost:$((9090 + i)) (PID: ${NODE_PIDS[thrift_pid_index]})"
     done
 fi
 echo

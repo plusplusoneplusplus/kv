@@ -278,22 +278,31 @@ function hideMessages() {
 }
 
 // Tab management
-function showTab(tabName) {
+function showTab(tabName, updateHistory = true) {
+    // Update URL path if requested
+    if (updateHistory) {
+        const newPath = tabName === 'browse' ? '/' : `/${tabName}`;
+        window.history.pushState({ tab: tabName }, '', newPath);
+    }
+
     // Hide all tab contents
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
-    
+
     // Remove active class from all tab buttons
     document.querySelectorAll('.tab-button').forEach(button => {
         button.classList.remove('active');
     });
-    
+
     // Show selected tab
     document.getElementById(tabName + 'Tab').classList.add('active');
-    
-    // Add active class to clicked button
-    event.target.classList.add('active');
+
+    // Add active class to correct button
+    const targetButton = document.querySelector(`[data-tab="${tabName}"]`);
+    if (targetButton) {
+        targetButton.classList.add('active');
+    }
 }
 
 // Settings management functions
@@ -412,5 +421,37 @@ window.onclick = function(event) {
         closeClearAllModal();
     }
 }
+
+// Initialize tab navigation from URL
+function initializeTabFromURL() {
+    const path = window.location.pathname;
+    let tabName = 'browse'; // default
+
+    if (path === '/clear') tabName = 'clear';
+    else if (path === '/settings') tabName = 'settings';
+    else if (path === '/cluster') tabName = 'cluster';
+
+    showTab(tabName, false); // don't update history on init
+}
+
+// Setup tab navigation event listeners
+function setupTabNavigation() {
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tabName = button.getAttribute('data-tab');
+            showTab(tabName);
+        });
+    });
+}
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', (event) => {
+    if (event.state && event.state.tab) {
+        showTab(event.state.tab, false);
+    } else {
+        initializeTabFromURL();
+    }
+});
 
 // This initialization will be called by component-loader.js after components are loaded

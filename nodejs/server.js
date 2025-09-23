@@ -32,7 +32,7 @@ const limiter = process.env.NODE_ENV === 'test' ?
     (req, res, next) => next() : // No rate limiting in tests
     rateLimit({
         windowMs: 15 * 60 * 1000, // 15 minutes
-        max: 100, // limit each IP to 100 requests per windowMs
+        max: 500, // limit each IP to 500 requests per windowMs
         message: { error: 'Too many requests, please try again later.' }
     });
 
@@ -218,7 +218,7 @@ async function getDatabaseStatsData(includeDetailed = false) {
 }
 
 // Helper function to get node info
-async function getNodeInfoData(nodeId = null) {
+async function getNodeInfoData(nodeId) {
     return new Promise((resolve, reject) => {
         const client = createThriftClient();
         const request = new kvstore_types.GetNodeInfoRequest({
@@ -236,7 +236,12 @@ async function getNodeInfoData(nodeId = null) {
                 return;
             }
 
-            resolve(result.node_info);
+            const processedNodeInfo = {
+                ...result.node_info,
+                node_id: convertBufferValue(result.node_info.node_id),
+                uptime_seconds: convertBufferValue(result.node_info.uptime_seconds)
+            };
+            resolve(processedNodeInfo);
         });
     });
 }
@@ -250,13 +255,20 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'cluster-dashboard.html'));
 });
 
-app.get('/dashboard/node/:nodeId', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'node-details.html'));
+// Tab navigation routes
+app.get('/clear', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/dashboard/replication', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'replication-monitor.html'));
+app.get('/settings', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+app.get('/cluster', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
 
 // Diagnostic API endpoints
 app.get('/api/cluster/health', async (req, res) => {
@@ -319,10 +331,13 @@ app.get('/api/cluster/nodes', async (req, res) => {
     }
 });
 
+// Individual node info endpoint
 app.get('/api/cluster/nodes/:nodeId', async (req, res) => {
     try {
         const nodeId = parseInt(req.params.nodeId);
-        if (isNaN(nodeId)) {
+
+        // Validate node ID parameter
+        if (isNaN(nodeId) || nodeId < 0) {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid node ID'
@@ -344,32 +359,40 @@ app.get('/api/cluster/nodes/:nodeId', async (req, res) => {
     }
 });
 
+// Replication status endpoint
 app.get('/api/cluster/replication', async (req, res) => {
     try {
         const clusterHealth = await getClusterHealthData();
 
-        // Extract replication status from cluster health
-        const replicationStatus = {
-            currentTerm: clusterHealth.current_term || 0,
-            leaderId: clusterHealth.current_leader_id,
-            nodeStates: {},
-            replicationLag: {},
-            consensusActive: clusterHealth.nodes && clusterHealth.nodes.length > 1
-        };
+        // Process the cluster health data to extract replication information
+        const nodeStates = {};
+        const replicationLag = {};
 
-        // Process node states and replication lag
         if (clusterHealth.nodes) {
             clusterHealth.nodes.forEach(node => {
-                const state = node.is_leader ? 'leader' :
-                             node.status === 'healthy' ? 'follower' : 'unreachable';
-                replicationStatus.nodeStates[node.node_id] = state;
-                replicationStatus.replicationLag[node.node_id] = 0; // Placeholder
+                const nodeId = node.node_id;
+                if (node.is_leader) {
+                    nodeStates[nodeId] = 'leader';
+                    replicationLag[nodeId] = 0; // Leader has no lag
+                } else {
+                    nodeStates[nodeId] = 'follower';
+                    replicationLag[nodeId] = 0; // For simplicity, assume no lag
+                }
             });
         }
 
+        // Determine if consensus is active (more than one node means consensus is needed)
+        const consensusActive = clusterHealth.nodes && clusterHealth.nodes.length > 1;
+
         res.json({
             success: true,
-            data: replicationStatus
+            data: {
+                currentTerm: clusterHealth.current_term,
+                leaderId: clusterHealth.current_leader_id,
+                consensusActive: consensusActive,
+                nodeStates: nodeStates,
+                replicationLag: replicationLag
+            }
         });
     } catch (error) {
         console.error('Error getting replication status:', error);

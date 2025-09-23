@@ -32,8 +32,6 @@ class ComponentLoader {
             { path: 'components/clear-data.html', targetId: 'clear-tab-container' },
             { path: 'components/settings.html', targetId: 'settings-tab-container' },
             { path: 'components/cluster-health.html', targetId: 'cluster-tab-container' },
-            { path: 'components/node-details.html', targetId: 'node-details-tab-container' },
-            { path: 'components/replication-monitor.html', targetId: 'replication-tab-container' },
             { path: 'components/modals.html', targetId: 'modals-container' }
         ];
 
@@ -52,8 +50,13 @@ class ComponentLoader {
         // Any initialization that needs to happen after components are loaded
         // For example, setting up event listeners, initializing charts, etc.
 
-        // Re-establish tab functionality since we've loaded new HTML
+        // Setup enhanced tab navigation
         this.setupTabEventListeners();
+
+        // Initialize URL-based navigation
+        if (typeof initializeTabFromURL === 'function') {
+            initializeTabFromURL();
+        }
 
         // Initialize the main app after components are loaded
         if (typeof initializeApp === 'function') {
@@ -62,16 +65,22 @@ class ComponentLoader {
     }
 
     static setupTabEventListeners() {
-        // This ensures tab switching works after components are loaded
-        const tabButtons = document.querySelectorAll('.tab-button');
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const tabName = button.getAttribute('data-tab');
-                if (tabName && typeof showTab === 'function') {
-                    showTab(tabName);
-                }
+        // Setup enhanced tab navigation with URL support
+        if (typeof setupTabNavigation === 'function') {
+            setupTabNavigation();
+        } else {
+            // Fallback to basic tab functionality
+            const tabButtons = document.querySelectorAll('.tab-button');
+            tabButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const tabName = button.getAttribute('data-tab');
+                    if (tabName && typeof showTab === 'function') {
+                        showTab(tabName);
+                    }
+                });
             });
-        });
+        }
     }
 }
 
