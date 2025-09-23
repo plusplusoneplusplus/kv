@@ -1,13 +1,14 @@
 //! Unit tests for RSML configuration and factory functionality
 
 use consensus_rsml::{RsmlConfig, RsmlConsensusFactory};
-use consensus_rsml::config::{TransportConfig, TransportType};
-use std::collections::HashMap;
+use consensus_rsml::config::TransportType;
 
 #[cfg(feature = "tcp")]
 use consensus_rsml::config::TcpConfig;
 #[cfg(feature = "tcp")]
 use tokio::time::Duration;
+#[cfg(feature = "tcp")]
+use std::collections::HashMap;
 
 #[test]
 fn test_rsml_config_default() {
