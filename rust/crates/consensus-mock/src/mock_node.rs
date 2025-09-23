@@ -118,7 +118,6 @@ pub struct MockConsensusEngine {
     cluster_members: Arc<RwLock<HashMap<NodeId, String>>>,
     state_machine: Box<dyn StateMachine>,
     message_bus: Option<Arc<ConsensusMessageBus>>,
-    last_processed_message: AtomicU64,
     message_receiver: Option<broadcast::Receiver<ConsensusMessage>>,
 }
 
@@ -138,7 +137,6 @@ impl MockConsensusEngine {
             cluster_members: Arc::new(RwLock::new(cluster_members)),
             state_machine,
             message_bus: None,
-            last_processed_message: AtomicU64::new(0),
             message_receiver: None,
         }
     }
@@ -157,7 +155,6 @@ impl MockConsensusEngine {
             cluster_members: Arc::new(RwLock::new(cluster_members)),
             state_machine,
             message_bus: None,
-            last_processed_message: AtomicU64::new(0),
             message_receiver: None,
         }
     }
@@ -177,7 +174,6 @@ impl MockConsensusEngine {
             cluster_members: Arc::new(RwLock::new(cluster_members)),
             state_machine,
             message_bus: Some(message_bus),
-            last_processed_message: AtomicU64::new(0),
             message_receiver,
         }
     }
@@ -197,7 +193,6 @@ impl MockConsensusEngine {
             cluster_members: Arc::new(RwLock::new(cluster_members)),
             state_machine,
             message_bus: Some(message_bus),
-            last_processed_message: AtomicU64::new(0),
             message_receiver,
         }
     }
@@ -237,6 +232,7 @@ impl MockConsensusEngine {
 
     /// Process incoming messages from the consensus message bus (for followers)
     /// This is now private since message processing should be event-driven
+    #[allow(dead_code)]
     async fn process_messages(&mut self) -> ConsensusResult<()> {
         if let Some(ref mut receiver) = self.message_receiver {
             match receiver.recv().await {
@@ -258,6 +254,7 @@ impl MockConsensusEngine {
     }
 
     /// Handle individual consensus messages
+    #[allow(dead_code)]
     async fn handle_message(&mut self, message: ConsensusMessage) -> ConsensusResult<()> {
         match message {
             ConsensusMessage::AppendEntry {
@@ -288,6 +285,7 @@ impl MockConsensusEngine {
     }
 
     /// Handle append entry from leader (follower behavior)
+    #[allow(dead_code)]
     async fn handle_append_entry(&mut self, entry: LogEntry, leader_id: NodeId, _prev_log_index: Index, _prev_log_term: Term) -> ConsensusResult<()> {
         if !self.is_started.load(Ordering::SeqCst) {
             return Ok(());
@@ -313,6 +311,7 @@ impl MockConsensusEngine {
     }
 
     /// Handle commit notification from leader (follower behavior)
+    #[allow(dead_code)]
     async fn handle_commit_notification(&mut self, commit_index: Index, _leader_id: NodeId) -> ConsensusResult<()> {
         if !self.is_started.load(Ordering::SeqCst) {
             return Ok(());

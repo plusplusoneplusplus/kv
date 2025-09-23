@@ -69,7 +69,7 @@ kv-storage-api = { path = "crates/kv-storage-api" }
 kv-storage-rocksdb = { path = "crates/kv-storage-rocksdb" }
 kv-storage-mockdb = { path = "crates/kv-storage-mockdb" }
 consensus-api = { path = "crates/consensus-api" }
-consensus-mock = { path = "crates/consensus-mock" }
+consensus-mock = { path = "crates/consensus-mock", features = ["testing"] }
 # consensus-rsml = { path = "crates/consensus-rsml", optional = true }
 # Note: consensus-rsml dependency removed to prevent CI failures when private RSML submodule is not available
 # For local development with RSML, manually add: consensus-rsml = { path = "crates/consensus-rsml" }
