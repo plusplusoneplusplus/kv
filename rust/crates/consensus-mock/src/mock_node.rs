@@ -10,6 +10,12 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::transport::{
+    NetworkTransport, ConsensusMessageHandler,
+    AppendEntryRequest, AppendEntryResponse,
+    CommitNotificationRequest, CommitNotificationResponse
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ConsensusMessage {
     /// Proposal submitted to consensus
@@ -66,39 +72,65 @@ impl ConsensusMessageBus {
     }
 
     pub fn publish(&self, message: ConsensusMessage) {
-        if let Ok(mut messages) = self.messages.lock() {
-            messages.push_back(message.clone());
-            // Keep only last 100 messages to prevent unbounded growth
-            if messages.len() > 100 {
-                messages.pop_front();
+        match self.messages.lock() {
+            Ok(mut messages) => {
+                messages.push_back(message.clone());
+                // Keep only last 100 messages to prevent unbounded growth
+                if messages.len() > 100 {
+                    messages.pop_front();
+                }
+            }
+            Err(poisoned) => {
+                // Handle poisoned mutex by clearing and recovering
+                tracing::warn!("ConsensusMessageBus mutex poisoned, recovering");
+                let mut messages = poisoned.into_inner();
+                messages.clear();
+                messages.push_back(message.clone());
             }
         }
         let _ = self.broadcast_tx.send(message);
     }
 
     pub fn get_messages(&self) -> Vec<ConsensusMessage> {
-        if let Ok(messages) = self.messages.lock() {
-            messages.iter().cloned().collect()
-        } else {
-            Vec::new()
+        match self.messages.lock() {
+            Ok(messages) => messages.iter().cloned().collect(),
+            Err(poisoned) => {
+                tracing::warn!("ConsensusMessageBus mutex poisoned in get_messages, recovering");
+                let messages = poisoned.into_inner();
+                messages.iter().cloned().collect()
+            }
         }
     }
 
     pub fn clear_messages(&self) {
-        if let Ok(mut messages) = self.messages.lock() {
-            messages.clear();
+        match self.messages.lock() {
+            Ok(mut messages) => messages.clear(),
+            Err(poisoned) => {
+                tracing::warn!("ConsensusMessageBus mutex poisoned in clear_messages, recovering");
+                let mut messages = poisoned.into_inner();
+                messages.clear();
+            }
         }
     }
 
     pub fn get_messages_since(&self, since_count: usize) -> Vec<ConsensusMessage> {
-        if let Ok(messages) = self.messages.lock() {
-            if since_count < messages.len() {
-                messages.iter().skip(since_count).cloned().collect()
-            } else {
-                Vec::new()
+        match self.messages.lock() {
+            Ok(messages) => {
+                if since_count < messages.len() {
+                    messages.iter().skip(since_count).cloned().collect()
+                } else {
+                    Vec::new()
+                }
             }
-        } else {
-            Vec::new()
+            Err(poisoned) => {
+                tracing::warn!("ConsensusMessageBus mutex poisoned in get_messages_since, recovering");
+                let messages = poisoned.into_inner();
+                if since_count < messages.len() {
+                    messages.iter().skip(since_count).cloned().collect()
+                } else {
+                    Vec::new()
+                }
+            }
         }
     }
 
@@ -119,6 +151,7 @@ pub struct MockConsensusEngine {
     state_machine: Box<dyn StateMachine>,
     message_bus: Option<Arc<ConsensusMessageBus>>,
     message_receiver: Option<broadcast::Receiver<ConsensusMessage>>,
+    network_transport: Option<Arc<dyn NetworkTransport>>,
 }
 
 
@@ -138,6 +171,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: None,
             message_receiver: None,
+            network_transport: None,
         }
     }
 
@@ -156,6 +190,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: None,
             message_receiver: None,
+            network_transport: None,
         }
     }
 
@@ -175,6 +210,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: Some(message_bus),
             message_receiver,
+            network_transport: None,
         }
     }
 
@@ -194,6 +230,53 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: Some(message_bus),
             message_receiver,
+            network_transport: None,
+        }
+    }
+
+    pub fn with_network_transport(
+        node_id: NodeId,
+        state_machine: Box<dyn StateMachine>,
+        network_transport: Arc<dyn NetworkTransport>
+    ) -> Self {
+        let mut cluster_members = HashMap::new();
+        cluster_members.insert(node_id.clone(), "localhost:0".to_string());
+
+        Self {
+            node_id,
+            term: AtomicU64::new(1),
+            log: Arc::new(RwLock::new(Vec::new())),
+            last_applied_index: AtomicU64::new(0),
+            is_leader: AtomicBool::new(true),
+            is_started: AtomicBool::new(false),
+            cluster_members: Arc::new(RwLock::new(cluster_members)),
+            state_machine,
+            message_bus: None,
+            message_receiver: None,
+            network_transport: Some(network_transport),
+        }
+    }
+
+    pub fn follower_with_network_transport(
+        node_id: NodeId,
+        state_machine: Box<dyn StateMachine>,
+        network_transport: Arc<dyn NetworkTransport>
+    ) -> Self {
+        let mut cluster_members = HashMap::new();
+        cluster_members.insert(node_id.clone(), "localhost:0".to_string());
+
+        Self {
+            node_id,
+            term: AtomicU64::new(1),
+            log: Arc::new(RwLock::new(Vec::new())),
+            last_applied_index: AtomicU64::new(0),
+            is_leader: AtomicBool::new(false), // Start as follower
+            is_started: AtomicBool::new(false),
+            cluster_members: Arc::new(RwLock::new(cluster_members)),
+            state_machine,
+            message_bus: None,
+            message_receiver: None,
+            network_transport: Some(network_transport),
         }
     }
 
@@ -318,15 +401,45 @@ impl MockConsensusEngine {
         }
 
         // Apply all entries up to commit_index
-        let log = self.log.read();
-        let current_applied = self.last_applied_index.load(Ordering::SeqCst);
+        // Use a separate scope to ensure lock is released before state machine operations
+        let entries_to_apply: Vec<LogEntry> = {
+            let log = self.log.read();
+            let current_applied = self.last_applied_index.load(Ordering::SeqCst);
 
-        for (i, entry) in log.iter().enumerate() {
-            let entry_index = (i + 1) as Index;
-            if entry_index > current_applied && entry_index <= commit_index {
-                // Apply this entry to the state machine
-                let _result = self.state_machine.apply(entry)?;
-                self.last_applied_index.store(entry_index, Ordering::SeqCst);
+            log.iter()
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    let entry_index = (i + 1) as Index;
+                    if entry_index > current_applied && entry_index <= commit_index {
+                        Some(entry.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }; // Lock is released here
+
+        // Apply entries without holding any locks to prevent deadlock on panic
+        for entry in entries_to_apply {
+            // Use catch_unwind to handle potential panics in state machine
+            let apply_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.state_machine.apply(&entry)
+            }));
+
+            match apply_result {
+                Ok(Ok(_result)) => {
+                    self.last_applied_index.store(entry.index, Ordering::SeqCst);
+                }
+                Ok(Err(consensus_err)) => {
+                    tracing::error!("State machine apply failed for entry {}: {:?}", entry.index, consensus_err);
+                    return Err(consensus_err);
+                }
+                Err(_panic) => {
+                    tracing::error!("State machine apply panicked for entry {}, stopping application", entry.index);
+                    return Err(consensus_api::ConsensusError::Other {
+                        message: format!("State machine panic at index {}", entry.index),
+                    });
+                }
             }
         }
 
@@ -339,15 +452,45 @@ impl MockConsensusEngine {
     }
 
     fn apply_pending_entries(&self) -> ConsensusResult<()> {
-        let log = self.log.read();
-        let current_applied = self.last_applied_index.load(Ordering::SeqCst);
+        // Use a separate scope to ensure lock is released before state machine operations
+        let entries_to_apply: Vec<LogEntry> = {
+            let log = self.log.read();
+            let current_applied = self.last_applied_index.load(Ordering::SeqCst);
 
-        // Apply entries to the state machine
-        for (i, entry) in log.iter().enumerate() {
-            let entry_index = (i + 1) as Index;
-            if entry_index > current_applied {
-                self.state_machine.apply(entry)?;
-                self.last_applied_index.store(entry_index, Ordering::SeqCst);
+            log.iter()
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    let entry_index = (i + 1) as Index;
+                    if entry_index > current_applied {
+                        Some(entry.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }; // Lock is released here
+
+        // Apply entries without holding any locks to prevent deadlock on panic
+        for entry in entries_to_apply {
+            // Use catch_unwind to handle potential panics in state machine
+            let apply_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.state_machine.apply(&entry)
+            }));
+
+            match apply_result {
+                Ok(Ok(_result)) => {
+                    self.last_applied_index.store(entry.index, Ordering::SeqCst);
+                }
+                Ok(Err(consensus_err)) => {
+                    tracing::error!("State machine apply failed for entry {}: {:?}", entry.index, consensus_err);
+                    return Err(consensus_err);
+                }
+                Err(_panic) => {
+                    tracing::error!("State machine apply panicked for entry {}, stopping application", entry.index);
+                    return Err(consensus_api::ConsensusError::Other {
+                        message: format!("State machine panic at index {}", entry.index),
+                    });
+                }
             }
         }
 
@@ -745,6 +888,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_transport_based_consensus() {
+        use crate::in_memory_transport::InMemoryTransportRegistry;
+
+        let registry = InMemoryTransportRegistry::new();
+
+        // Create leader
+        let leader_state_machine = Box::new(TestStateMachine::new());
+        let leader_state_ref = leader_state_machine.applied_entries.clone();
+        let leader_transport = registry.create_transport("leader".to_string()).await;
+        let mut leader = MockConsensusEngine::with_network_transport(
+            "leader".to_string(),
+            leader_state_machine,
+            leader_transport.clone(),
+        );
+
+        // Create follower
+        let follower_state_machine = Box::new(TestStateMachine::new());
+        let follower_state_ref = follower_state_machine.applied_entries.clone();
+        let follower_transport = registry.create_transport("follower".to_string()).await;
+        let follower = MockConsensusEngine::follower_with_network_transport(
+            "follower".to_string(),
+            follower_state_machine,
+            follower_transport.clone(),
+        );
+
+        // Register follower as message handler in leader's transport
+        // We need to create a shared reference to the follower for message handling
+        let follower_handler = Arc::new(tokio::sync::Mutex::new(follower));
+
+        // Create a wrapper that implements ConsensusMessageHandler
+        #[derive(Debug)]
+        struct FollowerHandler {
+            engine: Arc<tokio::sync::Mutex<MockConsensusEngine>>,
+        }
+
+        #[async_trait::async_trait]
+        impl ConsensusMessageHandler for FollowerHandler {
+            async fn handle_append_entry(
+                &self,
+                request: AppendEntryRequest,
+            ) -> ConsensusResult<AppendEntryResponse> {
+                let engine = self.engine.lock().await;
+                engine.handle_append_entry(request).await
+            }
+
+            async fn handle_commit_notification(
+                &self,
+                request: CommitNotificationRequest,
+            ) -> ConsensusResult<CommitNotificationResponse> {
+                let engine = self.engine.lock().await;
+                engine.handle_commit_notification(request).await
+            }
+        }
+
+        let follower_wrapper = Arc::new(FollowerHandler {
+            engine: follower_handler.clone(),
+        });
+
+        leader_transport.register_message_handler("follower".to_string(), follower_wrapper).await;
+
+        // Set up cluster membership
+        leader.add_node("follower".to_string(), "in-memory".to_string()).await.unwrap();
+
+        // Start both nodes
+        leader.start().await.unwrap();
+
+        // We need to start the follower through the handler since it's wrapped
+        {
+            let mut follower_engine = follower_handler.lock().await;
+            follower_engine.start().await.unwrap();
+        }
+
+        // Leader proposes operation
+        let operation_data = b"transport_operation".to_vec();
+        let response = leader.propose(operation_data.clone()).await.unwrap();
+        assert!(response.success);
+        assert_eq!(response.index, Some(1));
+
+        // Verify leader applied the operation
+        assert_eq!(leader.last_applied_index(), 1);
+        let leader_applied = leader_state_ref.lock().unwrap();
+        assert_eq!(leader_applied.len(), 1);
+        assert_eq!(leader_applied[0].data, operation_data);
+
+        // Verify follower received and applied the operation via transport
+        // Access follower state through the follower_handler
+        {
+            let follower_engine = follower_handler.lock().await;
+            assert_eq!(follower_engine.last_applied_index(), 1);
+        }
+
+        let follower_applied = follower_state_ref.lock().unwrap();
+        assert_eq!(follower_applied.len(), 1);
+        assert_eq!(follower_applied[0].data, operation_data);
+    }
+
+    #[tokio::test]
     async fn test_event_driven_message_processing() {
         let message_bus = Arc::new(ConsensusMessageBus::new());
         let state_machine = Box::new(TestStateMachine::new());
@@ -1029,6 +1269,88 @@ mod tests {
 }
 
 #[async_trait]
+impl ConsensusMessageHandler for MockConsensusEngine {
+    async fn handle_append_entry(
+        &self,
+        request: AppendEntryRequest,
+    ) -> ConsensusResult<AppendEntryResponse> {
+        if !self.is_started.load(Ordering::SeqCst) {
+            return Ok(AppendEntryResponse {
+                node_id: self.node_id.clone(),
+                success: false,
+                index: request.entry.index,
+                error: Some("Node not started".to_string()),
+            });
+        }
+
+        // Add entry to log
+        {
+            let mut log = self.log.write();
+            log.push(request.entry.clone());
+        }
+
+        Ok(AppendEntryResponse {
+            node_id: self.node_id.clone(),
+            success: true,
+            index: request.entry.index,
+            error: None,
+        })
+    }
+
+    async fn handle_commit_notification(
+        &self,
+        request: CommitNotificationRequest,
+    ) -> ConsensusResult<CommitNotificationResponse> {
+        if !self.is_started.load(Ordering::SeqCst) {
+            return Ok(CommitNotificationResponse { success: false });
+        }
+
+        // Apply all entries up to commit_index
+        // Use a separate scope to ensure lock is released before state machine operations
+        let entries_to_apply: Vec<LogEntry> = {
+            let log = self.log.read();
+            let current_applied = self.last_applied_index.load(Ordering::SeqCst);
+
+            log.iter()
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    let entry_index = (i + 1) as Index;
+                    if entry_index > current_applied && entry_index <= request.commit_index {
+                        Some(entry.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }; // Lock is released here
+
+        // Apply entries without holding any locks to prevent deadlock on panic
+        for entry in entries_to_apply {
+            // Use catch_unwind to handle potential panics in state machine
+            let apply_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.state_machine.apply(&entry)
+            }));
+
+            match apply_result {
+                Ok(Ok(_result)) => {
+                    self.last_applied_index.store(entry.index, Ordering::SeqCst);
+                }
+                Ok(Err(consensus_err)) => {
+                    tracing::error!("State machine apply failed for entry {}: {:?}", entry.index, consensus_err);
+                    return Ok(CommitNotificationResponse { success: false });
+                }
+                Err(_panic) => {
+                    tracing::error!("State machine apply panicked for entry {}, returning failure", entry.index);
+                    return Ok(CommitNotificationResponse { success: false });
+                }
+            }
+        }
+
+        Ok(CommitNotificationResponse { success: true })
+    }
+}
+
+#[async_trait]
 impl ConsensusEngine for MockConsensusEngine {
     // === Proposal and State Management ===
 
@@ -1089,7 +1411,23 @@ impl ConsensusEngine for MockConsensusEngine {
         }
 
         // Replicate entry to all followers first
-        if let Some(ref bus) = self.message_bus {
+        if let Some(ref transport) = self.network_transport {
+            let cluster_members = self.cluster_members();
+            for member_id in cluster_members {
+                if member_id != self.node_id {
+                    let append_request = AppendEntryRequest {
+                        leader_id: self.node_id.clone(),
+                        entry: entry.clone(),
+                        prev_log_index: index.saturating_sub(1),
+                        prev_log_term: term,
+                        leader_term: term,
+                    };
+
+                    // Send append entry - ignore response for now in mock implementation
+                    let _ = transport.send_append_entry(&member_id, append_request).await;
+                }
+            }
+        } else if let Some(ref bus) = self.message_bus {
             let cluster_members = self.cluster_members();
             for member_id in cluster_members {
                 if member_id != self.node_id {
@@ -1111,7 +1449,21 @@ impl ConsensusEngine for MockConsensusEngine {
         self.apply_pending_entries()?;
 
         // Notify followers to commit
-        if let Some(ref bus) = self.message_bus {
+        if let Some(ref transport) = self.network_transport {
+            let cluster_members = self.cluster_members();
+            for member_id in cluster_members {
+                if member_id != self.node_id {
+                    let commit_request = CommitNotificationRequest {
+                        leader_id: self.node_id.clone(),
+                        commit_index: index,
+                        leader_term: term,
+                    };
+
+                    // Send commit notification - ignore response for now in mock implementation
+                    let _ = transport.send_commit_notification(&member_id, commit_request).await;
+                }
+            }
+        } else if let Some(ref bus) = self.message_bus {
             let cluster_members = self.cluster_members();
             for member_id in cluster_members {
                 if member_id != self.node_id {
@@ -1161,10 +1513,29 @@ impl ConsensusEngine for MockConsensusEngine {
     async fn stop(&mut self) -> ConsensusResult<()> {
         self.is_started.store(false, Ordering::SeqCst);
 
-        // Drain any remaining messages
+        // Safely drain any remaining messages with timeout to prevent deadlock
         if let Some(ref mut receiver) = self.message_receiver {
-            while let Ok(_) = receiver.try_recv() {
-                // Discard remaining messages
+            let timeout_duration = std::time::Duration::from_millis(100);
+            let start_time = std::time::Instant::now();
+
+            while start_time.elapsed() < timeout_duration {
+                match receiver.try_recv() {
+                    Ok(_) => {
+                        // Discard remaining messages
+                    }
+                    Err(broadcast::error::TryRecvError::Empty) => {
+                        // No more messages, break
+                        break;
+                    }
+                    Err(broadcast::error::TryRecvError::Closed) => {
+                        // Channel closed, break
+                        break;
+                    }
+                    Err(broadcast::error::TryRecvError::Lagged(_)) => {
+                        // Receiver was lagged, continue draining
+                        continue;
+                    }
+                }
             }
         }
 
