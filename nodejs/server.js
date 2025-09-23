@@ -218,28 +218,6 @@ async function getDatabaseStatsData(includeDetailed = false) {
 }
 
 // Helper function to get node info
-async function getNodeInfoData(nodeId = null) {
-    return new Promise((resolve, reject) => {
-        const client = createThriftClient();
-        const request = new kvstore_types.GetNodeInfoRequest({
-            node_id: nodeId
-        });
-
-        client.getNodeInfo(request, (err, result) => {
-            if (err) {
-                reject(err);
-                return;
-            }
-
-            if (!result.success) {
-                reject(new Error(result.error || 'Failed to get node info'));
-                return;
-            }
-
-            resolve(result.node_info);
-        });
-    });
-}
 
 // Routes
 
@@ -250,13 +228,20 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'cluster-dashboard.html'));
 });
 
-app.get('/dashboard/node/:nodeId', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'node-details.html'));
+// Tab navigation routes
+app.get('/clear', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/dashboard/replication', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'replication-monitor.html'));
+app.get('/settings', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+app.get('/cluster', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
 
 // Diagnostic API endpoints
 app.get('/api/cluster/health', async (req, res) => {
@@ -319,67 +304,7 @@ app.get('/api/cluster/nodes', async (req, res) => {
     }
 });
 
-app.get('/api/cluster/nodes/:nodeId', async (req, res) => {
-    try {
-        const nodeId = parseInt(req.params.nodeId);
-        if (isNaN(nodeId)) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid node ID'
-            });
-        }
 
-        const nodeInfo = await getNodeInfoData(nodeId);
-        res.json({
-            success: true,
-            data: nodeInfo
-        });
-    } catch (error) {
-        console.error('Error getting node info:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get node info',
-            details: error.message
-        });
-    }
-});
-
-app.get('/api/cluster/replication', async (req, res) => {
-    try {
-        const clusterHealth = await getClusterHealthData();
-
-        // Extract replication status from cluster health
-        const replicationStatus = {
-            currentTerm: clusterHealth.current_term || 0,
-            leaderId: clusterHealth.current_leader_id,
-            nodeStates: {},
-            replicationLag: {},
-            consensusActive: clusterHealth.nodes && clusterHealth.nodes.length > 1
-        };
-
-        // Process node states and replication lag
-        if (clusterHealth.nodes) {
-            clusterHealth.nodes.forEach(node => {
-                const state = node.is_leader ? 'leader' :
-                             node.status === 'healthy' ? 'follower' : 'unreachable';
-                replicationStatus.nodeStates[node.node_id] = state;
-                replicationStatus.replicationLag[node.node_id] = 0; // Placeholder
-            });
-        }
-
-        res.json({
-            success: true,
-            data: replicationStatus
-        });
-    } catch (error) {
-        console.error('Error getting replication status:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get replication status',
-            details: error.message
-        });
-    }
-});
 
 // Real-time data broadcast (every 5 seconds) - disabled in test environment
 if (process.env.NODE_ENV !== 'test') {
