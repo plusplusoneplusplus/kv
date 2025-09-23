@@ -3,6 +3,9 @@ name = "consensus-mock"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+testing = []
+
 [dependencies]
 consensus-api = { path = "../consensus-api" }
 tokio = { workspace = true }

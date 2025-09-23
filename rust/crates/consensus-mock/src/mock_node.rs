@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,23 +53,27 @@ pub enum ConsensusMessage {
 #[derive(Debug)]
 pub struct ConsensusMessageBus {
     messages: Arc<Mutex<VecDeque<ConsensusMessage>>>,
+    broadcast_tx: broadcast::Sender<ConsensusMessage>,
 }
 
 impl ConsensusMessageBus {
     pub fn new() -> Self {
+        let (broadcast_tx, _) = broadcast::channel(1000);
         Self {
             messages: Arc::new(Mutex::new(VecDeque::new())),
+            broadcast_tx,
         }
     }
 
     pub fn publish(&self, message: ConsensusMessage) {
         if let Ok(mut messages) = self.messages.lock() {
-            messages.push_back(message);
+            messages.push_back(message.clone());
             // Keep only last 100 messages to prevent unbounded growth
             if messages.len() > 100 {
                 messages.pop_front();
             }
         }
+        let _ = self.broadcast_tx.send(message);
     }
 
     pub fn get_messages(&self) -> Vec<ConsensusMessage> {
@@ -96,6 +101,10 @@ impl ConsensusMessageBus {
             Vec::new()
         }
     }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<ConsensusMessage> {
+        self.broadcast_tx.subscribe()
+    }
 }
 
 #[derive(Debug)]
@@ -110,6 +119,7 @@ pub struct MockConsensusEngine {
     state_machine: Box<dyn StateMachine>,
     message_bus: Option<Arc<ConsensusMessageBus>>,
     last_processed_message: AtomicU64,
+    message_receiver: Option<broadcast::Receiver<ConsensusMessage>>,
 }
 
 
@@ -129,6 +139,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: None,
             last_processed_message: AtomicU64::new(0),
+            message_receiver: None,
         }
     }
 
@@ -147,6 +158,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: None,
             last_processed_message: AtomicU64::new(0),
+            message_receiver: None,
         }
     }
 
@@ -154,6 +166,7 @@ impl MockConsensusEngine {
         let mut cluster_members = HashMap::new();
         cluster_members.insert(node_id.clone(), "localhost:0".to_string());
 
+        let message_receiver = Some(message_bus.subscribe());
         Self {
             node_id,
             term: AtomicU64::new(1),
@@ -165,6 +178,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: Some(message_bus),
             last_processed_message: AtomicU64::new(0),
+            message_receiver,
         }
     }
 
@@ -172,6 +186,7 @@ impl MockConsensusEngine {
         let mut cluster_members = HashMap::new();
         cluster_members.insert(node_id.clone(), "localhost:0".to_string());
 
+        let message_receiver = Some(message_bus.subscribe());
         Self {
             node_id,
             term: AtomicU64::new(1),
@@ -183,6 +198,7 @@ impl MockConsensusEngine {
             state_machine,
             message_bus: Some(message_bus),
             last_processed_message: AtomicU64::new(0),
+            message_receiver,
         }
     }
 
@@ -190,25 +206,54 @@ impl MockConsensusEngine {
         self.message_bus.clone()
     }
 
-    /// Process incoming messages from the consensus message bus (for followers)
-    pub async fn process_messages(&mut self) -> ConsensusResult<()> {
-        let messages_to_process = if let Some(ref bus) = self.message_bus {
-            let last_processed = self.last_processed_message.load(Ordering::SeqCst) as usize;
-            let messages = bus.get_messages_since(last_processed);
-            let total_messages = bus.get_messages().len();
-
-            // Update the last processed message count
-            self.last_processed_message.store(total_messages as u64, Ordering::SeqCst);
-
+    /// TESTING ONLY: Drain all pending messages from the message queue
+    /// This simulates message delivery in test scenarios where deterministic
+    /// message processing is needed. Production code should rely on event-driven
+    /// message delivery instead of calling this method.
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn drain_message_queue_for_testing(&mut self) -> ConsensusResult<()> {
+        let messages_to_process = if let Some(ref mut receiver) = self.message_receiver {
+            let mut messages = Vec::new();
+            // Collect all currently available messages (non-blocking)
+            loop {
+                match receiver.try_recv() {
+                    Ok(message) => messages.push(message),
+                    Err(_) => break, // No more messages, exit loop
+                }
+            }
             messages
         } else {
             Vec::new()
         };
 
-        for message in &messages_to_process {
-            self.handle_message(message.clone()).await?;
+        // Process collected messages
+        for message in messages_to_process {
+            if self.is_started.load(Ordering::SeqCst) {
+                self.handle_message(message).await?;
+            }
         }
+        Ok(())
+    }
 
+    /// Process incoming messages from the consensus message bus (for followers)
+    /// This is now private since message processing should be event-driven
+    async fn process_messages(&mut self) -> ConsensusResult<()> {
+        if let Some(ref mut receiver) = self.message_receiver {
+            match receiver.recv().await {
+                Ok(message) => {
+                    if self.is_started.load(Ordering::SeqCst) {
+                        self.handle_message(message).await?;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    // Channel closed, nothing to process
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    // We missed some messages, continue processing
+                    tracing::warn!("Message receiver lagged for node {}", self.node_id);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -515,7 +560,7 @@ mod tests {
         assert!(commit_msg.is_some());
 
         // Process messages on follower
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Verify both nodes applied the operation
         assert_eq!(leader.last_applied_index(), 1);
@@ -561,7 +606,7 @@ mod tests {
         });
 
         // Process the AppendEntry message
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Verify entry was added to log but not yet applied
         assert_eq!(follower.last_applied_index(), 0);
@@ -579,7 +624,7 @@ mod tests {
         });
 
         // Process the CommitNotification
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Verify entry was applied to state machine
         assert_eq!(follower.last_applied_index(), 1);
@@ -629,7 +674,7 @@ mod tests {
         }
 
         // Process all messages on follower
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Verify ordering is preserved on both nodes
         assert_eq!(leader.last_applied_index(), 3);
@@ -668,7 +713,7 @@ mod tests {
         });
 
         // Process messages
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Add second message
         let log_entry = LogEntry {
@@ -687,7 +732,7 @@ mod tests {
         });
 
         // Process messages again - should only process new messages
-        follower.process_messages().await.unwrap();
+        follower.drain_message_queue_for_testing().await.unwrap();
 
         // Verify only the AppendEntry was processed (not the EngineStarted again)
         {
@@ -698,6 +743,80 @@ mod tests {
 
         // State machine should not have been called yet (no commit)
         assert_eq!(state_ref.lock().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_event_driven_message_processing() {
+        let message_bus = Arc::new(ConsensusMessageBus::new());
+        let state_machine = Box::new(TestStateMachine::new());
+        let state_ref = state_machine.applied_entries.clone();
+        let mut follower = MockConsensusEngine::follower_with_message_bus(
+            "follower".to_string(),
+            state_machine,
+            message_bus.clone()
+        );
+
+        follower.start().await.unwrap();
+
+        // Publish a message that should be ignored (wrong target)
+        message_bus.publish(ConsensusMessage::AppendEntry {
+            target_node: "other_node".to_string(),
+            entry: LogEntry {
+                index: 1,
+                term: 1,
+                data: b"ignored".to_vec(),
+                timestamp: 123456789,
+            },
+            leader_id: "leader".to_string(),
+            prev_log_index: 0,
+            prev_log_term: 0,
+        });
+
+        // Publish the EngineStarted message that was sent during start()
+        // This will be processed but should be ignored
+        follower.drain_message_queue_for_testing().await.unwrap();
+
+        // Now send a message for this follower
+        let log_entry = LogEntry {
+            index: 1,
+            term: 1,
+            data: b"event_driven_test".to_vec(),
+            timestamp: 123456789,
+        };
+
+        message_bus.publish(ConsensusMessage::AppendEntry {
+            target_node: "follower".to_string(),
+            entry: log_entry.clone(),
+            leader_id: "leader".to_string(),
+            prev_log_index: 0,
+            prev_log_term: 0,
+        });
+
+        // Process the AppendEntry message
+        follower.drain_message_queue_for_testing().await.unwrap();
+
+        // Verify entry was added to log
+        {
+            let log = follower.log.read();
+            assert_eq!(log.len(), 1);
+            assert_eq!(log[0].data, b"event_driven_test".to_vec());
+        }
+
+        // Simulate receiving CommitNotification
+        message_bus.publish(ConsensusMessage::CommitNotification {
+            target_node: "follower".to_string(),
+            commit_index: 1,
+            leader_id: "leader".to_string(),
+        });
+
+        // Process commit message
+        follower.drain_message_queue_for_testing().await.unwrap();
+
+        // Verify entry was applied to state machine
+        assert_eq!(follower.last_applied_index(), 1);
+        let applied = state_ref.lock().unwrap();
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0].data, b"event_driven_test".to_vec());
     }
 
     #[tokio::test]
@@ -1042,6 +1161,14 @@ impl ConsensusEngine for MockConsensusEngine {
 
     async fn stop(&mut self) -> ConsensusResult<()> {
         self.is_started.store(false, Ordering::SeqCst);
+
+        // Drain any remaining messages
+        if let Some(ref mut receiver) = self.message_receiver {
+            while let Ok(_) = receiver.try_recv() {
+                // Discard remaining messages
+            }
+        }
+
         tracing::info!("Mock consensus engine '{}' stopped", self.node_id);
 
         // Publish engine stopped message to bus

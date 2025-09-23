@@ -128,7 +128,7 @@ impl TestCluster {
     /// Process messages on all follower nodes (simulate message delivery)
     async fn process_messages(&mut self) {
         for node in self.followers() {
-            node.consensus.process_messages().await.unwrap();
+            node.consensus.drain_message_queue_for_testing().await.unwrap();
         }
     }
     
