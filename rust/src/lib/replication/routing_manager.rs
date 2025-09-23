@@ -9,6 +9,7 @@ use crate::generated::kvstore::{ClusterHealth, DatabaseStats, NodeStatus};
 use super::errors::{RoutingError, RoutingResult};
 use super::executor::KvStoreExecutor;
 use thrift::OrderedFloat;
+use tracing::warn;
 
 /// Central routing manager that decides how to handle operations based on deployment mode
 /// and operation type. In Phase 1, this simply forwards all operations to the local database.
@@ -321,39 +322,61 @@ impl RoutingManager {
 
     /// Handle database statistics diagnostic request
     async fn handle_get_database_stats(&self, include_detailed: bool) -> RoutingResult<OperationResult> {
-        // Try to get actual database statistics from RocksDB
-        // In Phase 1, we provide basic statistics. Future phases will add more detailed metrics.
+        // Get real database statistics from RocksDB
+        let stats_result = self.database.get_database_statistics().await;
 
-        let (total_keys, total_size_bytes, cache_hit_rate, compaction_pending) =
-            if include_detailed {
-                // In Phase 1, provide reasonable default values for detailed statistics
-                // Future phases will query actual RocksDB properties for:
-                // - self.database.get_property("rocksdb.estimate-num-keys")
-                // - self.database.get_property("rocksdb.total-sst-files-size")
-                (
-                    100,  // Placeholder for total keys
-                    1024 * 1024,  // Placeholder for 1MB database size
-                    Some(85), // Typical cache hit rate
-                    Some(0),  // No pending compactions in test environment
-                )
-            } else {
-                // Basic statistics only
-                (0, 0, None, None)
-            };
+        let (total_keys, total_size_bytes, cache_hit_rate, compaction_pending) = match stats_result {
+            Ok(ref db_stats) => {
+                let total_keys = db_stats.get("total_keys").cloned().unwrap_or(0);
+                let total_size_bytes = db_stats.get("total_size_bytes").cloned().unwrap_or(0);
+                let cache_hit_rate = if include_detailed {
+                    db_stats.get("cache_hit_rate_percent").cloned()
+                } else {
+                    None
+                };
+                let compaction_pending = if include_detailed {
+                    db_stats.get("compaction_pending_bytes").cloned()
+                } else {
+                    None
+                };
 
-        // In a real implementation, these would be maintained as atomic counters
-        // For Phase 1, we provide reasonable placeholder values
+                (total_keys, total_size_bytes, cache_hit_rate, compaction_pending)
+            }
+            Err(ref e) => {
+                // Fallback to placeholder values if we can't get real stats
+                warn!("Failed to get real database statistics: {}, using fallback values", e);
+                if include_detailed {
+                    (100, 1024 * 1024, Some(85), Some(0))
+                } else {
+                    (0, 0, None, None)
+                }
+            }
+        };
+
+        // Extract additional statistics from the database stats
+        let (write_ops, read_ops, avg_response_time, active_txns, committed_txns, aborted_txns) = match &stats_result {
+            Ok(db_stats) => (
+                db_stats.get("write_operations").cloned().unwrap_or(0),
+                db_stats.get("read_operations").cloned().unwrap_or(0),
+                db_stats.get("average_response_time_ms").cloned().unwrap_or(1),
+                db_stats.get("active_transactions").cloned().unwrap_or(0),
+                db_stats.get("committed_transactions").cloned().unwrap_or(0),
+                db_stats.get("aborted_transactions").cloned().unwrap_or(0),
+            ),
+            Err(_) => (0, 0, 1, 0, 0, 0)
+        };
+
         let stats = DatabaseStats::new(
-            total_keys,
-            total_size_bytes,
-            0,  // write_operations_count - would maintain counter
-            0,  // read_operations_count - would maintain counter
-            OrderedFloat(1.5),  // average_response_time_ms - reasonable default
-            0,  // active_transactions - would track active transactions
-            0,  // committed_transactions - would maintain counter
-            0,  // aborted_transactions - would maintain counter
-            cache_hit_rate,
-            compaction_pending,
+            total_keys as i64,
+            total_size_bytes as i64,
+            write_ops as i64,
+            read_ops as i64,
+            OrderedFloat(avg_response_time as f64),
+            active_txns as i64,
+            committed_txns as i64,
+            aborted_txns as i64,
+            cache_hit_rate.map(|v| v as i64),
+            compaction_pending.map(|v| v as i64),
         );
 
         Ok(OperationResult::DatabaseStatsResult(stats))

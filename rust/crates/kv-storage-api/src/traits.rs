@@ -69,4 +69,8 @@ pub trait KvDatabase: Send + Sync {
 
     /// Set fault injection configuration for testing
     async fn set_fault_injection(&self, config: Option<FaultInjectionConfig>) -> OpResult;
+
+    /// Get real-time database statistics from the underlying storage engine
+    /// Returns a map of key metrics like total_keys, total_size_bytes, cache_hit_rate_percent, etc.
+    async fn get_database_statistics(&self) -> Result<std::collections::HashMap<String, u64>, String>;
 }
