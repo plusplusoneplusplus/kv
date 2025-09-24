@@ -28,7 +28,7 @@ let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 // Security configuration (authentication removed)
 
 // Rate limiting (disabled in test environment)
-const limiter = process.env.NODE_ENV === 'test' ? 
+const limiter = (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'integration-test') ?
     (req, res, next) => next() : // No rate limiting in tests
     rateLimit({
         windowMs: 15 * 60 * 1000, // 15 minutes
@@ -424,7 +424,7 @@ app.get('/api/cluster/replication', async (req, res) => {
 });
 
 // Real-time data broadcast (every 5 seconds) - disabled in test environment
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'integration-test') {
     setInterval(async () => {
         try {
             const clusterHealth = await getClusterHealthData();
@@ -793,6 +793,16 @@ app.post('/api/admin/update-endpoint', (req, res) => {
             details: error.message
         });
     }
+});
+
+// Health check endpoint for integration tests
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        service: 'kv-store-web-dashboard'
+    });
 });
 
 // Export the app for testing
