@@ -13,7 +13,11 @@ use rocksdb_server::lib::replication::RoutingManager;
 use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
 use rocksdb_server::lib::cluster::ClusterManager;
 use rocksdb_server::lib::config::Config as ClusterConfig;
+use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
+use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
+use consensus_mock::{MockConsensusEngine, ThriftTransport};
+use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -181,11 +185,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Create consensus database based on deployment mode
+    let consensus_database = if is_multi_node {
+        // Multi-node: use real consensus with ThriftTransport
+        info!("Creating multi-node consensus database for Node {}", node_id);
+
+        let cluster_config_ref = cluster_config.as_ref().unwrap();
+
+        // Use consensus endpoints if available, otherwise fall back to replica endpoints with offset
+        let consensus_endpoints = cluster_config_ref.consensus
+            .as_ref()
+            .and_then(|c| c.endpoints.as_ref())
+            .cloned()
+            .unwrap_or_else(|| {
+                // Fallback: generate consensus ports from replica endpoints
+                cluster_config_ref.deployment.replica_endpoints.as_ref().unwrap()
+                    .iter()
+                    .map(|endpoint| {
+                        // Convert 9090 -> 7090, 9091 -> 7091, etc.
+                        endpoint.replace("9090", "7090").replace("9091", "7091").replace("9092", "7092")
+                    })
+                    .collect()
+            });
+
+        info!("Consensus endpoints: {:?}", consensus_endpoints);
+
+        // Create endpoint map for ThriftTransport
+        let mut endpoint_map = HashMap::new();
+        for (i, endpoint) in consensus_endpoints.iter().enumerate() {
+            endpoint_map.insert(i.to_string(), endpoint.clone());
+        }
+
+        // Create ThriftTransport
+        let transport = ThriftTransport::with_endpoints(
+            node_id.to_string(),
+            endpoint_map,
+        ).await;
+
+        // Create state machine with executor
+        let executor = Arc::new(KvStoreExecutor::new(database.clone()));
+        let state_machine = Box::new(KvStateMachine::new(executor));
+
+        // Create consensus engine
+        let consensus_engine = if node_id == 0 {
+            // Node 0 starts as leader
+            MockConsensusEngine::with_network_transport(
+                node_id.to_string(),
+                state_machine,
+                Arc::new(transport),
+            )
+        } else {
+            // Other nodes start as followers
+            MockConsensusEngine::follower_with_network_transport(
+                node_id.to_string(),
+                state_machine,
+                Arc::new(transport),
+            )
+        };
+
+        let consensus_db = ConsensusKvDatabase::new(
+            Box::new(consensus_engine),
+            database as Arc<dyn KvDatabase>
+        );
+
+        info!("Multi-node consensus database created for Node {}", node_id);
+        Arc::new(consensus_db)
+    } else {
+        // Single-node: use mock consensus for immediate execution
+        info!("Creating single-node consensus database");
+
+        let consensus_db = ConsensusKvDatabase::new_with_mock(
+            node_id.to_string(),
+            database as Arc<dyn KvDatabase>
+        );
+
+        info!("Single-node consensus database created");
+        Arc::new(consensus_db)
+    };
+
+    // Start consensus engine
+    if let Err(e) = consensus_database.start().await {
+        error!("Failed to start consensus engine: {}", e);
+        return Err(format!("Consensus engine startup failed: {}", e).into());
+    }
+    info!("Consensus engine started successfully");
+
     // Create routing manager
     let routing_manager = Arc::new(RoutingManager::new(
-        database as Arc<dyn KvDatabase>,
+        consensus_database.clone(),
         rocksdb_config.deployment.mode.clone(),
-        rocksdb_config.deployment.instance_id,
+        Some(node_id),
         cluster_manager.clone(),
     ));
 

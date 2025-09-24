@@ -105,14 +105,19 @@ else
     echo "Generating cluster configs..."
     mkdir -p "$PROJECT_ROOT/build/bin/cluster_configs"
 
-    # Generate endpoint list for cluster
+    # Generate endpoint lists for cluster
     ENDPOINTS=""
+    CONSENSUS_ENDPOINTS=""
     for ((i=0; i<NODE_COUNT; i++)); do
-        port=$((9090 + i))
+        kv_port=$((9090 + i))
+        consensus_port=$((7090 + i))
+
         if [ $i -eq 0 ]; then
-            ENDPOINTS="\"localhost:$port\""
+            ENDPOINTS="\"localhost:$kv_port\""
+            CONSENSUS_ENDPOINTS="\"localhost:$consensus_port\""
         else
-            ENDPOINTS="$ENDPOINTS, \"localhost:$port\""
+            ENDPOINTS="$ENDPOINTS, \"localhost:$kv_port\""
+            CONSENSUS_ENDPOINTS="$CONSENSUS_ENDPOINTS, \"localhost:$consensus_port\""
         fi
     done
 
@@ -175,6 +180,14 @@ stats_dump_period_sec = 600
 mode = "replicated"
 instance_id = $node
 replica_endpoints = [$ENDPOINTS]
+
+[consensus]
+algorithm = "mock"
+election_timeout_ms = 5000
+heartbeat_interval_ms = 1000
+max_batch_size = 100
+max_outstanding_proposals = 1000
+endpoints = [$CONSENSUS_ENDPOINTS]
 EOF
     done
 
@@ -203,7 +216,10 @@ EOF
     echo "  Node.js web server: localhost:3000 (PID: ${NODE_PIDS[0]})"
     for ((i=0; i<NODE_COUNT; i++)); do
         thrift_pid_index=$((i + 1))
-        echo "  Thrift Node $i: localhost:$((9090 + i)) (PID: ${NODE_PIDS[thrift_pid_index]})"
+        kv_port=$((9090 + i))
+        consensus_port=$((7090 + i))
+        role=$([ $i -eq 0 ] && echo "Leader" || echo "Follower")
+        echo "  Node $i ($role): KV=localhost:$kv_port, Consensus=localhost:$consensus_port (PID: ${NODE_PIDS[thrift_pid_index]})"
     done
 fi
 echo

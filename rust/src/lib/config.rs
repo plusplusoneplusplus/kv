@@ -111,6 +111,7 @@ pub struct ConsensusConfig {
     pub heartbeat_interval_ms: u64,
     pub max_batch_size: u32,
     pub max_outstanding_proposals: u32,
+    pub endpoints: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,6 +309,7 @@ impl Default for ConsensusConfig {
             heartbeat_interval_ms: 1000,
             max_batch_size: 100,
             max_outstanding_proposals: 1000,
+            endpoints: None,
         }
     }
 }

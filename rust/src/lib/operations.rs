@@ -22,6 +22,11 @@ pub trait DatabaseOperation {
             OperationType::Write
         }
     }
+    /// Indicates whether this operation should be routed through consensus layer
+    /// or handled locally at the routing manager level
+    fn should_route_to_consensus(&self) -> bool {
+        true // Default: most operations go through consensus
+    }
 }
 
 /// All operations that can be performed on the distributed KV store
@@ -120,6 +125,18 @@ impl DatabaseOperation for KvOperation {
             | KvOperation::SetVersionstampedKey { .. }
             | KvOperation::SetVersionstampedValue { .. }
             | KvOperation::SetFaultInjection { .. } => false,
+        }
+    }
+
+    fn should_route_to_consensus(&self) -> bool {
+        match self {
+            // Diagnostic operations are handled locally at routing manager level
+            KvOperation::GetClusterHealth
+            | KvOperation::GetDatabaseStats { .. }
+            | KvOperation::GetNodeInfo { .. } => false,
+
+            // All other operations go through consensus layer
+            _ => true,
         }
     }
 }

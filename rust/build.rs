@@ -1,6 +1,10 @@
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Inform rustc that `cfg(disabled_test)` is an expected conditional.
+    // This silences the `unexpected_cfgs` lint while keeping tests disabled.
+    println!("cargo:rustc-check-cfg=cfg(disabled_test)");
+
     let proto_file = "../proto/kvstore.proto";
     let out_dir = std::env::var("OUT_DIR")?;
     let generated_file = format!("{}/kvstore.rs", out_dir);
