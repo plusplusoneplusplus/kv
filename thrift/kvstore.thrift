@@ -298,6 +298,60 @@ struct GetNodeInfoResponse {
     3: optional string error
 }
 
+// Consensus-related structures (Raft protocol)
+
+struct LogEntry {
+    1: required i64 term,
+    2: required i64 index,
+    3: required binary data,  // Serialized operation
+    4: required string entry_type  // "operation", "config_change", "noop"
+}
+
+struct AppendEntriesRequest {
+    1: required i64 term,
+    2: required i32 leader_id,
+    3: required i64 prev_log_index,
+    4: required i64 prev_log_term,
+    5: required list<LogEntry> entries,
+    6: required i64 leader_commit
+}
+
+struct AppendEntriesResponse {
+    1: required i64 term,
+    2: required bool success,
+    3: optional i64 last_log_index,  // For leader to update next_index
+    4: optional string error
+}
+
+struct RequestVoteRequest {
+    1: required i64 term,
+    2: required i32 candidate_id,
+    3: required i64 last_log_index,
+    4: required i64 last_log_term
+}
+
+struct RequestVoteResponse {
+    1: required i64 term,
+    2: required bool vote_granted,
+    3: optional string error
+}
+
+struct InstallSnapshotRequest {
+    1: required i64 term,
+    2: required i32 leader_id,
+    3: required i64 last_included_index,
+    4: required i64 last_included_term,
+    5: required i64 offset,
+    6: required binary data,
+    7: required bool done
+}
+
+struct InstallSnapshotResponse {
+    1: required i64 term,
+    2: required bool success,
+    3: optional string error
+}
+
 // The FoundationDB-style transactional key-value store service
 service TransactionalKV {
     // FoundationDB-style client-side transactions
@@ -337,4 +391,11 @@ service TransactionalKV {
     GetClusterHealthResponse getClusterHealth(1: GetClusterHealthRequest request),
     GetDatabaseStatsResponse getDatabaseStats(1: GetDatabaseStatsRequest request),
     GetNodeInfoResponse getNodeInfo(1: GetNodeInfoRequest request)
+}
+
+// Consensus service for Raft protocol communication between nodes
+service ConsensusService {
+    AppendEntriesResponse appendEntries(1: AppendEntriesRequest request),
+    RequestVoteResponse requestVote(1: RequestVoteRequest request),
+    InstallSnapshotResponse installSnapshot(1: InstallSnapshotRequest request)
 }

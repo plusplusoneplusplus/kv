@@ -8,6 +8,7 @@ pub enum ConsensusError {
     SerializationError {
         message: String,
     },
+    TransportError(String),
     Other {
         message: String,
     },
@@ -18,6 +19,9 @@ impl fmt::Display for ConsensusError {
         match self {
             ConsensusError::SerializationError { message } => {
                 write!(f, "Serialization error: {}", message)
+            }
+            ConsensusError::TransportError(message) => {
+                write!(f, "Transport error: {}", message)
             }
             ConsensusError::Other { message } => {
                 write!(f, "Other error: {}", message)
