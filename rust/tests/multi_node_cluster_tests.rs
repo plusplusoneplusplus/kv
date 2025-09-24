@@ -5,6 +5,7 @@
 mod common;
 
 use common::cluster_test_utils::MultiNodeClusterTest;
+use common::test_cluster::ThreeNodeClusterTest;
 
 #[tokio::test]
 async fn test_multi_node_cluster_creation() -> Result<(), Box<dyn std::error::Error>> {
@@ -157,4 +158,146 @@ async fn test_node_health_monitoring() -> Result<(), Box<dyn std::error::Error>>
     }
 
     Ok(())
+}
+
+
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_cluster_formation_and_leader_election() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_cluster_formation().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_leader_failover() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_cluster_formation().await.unwrap();
+    harness.test_leader_failover().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_follower_failure() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_cluster_formation().await.unwrap();
+    harness.test_follower_failure().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_data_consistency() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_data_consistency().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_concurrent_operations() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_concurrent_operations().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_network_partitions() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_network_partitions().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_rolling_restart() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_rolling_restart().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_diagnostic_endpoints() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_diagnostic_endpoints().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and long running time"]
+async fn test_three_node_load_testing() {
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    harness.start_cluster().await.unwrap();
+    harness.test_load_testing().await.unwrap();
+    harness.shutdown_cluster().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Requires manual cluster setup and very long running time"]
+async fn test_comprehensive_three_node_cluster_integration() {
+    println!("🎯 Starting comprehensive 3-node cluster integration test suite");
+
+    let mut harness = ThreeNodeClusterTest::new().await.unwrap();
+
+    // Phase 1: Basic cluster formation and leader election
+    println!("\n📋 Phase 1: Cluster Formation and Leader Election");
+    harness.start_cluster().await.unwrap();
+    harness.test_cluster_formation().await.unwrap();
+
+    // Phase 2: Data consistency and basic operations
+    println!("\n📋 Phase 2: Data Consistency Testing");
+    harness.test_data_consistency().await.unwrap();
+
+    // Phase 3: Concurrent operations
+    println!("\n📋 Phase 3: Concurrent Operations Testing");
+    harness.test_concurrent_operations().await.unwrap();
+
+    // Phase 4: Diagnostic endpoints
+    println!("\n📋 Phase 4: Diagnostic Endpoints Testing");
+    harness.test_diagnostic_endpoints().await.unwrap();
+
+    // Phase 5: Load testing
+    println!("\n📋 Phase 5: Load Testing");
+    harness.test_load_testing().await.unwrap();
+
+    // Phase 6: Network partition testing
+    println!("\n📋 Phase 6: Network Partition Testing");
+    harness.test_network_partitions().await.unwrap();
+
+    // Phase 7: Rolling restart testing
+    println!("\n📋 Phase 7: Rolling Restart Testing");
+    harness.test_rolling_restart().await.unwrap();
+
+    // Phase 8: Failover scenarios
+    println!("\n📋 Phase 8: Leader Failover Testing");
+    harness.test_leader_failover().await.unwrap();
+
+    println!("\n📋 Phase 9: Follower Failure Testing");
+    harness.test_follower_failure().await.unwrap();
+
+    harness.shutdown_cluster().await.unwrap();
+
+    println!("🎉 Comprehensive 3-node cluster integration test suite completed successfully!");
 }
