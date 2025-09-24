@@ -10,6 +10,7 @@ set -o pipefail
 
 # Configuration
 THRIFT_SERVER_PORT=${THRIFT_SERVER_PORT:-9097}  # Default to 9097, can be overridden with env var
+CONSENSUS_BASE_PORT=${CONSENSUS_BASE_PORT:-19200}  # Base port for consensus servers
 SERVER_STARTUP_TIMEOUT=10
 TEST_DATA_PREFIX="test_"
 
@@ -32,6 +33,10 @@ TESTS_FAILED=0
 TEST_WORK_DIR=""
 TEST_SERVER_LOG=""
 TEST_DB_DIR=""
+
+# Server PIDs for cleanup
+THRIFT_SERVER_PID=""
+CONSENSUS_SERVER_PIDS=()
 
 # Logging functions
 log_info() {
@@ -60,11 +65,20 @@ log_test() {
 cleanup() {
     log_info "Cleaning up test environment..."
 
-    if [ ! -z "$THRIFT_SERVER_PID" ]; then
+    if [ -n "$THRIFT_SERVER_PID" ]; then
         log_info "Stopping Thrift server (PID: $THRIFT_SERVER_PID)"
-        kill $THRIFT_SERVER_PID 2>/dev/null || true
-        wait $THRIFT_SERVER_PID 2>/dev/null || true
+        kill "$THRIFT_SERVER_PID" 2>/dev/null || true
+        wait "$THRIFT_SERVER_PID" 2>/dev/null || true
     fi
+
+    # Stop consensus servers
+    for pid in "${CONSENSUS_SERVER_PIDS[@]}"; do
+        if [ -n "$pid" ]; then
+            log_info "Stopping consensus server (PID: $pid)"
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
 
     # Note: FFI tests handle their own cleanup, no manual cleanup needed
 
@@ -128,15 +142,15 @@ start_server() {
     fi
 
     # Start the server in background with custom port
-    $thrift_server_bin --port $THRIFT_SERVER_PORT --db-path "$TEST_DB_DIR" > "$TEST_SERVER_LOG" 2>&1 &
+    "$thrift_server_bin" --port "$THRIFT_SERVER_PORT" --db-path "$TEST_DB_DIR" > "$TEST_SERVER_LOG" 2>&1 &
     THRIFT_SERVER_PID=$!
 
     log_info "Thrift server started with PID: $THRIFT_SERVER_PID"
 
     # Wait for server to be ready
     log_info "Waiting for Thrift server to be ready..."
-    for i in $(seq 1 $SERVER_STARTUP_TIMEOUT); do
-        if nc -z localhost $THRIFT_SERVER_PORT 2>/dev/null; then
+    for i in $(seq 1 "$SERVER_STARTUP_TIMEOUT"); do
+        if nc -z localhost "$THRIFT_SERVER_PORT" 2>/dev/null; then
             log_success "Thrift server is ready"
             return 0
         fi
@@ -148,6 +162,40 @@ start_server() {
         cat "$TEST_SERVER_LOG"
     fi
     exit 1
+}
+
+# Start consensus Thrift servers for consensus-mock integration tests
+start_consensus_servers() {
+    log_info "Starting consensus Thrift servers for integration tests..."
+
+    # Clean up any existing consensus server processes
+    pkill -f "mock-consensus-server" 2>/dev/null || true
+    sleep 2
+
+    # Check if we have a consensus server binary (for future implementation)
+    # For now, the tests expect servers to be started but handle connection failures gracefully
+    log_info "Consensus servers configured for ports ${CONSENSUS_BASE_PORT}+ (tests handle missing servers gracefully)"
+
+    # TODO: When implementing actual consensus Thrift servers:
+    # 1. Build consensus server binaries from consensus-mock crate
+    # 2. Start multiple servers on sequential ports (CONSENSUS_BASE_PORT, CONSENSUS_BASE_PORT+1, etc.)
+    # 3. Track their PIDs in CONSENSUS_SERVER_PIDS array for cleanup
+    # 4. Wait for servers to be ready with port checks
+
+    # Example implementation template:
+    # for i in {0..2}; do
+    #     local port=$((CONSENSUS_BASE_PORT + i))
+    #     local log_file="$TEST_WORK_DIR/consensus_server_${i}.log"
+    #
+    #     # Start consensus server
+    #     consensus-server --node-id "node-${i}" --port "${port}" > "${log_file}" 2>&1 &
+    #     local server_pid=$!
+    #     CONSENSUS_SERVER_PIDS+=("$server_pid")
+    #
+    #     log_info "Started consensus server node-${i} on port ${port} with PID: ${server_pid}"
+    # done
+
+    log_success "Consensus server environment prepared (tests handle server absence gracefully)"
 }
 
 # Test FFI interface
@@ -171,12 +219,28 @@ test_rust_workspace() {
     log_test "Testing Rust workspace"
     log_info "Running cargo test --workspace in rust/ directory"
 
-    # Change to rust directory and run tests with correct server port
-    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" cargo test --workspace); then
+    # Change to rust directory and run tests with correct server ports
+    # Set environment variables for both regular and consensus servers
+    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --workspace); then
         log_success "Rust workspace tests completed successfully"
         return 0
     else
         log_error "Rust workspace tests failed (see output above for details)"
+        return 1
+    fi
+}
+
+# Test consensus integration specifically
+test_consensus_integration() {
+    log_test "Testing consensus-mock integration tests"
+    log_info "Running consensus-mock specific tests with server environment"
+
+    # Change to rust directory and run only consensus-mock tests
+    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --package consensus-mock); then
+        log_success "Consensus integration tests completed successfully"
+        return 0
+    else
+        log_error "Consensus integration tests failed (see output above for details)"
         return 1
     fi
 }
@@ -238,6 +302,7 @@ main() {
     check_prerequisites
     setup_test_environment
     start_server
+    start_consensus_servers
 
     echo
     if run_all_tests; then
@@ -274,14 +339,17 @@ show_help() {
     echo "  5. Report test results and exit with appropriate code"
     echo
     echo "Environment variables:"
-    echo "  THRIFT_SERVER_PORT: Server port (default: 9097)"
+    echo "  THRIFT_SERVER_PORT: Main server port (default: 9097)"
     echo "    FFI tests will be automatically configured to use this port"
     echo "    Default 9097 avoids conflicts with production workloads on 9090"
+    echo "  CONSENSUS_BASE_PORT: Base port for consensus servers (default: 19200)"
+    echo "    Consensus tests use sequential ports starting from this base"
     echo
     echo "Prerequisites:"
     echo "  - Run 'cmake --build build' from project root to build FFI tests"
     echo "  - Run 'cargo build --bin thrift-server' from rust/ directory"
     echo "  - Ensure port $THRIFT_SERVER_PORT is available"
+    echo "  - Ensure ports ${CONSENSUS_BASE_PORT}+ are available for consensus servers"
     echo "  - Rust toolchain for workspace tests (cargo test)"
 }
 

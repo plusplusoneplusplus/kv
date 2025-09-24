@@ -19,6 +19,10 @@ The project has been refactored to use a unified Rust workspace structure:
 
 - **Rust Implementation**: See [rust/CLAUDE.md](rust/CLAUDE.md) for Rust-specific guidance including the unified workspace structure, async Tokio implementation, client SDK with C FFI bindings, and build instructions.
 
+## Protocol Generation
+
+- **Thrift Code Generation**: See [docs/thrift-generation-process.md](docs/thrift-generation-process.md) for details on how Thrift protocol definitions are automatically converted to language-specific bindings during the build process.
+
 ## Build and Test
 1. Run cmake --build build in the git root to build. **Give enough timeout like 15 min**
 2. Run ./build/bin/rocksdbserver-thrift to launch the thrift server
