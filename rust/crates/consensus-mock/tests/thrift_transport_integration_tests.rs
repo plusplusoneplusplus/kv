@@ -17,6 +17,7 @@ use consensus_mock::{
 /// Test cluster for real Thrift transport integration testing
 struct ThriftConsensusCluster {
     transports: Vec<ThriftTransport>,
+    #[allow(dead_code)] // Used for future port allocation expansion
     base_port: u16,
 }
 

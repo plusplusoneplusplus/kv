@@ -335,6 +335,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)] // Used for debugging and future test expansion
         async fn get_operations(&self) -> Vec<String> {
             self.operations.lock().await.clone()
         }
