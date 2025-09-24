@@ -257,47 +257,47 @@ async fn test_three_node_load_testing() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "Requires manual cluster setup and very long running time"]
 async fn test_comprehensive_three_node_cluster_integration() {
-    println!("🎯 Starting comprehensive 3-node cluster integration test suite");
+    println!("Starting comprehensive 3-node cluster integration test suite");
 
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
     // Phase 1: Basic cluster formation and leader election
-    println!("\n📋 Phase 1: Cluster Formation and Leader Election");
+    println!("\nPhase 1: Cluster Formation and Leader Election");
     harness.start_cluster().await.unwrap();
     harness.test_cluster_formation().await.unwrap();
 
     // Phase 2: Data consistency and basic operations
-    println!("\n📋 Phase 2: Data Consistency Testing");
+    println!("\nPhase 2: Data Consistency Testing");
     harness.test_data_consistency().await.unwrap();
 
     // Phase 3: Concurrent operations
-    println!("\n📋 Phase 3: Concurrent Operations Testing");
+    println!("\nPhase 3: Concurrent Operations Testing");
     harness.test_concurrent_operations().await.unwrap();
 
     // Phase 4: Diagnostic endpoints
-    println!("\n📋 Phase 4: Diagnostic Endpoints Testing");
+    println!("\nPhase 4: Diagnostic Endpoints Testing");
     harness.test_diagnostic_endpoints().await.unwrap();
 
     // Phase 5: Load testing
-    println!("\n📋 Phase 5: Load Testing");
+    println!("\nPhase 5: Load Testing");
     harness.test_load_testing().await.unwrap();
 
     // Phase 6: Network partition testing
-    println!("\n📋 Phase 6: Network Partition Testing");
+    println!("\nPhase 6: Network Partition Testing");
     harness.test_network_partitions().await.unwrap();
 
     // Phase 7: Rolling restart testing
-    println!("\n📋 Phase 7: Rolling Restart Testing");
+    println!("\nPhase 7: Rolling Restart Testing");
     harness.test_rolling_restart().await.unwrap();
 
     // Phase 8: Failover scenarios
-    println!("\n📋 Phase 8: Leader Failover Testing");
+    println!("\nPhase 8: Leader Failover Testing");
     harness.test_leader_failover().await.unwrap();
 
-    println!("\n📋 Phase 9: Follower Failure Testing");
+    println!("\nPhase 9: Follower Failure Testing");
     harness.test_follower_failure().await.unwrap();
 
     harness.shutdown_cluster().await.unwrap();
 
-    println!("🎉 Comprehensive 3-node cluster integration test suite completed successfully!");
+    println!("Comprehensive 3-node cluster integration test suite completed successfully!");
 }

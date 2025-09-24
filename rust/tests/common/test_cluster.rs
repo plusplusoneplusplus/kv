@@ -256,6 +256,7 @@ mod tests {
 }
 
 /// Test harness for 3-node cluster deployment and operations
+#[allow(dead_code)]
 pub struct ThreeNodeClusterTest {
     nodes: Vec<ClusterNode>,
     client_endpoints: Vec<String>,
@@ -263,6 +264,7 @@ pub struct ThreeNodeClusterTest {
     test_data_cleanup: Vec<String>,
 }
 
+#[allow(dead_code)]
 struct ClusterNode {
     node_id: u32,
     process: Option<Child>,
@@ -271,6 +273,7 @@ struct ClusterNode {
     data_path: String,
 }
 
+#[allow(dead_code)]
 impl ThreeNodeClusterTest {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let mut nodes = Vec::new();
