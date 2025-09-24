@@ -167,6 +167,7 @@ impl FullConsensusCluster {
     }
 
     /// Get the leader client (first client)
+    #[allow(dead_code)] // Used for debugging and future cluster testing
     fn leader_client(&self) -> &MockConsensusClient {
         &self.clients[0]
     }
