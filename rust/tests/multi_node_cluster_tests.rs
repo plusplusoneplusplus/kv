@@ -163,7 +163,6 @@ async fn test_node_health_monitoring() -> Result<(), Box<dyn std::error::Error>>
 
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_cluster_formation_and_leader_election() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -184,7 +183,6 @@ async fn test_three_node_leader_failover() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_follower_failure() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -195,7 +193,6 @@ async fn test_three_node_follower_failure() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_data_consistency() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -205,7 +202,6 @@ async fn test_three_node_data_consistency() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_concurrent_operations() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -215,7 +211,6 @@ async fn test_three_node_concurrent_operations() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_network_partitions() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -225,7 +220,6 @@ async fn test_three_node_network_partitions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_rolling_restart() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -235,7 +229,6 @@ async fn test_three_node_rolling_restart() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_diagnostic_endpoints() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -245,7 +238,6 @@ async fn test_three_node_diagnostic_endpoints() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and long running time"]
 async fn test_three_node_load_testing() {
     let mut harness = ThreeNodeClusterTest::new().await.unwrap();
 
@@ -255,7 +247,6 @@ async fn test_three_node_load_testing() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires manual cluster setup and very long running time"]
 async fn test_comprehensive_three_node_cluster_integration() {
     println!("Starting comprehensive 3-node cluster integration test suite");
 
