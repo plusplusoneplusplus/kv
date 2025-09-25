@@ -1,7 +1,6 @@
-// For now, let's use a simpler approach and just import what we need
-// We'll use the consensus types from the main crate when available
+/// Simple consensus types for use within consensus-mock crate
+/// These avoid circular dependency with rocksdb_server crate
 
-// Minimal Thrift type definitions for consensus
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogEntry {
     pub term: i64,
@@ -16,7 +15,7 @@ impl LogEntry {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct AppendEntriesRequest {
     pub term: i64,
     pub leader_id: i32,
@@ -46,7 +45,7 @@ impl AppendEntriesRequest {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct AppendEntriesResponse {
     pub term: i64,
     pub success: bool,
@@ -67,35 +66,5 @@ impl AppendEntriesResponse {
             last_log_index,
             error,
         }
-    }
-}
-
-// Mock client trait for testing
-pub trait TConsensusServiceSyncClient {
-    fn append_entries(&mut self, request: AppendEntriesRequest) -> Result<AppendEntriesResponse, thrift::Error>;
-}
-
-// Mock client implementation for testing
-pub struct MockConsensusServiceSyncClient {
-    pub responses: std::collections::VecDeque<Result<AppendEntriesResponse, thrift::Error>>,
-}
-
-impl MockConsensusServiceSyncClient {
-    pub fn new() -> Self {
-        Self {
-            responses: std::collections::VecDeque::new(),
-        }
-    }
-
-    pub fn add_response(&mut self, response: Result<AppendEntriesResponse, thrift::Error>) {
-        self.responses.push_back(response);
-    }
-}
-
-impl TConsensusServiceSyncClient for MockConsensusServiceSyncClient {
-    fn append_entries(&mut self, _request: AppendEntriesRequest) -> Result<AppendEntriesResponse, thrift::Error> {
-        self.responses.pop_front().unwrap_or_else(|| {
-            Ok(AppendEntriesResponse::new(0, true, Some(0), None))
-        })
     }
 }
