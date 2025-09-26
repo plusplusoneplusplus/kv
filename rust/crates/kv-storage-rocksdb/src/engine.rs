@@ -1093,10 +1093,16 @@ impl TransactionalKvDatabase {
 
 impl Drop for TransactionalKvDatabase {
     fn drop(&mut self) {
-        // Join the worker thread to ensure clean termination
-        // When we drop the write_queue_tx, the worker thread will exit
+        // Signal worker thread to exit by dropping the sender
+        // This will cause the receiver to return Err, exiting the worker loop
+        drop(std::mem::replace(&mut self.write_queue_tx, mpsc::channel().0));
+
+        // Give worker thread a brief moment to exit gracefully, then detach
         if let Some(handle) = self.write_worker_handle.take() {
-            let _ = handle.join();
+            // Don't block indefinitely - if thread doesn't exit quickly, let it be cleaned up by the OS
+            std::thread::spawn(move || {
+                let _ = handle.join();
+            });
         }
     }
 }
