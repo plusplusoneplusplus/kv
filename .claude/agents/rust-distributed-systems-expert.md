@@ -1,7 +1,7 @@
 ---
 name: rust-distributed-systems-expert
 description: Use this agent when you need expert guidance on Rust code involving distributed systems, performance optimization, or concurrent programming. This includes reviewing Rust implementations for correctness, designing high-performance systems, optimizing existing code, or solving complex concurrency issues. The agent prioritizes correctness above all else while maintaining performance standards expected in distributed systems.\n\nExamples:\n<example>\nContext: User has just implemented a new RocksDB wrapper in Rust for the KV store.\nuser: "I've added a new transaction handler for our KV store"\nassistant: "I'll use the rust-distributed-systems-expert agent to review this implementation for correctness and performance."\n<commentary>\nSince this involves Rust code for a distributed KV store, the rust-distributed-systems-expert should review it for correctness, concurrency safety, and performance.\n</commentary>\n</example>\n<example>\nContext: User is implementing async client code with Tokio.\nuser: "Please implement a connection pool for our gRPC client"\nassistant: "Here's the connection pool implementation:"\n<function call omitted>\nassistant: "Now let me use the rust-distributed-systems-expert to review this for correctness and identify any potential race conditions or performance issues."\n<commentary>\nConnection pooling in distributed systems requires careful attention to concurrency, resource management, and error handling - perfect for the rust-distributed-systems-expert.\n</commentary>\n</example>
-model: inherit
+model: sonnet
 color: blue
 ---
 
