@@ -27,9 +27,9 @@ async fn test_thrift_transport_connection_validation() {
     transport.update_node_endpoint("follower1".to_string(), "localhost:7091".to_string()).await.unwrap();
     transport.update_node_endpoint("follower2".to_string(), "localhost:7092".to_string()).await.unwrap();
 
-    // Test that nodes with valid endpoint formats are considered reachable in simulation
-    assert!(transport.is_node_reachable(&"follower1".to_string()).await);
-    assert!(transport.is_node_reachable(&"follower2".to_string()).await);
+    // Test that nodes with valid endpoint formats are not reachable when no servers are running
+    assert!(!transport.is_node_reachable(&"follower1".to_string()).await);
+    assert!(!transport.is_node_reachable(&"follower2".to_string()).await);
 
     // Test unknown node returns false
     assert!(!transport.is_node_reachable(&"unknown_node".to_string()).await);
