@@ -188,6 +188,7 @@ impl TestConfig {
     }
 
     /// Check if the gRPC server binary exists and is executable
+    #[allow(dead_code)]
     pub fn validate_grpc_server(&self) -> Result<(), String> {
         if !self.grpc_server_path.exists() {
             return Err(format!(
@@ -224,6 +225,7 @@ pub fn grpc_server_binary() -> &'static Path {
 }
 
 /// Validate that all required binaries exist
+#[allow(dead_code)]
 pub fn validate_test_binaries() -> Result<(), String> {
     let config = TestConfig::global();
     config.validate_thrift_server()?;
