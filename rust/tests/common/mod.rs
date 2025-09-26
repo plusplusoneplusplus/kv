@@ -81,7 +81,7 @@ block_based = true
         let port = find_available_port()?;
         self.port = Some(port);
 
-        // Get the absolute path to the debug thrift server binary
+        // Get the absolute path to the Cargo-built thrift server binary
         let current_dir = std::env::current_dir()?;
         let server_path = current_dir
             .join("target")
