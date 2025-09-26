@@ -423,7 +423,31 @@ node_timeout_ms = 10000
         for node in &mut self.nodes {
             println!("Starting node {} on {}", node.node_id, node.endpoint);
 
-            let process = Command::new("./target/debug/thrift-server")
+            // Try multiple possible paths for the thrift-server binary
+            let binary_paths = vec![
+                "./target/debug/thrift-server",           // From rust/ directory
+                "../target/debug/thrift-server",          // From tests/ directory
+                "target/debug/thrift-server",             // Without leading ./
+                "rust/target/debug/thrift-server",        // From project root
+            ];
+
+            let mut binary_path = None;
+            for path in &binary_paths {
+                if std::path::Path::new(path).exists() {
+                    binary_path = Some(path);
+                    break;
+                }
+            }
+
+            let binary = binary_path.unwrap_or_else(|| {
+                eprintln!("Warning: thrift-server binary not found in any expected location");
+                eprintln!("Tried paths: {:?}", binary_paths);
+                eprintln!("Current working directory: {:?}", std::env::current_dir());
+                // Fallback to the original path
+                &"./target/debug/thrift-server"
+            });
+
+            let process = Command::new(binary)
                 .arg("--config")
                 .arg(&node.config_path)
                 .arg("--node-id")

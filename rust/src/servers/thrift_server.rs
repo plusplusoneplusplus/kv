@@ -258,8 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (i, endpoint) in consensus_endpoints.iter().enumerate() {
                 if i as u32 != node_id {  // Don't add self
                     let node_id_str = i.to_string();
-                    let rt = tokio::runtime::Handle::current();
-                    if let Err(e) = rt.block_on(engine_guard.add_node(node_id_str.clone(), endpoint.clone())) {
+                    if let Err(e) = engine_guard.add_node(node_id_str.clone(), endpoint.clone()).await {
                         warn!("Failed to add node {} to cluster: {}", node_id_str, e);
                     } else {
                         info!("Added node {} at {} to cluster", node_id_str, endpoint);
