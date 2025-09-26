@@ -11,6 +11,7 @@ use rocksdb::{
 };
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, RwLock};
+use std::thread::JoinHandle;
 use std::time::Duration;
 use tracing::error;
 
@@ -19,6 +20,7 @@ pub struct TransactionalKvDatabase {
     cf_handles: HashMap<String, String>,
     _config: Config,
     write_queue_tx: mpsc::Sender<WriteRequest>,
+    write_worker_handle: Option<JoinHandle<()>>,
     fault_injection: Arc<RwLock<Option<FaultInjectionConfig>>>,
     // Global version counter for read versioning (FoundationDB-style)
     current_version: Arc<std::sync::atomic::AtomicU64>,
@@ -100,7 +102,7 @@ impl TransactionalKvDatabase {
         // Start write worker thread
         let db_for_worker = db.clone();
         let version_for_worker = current_version.clone();
-        std::thread::spawn(move || {
+        let write_worker_handle = std::thread::spawn(move || {
             Self::write_worker(db_for_worker, write_queue_rx, version_for_worker);
         });
 
@@ -109,6 +111,7 @@ impl TransactionalKvDatabase {
             cf_handles,
             _config: config.clone(),
             write_queue_tx,
+            write_worker_handle: Some(write_worker_handle),
             fault_injection: Arc::new(RwLock::new(None)),
             current_version,
             active_transactions: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1084,6 +1087,22 @@ impl TransactionalKvDatabase {
             };
 
             let _ = request.response_tx.send(result);
+        }
+    }
+}
+
+impl Drop for TransactionalKvDatabase {
+    fn drop(&mut self) {
+        // Signal worker thread to exit by dropping the sender
+        // This will cause the receiver to return Err, exiting the worker loop
+        drop(std::mem::replace(&mut self.write_queue_tx, mpsc::channel().0));
+
+        // Give worker thread a brief moment to exit gracefully, then detach
+        if let Some(handle) = self.write_worker_handle.take() {
+            // Don't block indefinitely - if thread doesn't exit quickly, let it be cleaned up by the OS
+            std::thread::spawn(move || {
+                let _ = handle.join();
+            });
         }
     }
 }
