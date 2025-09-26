@@ -140,7 +140,7 @@ async fn test_thrift_transport_append_entry_simulation() {
 
     if let Err(e) = result {
         tracing::info!("Expected error when sending to non-running server: {}", e);
-        assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect"),
+        assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect") || e.to_string().contains("Cannot reach"),
                 "Error should indicate connection failure");
     }
 }
@@ -167,7 +167,7 @@ async fn test_thrift_transport_commit_notification_simulation() {
 
     if let Err(e) = result {
         tracing::info!("Expected error when sending commit notification to non-running server: {}", e);
-        assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect"),
+        assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect") || e.to_string().contains("Cannot reach"),
                 "Error should indicate connection failure");
     }
 }
@@ -307,7 +307,7 @@ async fn test_complete_consensus_flow_simulation() {
                 }
                 Err(e) => {
                     tracing::info!("❌ Expected failure sending to follower {} (no server): {}", follower_id, e);
-                    assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect"));
+                    assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect") || e.to_string().contains("Cannot reach"));
                 }
             }
         }
@@ -331,7 +331,7 @@ async fn test_complete_consensus_flow_simulation() {
             }
             Err(e) => {
                 tracing::info!("❌ Expected failure sending commit notification to follower {} (no server): {}", follower_id, e);
-                assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect"));
+                assert!(e.to_string().contains("connect") || e.to_string().contains("Failed to connect") || e.to_string().contains("Cannot reach"));
             }
         }
     }

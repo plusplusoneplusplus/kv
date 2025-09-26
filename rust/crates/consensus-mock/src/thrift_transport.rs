@@ -169,11 +169,18 @@ impl NetworkTransport for ThriftTransport {
         target_node: &NodeId,
         request: CommitNotificationRequest,
     ) -> ConsensusResult<CommitNotificationResponse> {
-        // For now, commit notifications could be implemented as separate calls,
-        // but since the mock consensus doesn't use them extensively,
-        // we'll keep this as a no-op but successful operation
+        // Check if the target node is reachable first
+        let reachable = self.is_node_reachable(target_node).await;
+        if !reachable {
+            return Err(ConsensusError::TransportError(format!(
+                "Cannot reach target node {} for commit notification",
+                target_node
+            )));
+        }
+
+        // If reachable, commit notifications are simple acknowledgments
         tracing::debug!(
-            "Commit notification to {}: commit_index={} (no-op)",
+            "Commit notification to {}: commit_index={}",
             target_node,
             request.commit_index
         );
@@ -371,8 +378,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Test node with endpoint (simulated as reachable)
+        // Test node with endpoint (should fail since no server is running)
         let reachable = transport.is_node_reachable(&"follower".to_string()).await;
-        assert!(reachable); // Should be true in simulation mode
+        assert!(!reachable); // Should be false since no server is running
     }
 }
