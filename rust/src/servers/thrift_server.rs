@@ -16,7 +16,8 @@ use rocksdb_server::lib::config::Config as ClusterConfig;
 use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
-use consensus_mock::{MockConsensusEngine, ThriftTransport};
+use consensus_mock::{MockConsensusEngine, ThriftTransport, ConsensusServer};
+use tracing::warn;
 use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
@@ -248,6 +249,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             database as Arc<dyn KvDatabase>
         );
 
+        // Configure cluster membership for all nodes
+        {
+            let consensus_engine_ref = consensus_db.consensus_engine();
+            let mut engine_guard = consensus_engine_ref.write();
+
+            // Add all other nodes to this node's cluster membership using the trait interface
+            for (i, endpoint) in consensus_endpoints.iter().enumerate() {
+                if i as u32 != node_id {  // Don't add self
+                    let node_id_str = i.to_string();
+                    if let Err(e) = engine_guard.add_node(node_id_str.clone(), endpoint.clone()).await {
+                        warn!("Failed to add node {} to cluster: {}", node_id_str, e);
+                    } else {
+                        info!("Added node {} at {} to cluster", node_id_str, endpoint);
+                    }
+                }
+            }
+        }
+
         info!("Multi-node consensus database created for Node {}", node_id);
         Arc::new(consensus_db)
     } else {
@@ -270,6 +289,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     info!("Consensus engine started successfully");
 
+    // For multi-node mode, start the consensus service
+    let _consensus_server_handle = if is_multi_node {
+        let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
+
+        let consensus_server = ConsensusServer::with_consensus_engine(
+            consensus_port,
+            node_id,
+            consensus_database.consensus_engine().clone()
+        );
+
+        info!("Starting consensus service on port {}", consensus_port);
+        let handle = consensus_server.start()?;
+        Some(handle)
+    } else {
+        None
+    };
+
     // Create routing manager
     let routing_manager = Arc::new(RoutingManager::new(
         consensus_database.clone(),
@@ -278,7 +314,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cluster_manager.clone(),
     ));
 
-    // Use port from command line arguments
+    // Use port from command line arguments for KV service
     let listen_address = format!("0.0.0.0:{}", args.port);
     let server_type = if is_multi_node { "Multi-node" } else { "Single-node" };
     info!("Starting {} Thrift server on {}", server_type, listen_address);

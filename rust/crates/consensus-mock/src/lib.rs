@@ -4,7 +4,10 @@ pub mod in_memory_transport;
 pub mod thrift_transport;
 pub mod mock_consensus_server;
 pub mod mock_consensus_client;
-pub mod generated;
+pub mod consensus_service;
+pub mod consensus_client;
+pub mod consensus_server;
+pub mod types;
 
 pub use mock_node::{MockConsensusEngine, ConsensusMessage, ConsensusMessageBus};
 pub use transport::{
@@ -16,3 +19,9 @@ pub use in_memory_transport::{InMemoryTransport, InMemoryTransportRegistry};
 pub use thrift_transport::ThriftTransport;
 pub use mock_consensus_server::MockConsensusServer;
 pub use mock_consensus_client::MockConsensusClient;
+pub use consensus_service::ConsensusServiceHandler;
+pub use consensus_client::ConsensusClient;
+pub use consensus_server::ConsensusServer;
+pub use types::{
+    AppendEntriesRequest, AppendEntriesResponse, LogEntry,
+};

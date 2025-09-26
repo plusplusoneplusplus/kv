@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use thrift::transport::TTcpChannel;
 
-use crate::generated::{
+use crate::types::{
     AppendEntriesRequest as ThriftAppendEntriesRequest,
     AppendEntriesResponse as ThriftAppendEntriesResponse,
     LogEntry as ThriftLogEntry,
@@ -16,6 +16,7 @@ use crate::transport::{
     AppendEntryRequest, AppendEntryResponse,
     CommitNotificationRequest, CommitNotificationResponse,
 };
+use crate::consensus_client::ConsensusClient;
 
 /// Thrift-based network transport implementation that uses actual TCP connections
 /// and communicates with real Thrift consensus servers over the network
@@ -43,6 +44,7 @@ impl ThriftTransport {
     }
 
     /// Create a Thrift client connection to a specific node
+    #[allow(dead_code)]
     async fn create_client_connection(&self, target_node: &NodeId) -> ConsensusResult<(TTcpChannel, String)> {
         let endpoints = self.node_endpoints.lock().await;
         let endpoint = endpoints.get(target_node).ok_or_else(|| {
@@ -134,29 +136,26 @@ impl NetworkTransport for ThriftTransport {
         target_node: &NodeId,
         request: AppendEntryRequest,
     ) -> ConsensusResult<AppendEntryResponse> {
-        let (_channel, endpoint) = self.create_client_connection(target_node).await?;
-        let _thrift_request = Self::convert_append_entry_request_to_thrift(&request);
+        let endpoint = {
+            let endpoints = self.node_endpoints.lock().await;
+            endpoints.get(target_node).ok_or_else(|| {
+                ConsensusError::TransportError(format!("No endpoint found for node {}", target_node))
+            })?.clone()
+        };
 
-        // For now, we'll simulate the call since the actual Thrift client generation
-        // would require more complex setup. In a real implementation, you would:
-        // 1. Generate the Thrift client code with proper async support
-        // 2. Create a ConsensusServiceSyncClient
-        // 3. Call client.append_entries(thrift_request)
+        let thrift_request = Self::convert_append_entry_request_to_thrift(&request);
 
-        // Simulate a successful response for integration testing
-        let thrift_response = ThriftAppendEntriesResponse::new(
-            request.leader_term as i64,
-            true,
-            Some(request.entry.index as i64),
-            None,
-        );
+        // Create consensus client and make actual RPC call
+        let client = ConsensusClient::new(endpoint.clone());
+        let thrift_response = client.append_entries(thrift_request).await?;
 
-        tracing::debug!(
-            "Sent append_entry to {} at {}: prev_index={}, entry_index={} (simulated)",
+        tracing::info!(
+            "Sent append_entry to {} at {}: prev_index={}, entry_index={}, got success={}",
             target_node,
             endpoint,
             request.prev_log_index,
-            request.entry.index
+            request.entry.index,
+            thrift_response.success
         );
 
         Ok(Self::convert_append_entry_response_from_thrift(
@@ -170,17 +169,22 @@ impl NetworkTransport for ThriftTransport {
         target_node: &NodeId,
         request: CommitNotificationRequest,
     ) -> ConsensusResult<CommitNotificationResponse> {
-        let (_channel, endpoint) = self.create_client_connection(target_node).await?;
+        // Check if the target node is reachable first
+        let reachable = self.is_node_reachable(target_node).await;
+        if !reachable {
+            return Err(ConsensusError::TransportError(format!(
+                "Cannot reach target node {} for commit notification",
+                target_node
+            )));
+        }
 
+        // If reachable, commit notifications are simple acknowledgments
         tracing::debug!(
-            "Sent commit notification to {} at {}: commit_index={}",
+            "Commit notification to {}: commit_index={}",
             target_node,
-            endpoint,
             request.commit_index
         );
 
-        // For now, just return success since commit notifications
-        // are not directly supported by the current Thrift interface
         Ok(CommitNotificationResponse { success: true })
     }
 
@@ -209,15 +213,16 @@ impl NetworkTransport for ThriftTransport {
     }
 
     async fn is_node_reachable(&self, node_id: &NodeId) -> bool {
-        // Try to create a connection to test reachability
-        match self.create_client_connection(node_id).await {
-            Ok((channel, _)) => {
-                // If we can create the connection, the node is reachable
-                drop(channel); // Close the connection
-                true
+        let endpoint = {
+            let endpoints = self.node_endpoints.lock().await;
+            match endpoints.get(node_id) {
+                Some(ep) => ep.clone(),
+                None => return false,
             }
-            Err(_) => false,
-        }
+        };
+
+        let client = ConsensusClient::new(endpoint);
+        client.is_reachable().await
     }
 }
 
@@ -373,7 +378,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Test node with endpoint but no server running
+        // Test node with endpoint (should fail since no server is running)
         let reachable = transport.is_node_reachable(&"follower".to_string()).await;
         assert!(!reachable); // Should be false since no server is running
     }

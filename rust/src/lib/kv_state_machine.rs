@@ -242,4 +242,9 @@ impl ConsensusKvDatabase {
     pub fn executor(&self) -> &Arc<KvStoreExecutor> {
         &self.executor
     }
+
+    /// Get access to the consensus engine for consensus service handlers
+    pub fn consensus_engine(&self) -> &Arc<RwLock<Box<dyn ConsensusEngine>>> {
+        &self.consensus_engine
+    }
 }
