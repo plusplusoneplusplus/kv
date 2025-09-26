@@ -10,6 +10,7 @@ use tokio::time::sleep;
 use std::fs;
 use std::io::Write;
 use tempfile::TempDir;
+use super::test_config;
 
 /// Trait for test cluster abstractions that can be used across different deployment modes
 #[async_trait]
@@ -423,8 +424,13 @@ node_timeout_ms = 10000
         for node in &mut self.nodes {
             println!("Starting node {} on {}", node.node_id, node.endpoint);
 
-            // Use the Cargo-built thrift server binary
-            let binary = "./target/debug/thrift-server";
+            // Use the test configuration to get the correct binary path
+            let binary = test_config::thrift_server_binary();
+
+            // Validate the binary exists
+            if let Err(e) = test_config::TestConfig::global().validate_thrift_server() {
+                return Err(format!("Thrift server binary validation failed: {}", e).into());
+            }
 
             let process = Command::new(binary)
                 .arg("--config")
@@ -857,7 +863,7 @@ node_timeout_ms = 10000
 
         println!("Simulating partition healing (restarting nodes 1 and 2)");
 
-        let process1 = Command::new("./target/debug/thrift-server")
+        let process1 = Command::new(test_config::thrift_server_binary())
             .arg("--config")
             .arg(&self.nodes[1].config_path)
             .arg("--node-id")
@@ -867,7 +873,7 @@ node_timeout_ms = 10000
             .spawn()?;
         self.nodes[1].process = Some(process1);
 
-        let process2 = Command::new("./target/debug/thrift-server")
+        let process2 = Command::new(test_config::thrift_server_binary())
             .arg("--config")
             .arg(&self.nodes[2].config_path)
             .arg("--node-id")
@@ -949,7 +955,7 @@ node_timeout_ms = 10000
                 }
             }
 
-            let process = Command::new("./target/debug/thrift-server")
+            let process = Command::new(test_config::thrift_server_binary())
                 .arg("--config")
                 .arg(&self.nodes[i].config_path)
                 .arg("--node-id")

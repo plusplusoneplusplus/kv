@@ -1,6 +1,7 @@
 // Client integration tests - requires running Thrift server on localhost:9090
 // Run with: cargo test client_integration_tests
 // Make sure to start thrift server first: cargo run --bin thrift-server
+// Or use the test configuration to get the binary path
 
 mod client;
 mod common;
@@ -23,6 +24,8 @@ async fn test_client_connectivity() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             println!("❌ Failed to connect to Thrift server: {}", e);
             println!("💡 Start the server with: cargo run --bin thrift-server");
+            println!("💡 Or run the configured binary at: {}",
+                common::test_config::thrift_server_binary().display());
             Err(e.into())
         }
     }

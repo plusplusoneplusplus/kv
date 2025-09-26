@@ -1,5 +1,6 @@
 pub mod test_cluster;
 pub mod cluster_test_utils;
+pub mod test_config;
 
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command};
@@ -81,12 +82,12 @@ block_based = true
         let port = find_available_port()?;
         self.port = Some(port);
 
-        // Get the absolute path to the Cargo-built thrift server binary
-        let current_dir = std::env::current_dir()?;
-        let server_path = current_dir
-            .join("target")
-            .join("debug")
-            .join("thrift-server");
+        // Get the thrift server binary path from test configuration
+        let server_path = test_config::thrift_server_binary();
+
+        // Validate the binary exists
+        test_config::TestConfig::global().validate_thrift_server()
+            .map_err(|e| format!("Thrift server validation failed: {}", e))?;
         let _config_path = self.config_dir.path().join("db_config.toml");
 
         // Start server process from the config directory so it finds the config file
