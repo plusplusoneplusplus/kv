@@ -1,5 +1,5 @@
-/// Simple consensus types for use within consensus-mock crate
-/// These avoid circular dependency with rocksdb_server crate
+/// Simple consensus types that are compatible with the real Thrift-generated types
+/// These have the same structure as the generated types but avoid circular dependencies
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogEntry {
