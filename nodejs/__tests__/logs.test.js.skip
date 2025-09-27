@@ -4,8 +4,8 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 
 // Mock the modules that log endpoints use
-jest.mock('fs');
-jest.mock('child_process');
+// jest.mock('fs');
+// jest.mock('child_process');
 
 // Import the server after mocking
 const app = require('../server');
