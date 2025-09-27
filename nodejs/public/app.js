@@ -75,31 +75,6 @@ function processRawData(rawKeyValues) {
     });
 }
 
-// Initialize the page after components are loaded
-function initializeApp() {
-    testConnection();
-    loadKeys();
-    initializeSettings();
-
-    // Setup confirmation input listener
-    const confirmationInput = document.getElementById('clearAllConfirmation');
-    if (confirmationInput) {
-        confirmationInput.addEventListener('input', function() {
-            const executeButton = document.getElementById('clearAllExecute');
-            const statusText = document.getElementById('clearAllStatus');
-
-            if (this.value === 'DELETE ALL DATA') {
-                executeButton.disabled = false;
-                statusText.textContent = 'Ready to execute';
-                statusText.style.color = '#e53e3e';
-            } else {
-                executeButton.disabled = true;
-                statusText.textContent = this.value ? 'Incorrect confirmation phrase' : '';
-                statusText.style.color = '#666';
-            }
-        });
-    }
-}
 
 // Connection management
 async function testConnection() {
@@ -497,6 +472,28 @@ function initializeTabFromURL() {
 function initializeApp() {
     setupTabNavigation();
     initializeTabFromURL();
+    testConnection();
+    loadKeys();
+    initializeSettings();
+
+    // Setup confirmation input listener
+    const confirmationInput = document.getElementById('clearAllConfirmation');
+    if (confirmationInput) {
+        confirmationInput.addEventListener('input', function() {
+            const executeButton = document.getElementById('clearAllExecute');
+            const statusText = document.getElementById('clearAllStatus');
+
+            if (this.value === 'DELETE ALL DATA') {
+                executeButton.disabled = false;
+                statusText.textContent = 'Ready to execute';
+                statusText.style.color = '#e53e3e';
+            } else {
+                executeButton.disabled = true;
+                statusText.textContent = this.value ? 'Incorrect confirmation phrase' : '';
+                statusText.style.color = '#666';
+            }
+        });
+    }
 }
 
 // This initialization will be called by component-loader.js after components are loaded
