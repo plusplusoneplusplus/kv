@@ -883,7 +883,7 @@ app.get('/api/logs/search', async (req, res) => {
 
                 const output = execSync(grepCommand, {
                     encoding: 'utf8',
-                    timeout: 10000,
+                    timeout: 5000, // Reduced from 10s to 5s
                     maxBuffer: 1024 * 1024 // 1MB limit
                 });
 
@@ -910,7 +910,7 @@ app.get('/api/logs/search', async (req, res) => {
             // If no query, list recent log entries from all nodes
             try {
                 const tailCommand = `find "${searchPath}" -name "*.log" -exec tail -n 10 {} + | head -${limit}`;
-                const output = execSync(tailCommand, { encoding: 'utf8', timeout: 10000 });
+                const output = execSync(tailCommand, { encoding: 'utf8', timeout: 5000 });
 
                 searchResults = output.trim().split('\n')
                     .filter(line => line.length > 0)
