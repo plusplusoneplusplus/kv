@@ -6,6 +6,8 @@ const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
+const { execSync } = require('child_process');
 // Authentication modules removed
 
 // Import the generated Thrift files
@@ -25,6 +27,28 @@ const PORT = process.env.PORT || 3000;
 let THRIFT_HOST = process.env.THRIFT_HOST || 'localhost';
 let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 
+// Cluster configuration
+let clusterConfig = null;
+let clusterLogPath = null;
+
+// Parse command line arguments for cluster configuration
+if (process.argv.length > 2) {
+    try {
+        // Check if cluster config is provided as JSON string
+        if (process.argv[2].startsWith('{')) {
+            clusterConfig = JSON.parse(process.argv[2]);
+            console.log('Loaded cluster configuration:', clusterConfig);
+        }
+        // Check if log path is provided
+        if (process.argv[3]) {
+            clusterLogPath = process.argv[3];
+            console.log('Cluster log path:', clusterLogPath);
+        }
+    } catch (e) {
+        console.error('Failed to parse cluster configuration:', e.message);
+    }
+}
+
 // Security configuration (authentication removed)
 
 // Rate limiting (disabled in test environment)
@@ -41,7 +65,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            connectSrc: ["'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
+            connectSrc: ["'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://cdn.socket.io", "http://localhost:*"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
@@ -284,6 +308,10 @@ app.get('/settings', (req, res) => {
 });
 
 app.get('/cluster', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/logs', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -793,6 +821,248 @@ app.post('/api/admin/update-endpoint', (req, res) => {
             details: error.message
         });
     }
+});
+
+// Log search functionality
+app.get('/api/logs/search', async (req, res) => {
+    try {
+        const { query, node_id, limit = 100 } = req.query;
+
+        if (!clusterLogPath) {
+            return res.status(400).json({
+                success: false,
+                error: 'Log path not configured. Server must be started with cluster configuration.'
+            });
+        }
+
+        let searchPath = clusterLogPath;
+        if (node_id !== undefined) {
+            const nodeNum = parseInt(node_id) + 1; // Convert 0-based to 1-based
+            searchPath = path.join(clusterLogPath, `node${nodeNum}/logs`);
+        }
+
+        // Validate search path exists
+        if (!fs.existsSync(searchPath)) {
+            return res.status(404).json({
+                success: false,
+                error: `Log path does not exist: ${searchPath}`
+            });
+        }
+
+        let searchResults = [];
+
+        if (query) {
+            // Use grep to search for the query in log files
+            try {
+                const grepCommand = `grep -r "${query}" "${searchPath}" | head -${limit}`;
+                const output = execSync(grepCommand, { encoding: 'utf8', timeout: 10000 });
+
+                searchResults = output.trim().split('\n')
+                    .filter(line => line.length > 0)
+                    .map(line => {
+                        const [filePath, ...contentParts] = line.split(':');
+                        return {
+                            file: path.basename(filePath),
+                            path: filePath,
+                            content: contentParts.join(':').trim()
+                        };
+                    });
+            } catch (grepError) {
+                // If grep returns no results, it exits with code 1
+                if (grepError.status === 1) {
+                    searchResults = [];
+                } else {
+                    throw grepError;
+                }
+            }
+        } else {
+            // If no query, list recent log entries from all nodes
+            try {
+                const tailCommand = `find "${searchPath}" -name "*.log" -exec tail -n 10 {} + | head -${limit}`;
+                const output = execSync(tailCommand, { encoding: 'utf8', timeout: 10000 });
+
+                searchResults = output.trim().split('\n')
+                    .filter(line => line.length > 0)
+                    .map(line => ({
+                        file: 'recent',
+                        path: searchPath,
+                        content: line.trim()
+                    }));
+            } catch (tailError) {
+                console.error('Error getting recent logs:', tailError);
+                searchResults = [];
+            }
+        }
+
+        res.json({
+            success: true,
+            query: query || 'recent logs',
+            searchPath: searchPath,
+            results: searchResults,
+            count: searchResults.length
+        });
+
+    } catch (error) {
+        console.error('Error searching logs:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Log search failed',
+            details: error.message
+        });
+    }
+});
+
+// Get available log files
+app.get('/api/logs/files', async (req, res) => {
+    try {
+        if (!clusterLogPath) {
+            return res.status(400).json({
+                success: false,
+                error: 'Log path not configured. Server must be started with cluster configuration.'
+            });
+        }
+
+        const logFiles = [];
+
+        // Scan each node's log directory
+        if (clusterConfig && clusterConfig.nodes) {
+            for (let i = 0; i < clusterConfig.nodes.length; i++) {
+                const nodeLogPath = path.join(clusterLogPath, `node${i + 1}/logs`);
+
+                if (fs.existsSync(nodeLogPath)) {
+                    const files = fs.readdirSync(nodeLogPath)
+                        .filter(file => file.endsWith('.log'))
+                        .map(file => ({
+                            node: i,
+                            nodeDir: `node${i + 1}`,
+                            filename: file,
+                            path: path.join(nodeLogPath, file),
+                            size: fs.statSync(path.join(nodeLogPath, file)).size,
+                            modified: fs.statSync(path.join(nodeLogPath, file)).mtime
+                        }));
+
+                    logFiles.push(...files);
+                }
+            }
+        } else {
+            // Fallback: scan all subdirectories
+            if (fs.existsSync(clusterLogPath)) {
+                const subdirs = fs.readdirSync(clusterLogPath, { withFileTypes: true })
+                    .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('node'))
+                    .map(dirent => dirent.name);
+
+                for (const subdir of subdirs) {
+                    const nodeLogPath = path.join(clusterLogPath, subdir, 'logs');
+
+                    if (fs.existsSync(nodeLogPath)) {
+                        const files = fs.readdirSync(nodeLogPath)
+                            .filter(file => file.endsWith('.log'))
+                            .map(file => ({
+                                node: parseInt(subdir.replace('node', '')) - 1,
+                                nodeDir: subdir,
+                                filename: file,
+                                path: path.join(nodeLogPath, file),
+                                size: fs.statSync(path.join(nodeLogPath, file)).size,
+                                modified: fs.statSync(path.join(nodeLogPath, file)).mtime
+                            }));
+
+                        logFiles.push(...files);
+                    }
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            clusterLogPath: clusterLogPath,
+            files: logFiles.sort((a, b) => b.modified - a.modified)
+        });
+
+    } catch (error) {
+        console.error('Error listing log files:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to list log files',
+            details: error.message
+        });
+    }
+});
+
+// Get individual log file content (last N lines)
+app.get('/api/logs/file', async (req, res) => {
+    try {
+        const filePath = decodeURIComponent(req.query.path);
+        const lines = parseInt(req.query.lines) || 300;
+
+        // Security check: ensure file is within cluster log path
+        if (!clusterLogPath || !filePath.startsWith(clusterLogPath)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Access denied: file must be within cluster log directory'
+            });
+        }
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                error: 'File not found'
+            });
+        }
+
+        // Read the last N lines using tail
+        const { spawn } = require('child_process');
+        const tail = spawn('tail', ['-n', lines.toString(), filePath]);
+
+        let output = '';
+        let errorOutput = '';
+
+        tail.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+
+        tail.stderr.on('data', (data) => {
+            errorOutput += data.toString();
+        });
+
+        tail.on('close', (code) => {
+            if (code !== 0) {
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to read file',
+                    details: errorOutput
+                });
+            }
+
+            const fileLines = output.split('\n').filter(line => line.length > 0);
+
+            res.json({
+                success: true,
+                filePath: filePath,
+                lines: fileLines,
+                requestedLines: lines,
+                actualLines: fileLines.length
+            });
+        });
+
+    } catch (error) {
+        console.error('Error reading log file:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to read log file',
+            details: error.message
+        });
+    }
+});
+
+// Get cluster configuration
+app.get('/api/cluster/config', (req, res) => {
+    res.json({
+        success: true,
+        clusterConfig: clusterConfig,
+        clusterLogPath: clusterLogPath,
+        hasClusterConfig: !!clusterConfig
+    });
 });
 
 // Export the app for testing
