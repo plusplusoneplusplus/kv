@@ -31,6 +31,9 @@ let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 let clusterConfig = null;
 let clusterLogPath = null;
 
+// Node configuration
+let nodesConfig = null;
+
 // Helper functions to get cluster configuration (supports test overrides)
 function getClusterConfig(req) {
     if (process.env.NODE_ENV === 'test' && req && req.app && req.app.locals.testClusterConfig) {
@@ -62,6 +65,20 @@ if (process.argv.length > 2) {
     } catch (e) {
         console.error('Failed to parse cluster configuration:', e.message);
     }
+}
+
+// Load node configuration from file
+try {
+    const nodesConfigPath = path.join(__dirname, 'nodes-config.json');
+    if (fs.existsSync(nodesConfigPath)) {
+        const nodesConfigData = fs.readFileSync(nodesConfigPath, 'utf8');
+        nodesConfig = JSON.parse(nodesConfigData);
+        console.log('Loaded nodes configuration:', nodesConfig);
+    } else {
+        console.log('No nodes configuration file found, using default single node setup');
+    }
+} catch (e) {
+    console.error('Failed to load nodes configuration:', e.message);
 }
 
 // Security configuration (authentication removed)
@@ -833,6 +850,48 @@ app.post('/api/admin/update-endpoint', (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Internal server error',
+            details: error.message
+        });
+    }
+});
+
+// API endpoint to get available nodes
+app.get('/api/admin/nodes', (req, res) => {
+    try {
+        if (!nodesConfig) {
+            return res.json({
+                success: true,
+                nodes: [
+                    {
+                        id: 'default',
+                        name: 'Default Node',
+                        host: 'localhost',
+                        port: 9090,
+                        description: 'Default single node configuration'
+                    }
+                ],
+                defaultNode: 'default',
+                currentNode: {
+                    host: THRIFT_HOST,
+                    port: THRIFT_PORT
+                }
+            });
+        }
+
+        res.json({
+            success: true,
+            nodes: nodesConfig.nodes,
+            defaultNode: nodesConfig.defaultNode,
+            currentNode: {
+                host: THRIFT_HOST,
+                port: THRIFT_PORT
+            }
+        });
+    } catch (error) {
+        console.error('Error getting nodes configuration:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get nodes configuration',
             details: error.message
         });
     }

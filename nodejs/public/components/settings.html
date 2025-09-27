@@ -3,7 +3,7 @@
     <div class="settings-container">
         <div class="settings-section">
             <h2>🔧 Connection Settings</h2>
-            <p class="settings-description">Configure the Thrift server endpoint for the KV store connection.</p>
+            <p class="settings-description">Configure the Thrift server endpoint for the KV store connection. Use the node selector in the header above for quick switching between predefined nodes.</p>
         </div>
 
         <div class="form-section">
@@ -22,6 +22,8 @@
             <div class="form-group">
                 <div class="current-endpoint">
                     <strong>Current Endpoint:</strong> <span id="currentEndpoint">localhost:9090</span>
+                    <br>
+                    <strong>Selected Node:</strong> <span id="currentNode">Loading...</span>
                 </div>
             </div>
 
