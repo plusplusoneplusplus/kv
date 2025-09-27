@@ -306,16 +306,14 @@ describe('Log Viewer Security Tests', () => {
     });
 
     it('should protect against directory listing attacks', async () => {
-      const directoryPaths = [
+      // Paths inside cluster directory should return 404 (file not found for directories)
+      const insideClusterPaths = [
         testClusterRoot,
         path.join(testClusterRoot, 'node1'),
-        path.join(testClusterRoot, 'node1', 'logs'),
-        '/tmp',
-        '/etc',
-        '/var/log'
+        path.join(testClusterRoot, 'node1', 'logs')
       ];
 
-      for (const dirPath of directoryPaths) {
+      for (const dirPath of insideClusterPaths) {
         const response = await request(app)
           .get('/api/logs/file')
           .query({ path: encodeURIComponent(dirPath) })
@@ -323,6 +321,23 @@ describe('Log Viewer Security Tests', () => {
 
         expect(response.body.success).toBe(false);
         expect(response.body.error).toBe('File not found');
+      }
+
+      // Paths outside cluster directory should return 403 (access denied)
+      const outsideClusterPaths = [
+        '/tmp',
+        '/etc',
+        '/var/log'
+      ];
+
+      for (const dirPath of outsideClusterPaths) {
+        const response = await request(app)
+          .get('/api/logs/file')
+          .query({ path: encodeURIComponent(dirPath) })
+          .expect(403);
+
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Access denied: file must be within cluster log directory');
       }
     });
   });

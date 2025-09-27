@@ -320,9 +320,9 @@ describe('LogViewer Frontend Functionality', () => {
       }
     `;
 
-    // Execute the LogViewer code in the current context
-    eval(logViewerCode);
-    LogViewer = eval('LogViewer');
+    // Execute the LogViewer code in the current context and make it available
+    eval(logViewerCode + '; global.LogViewer = LogViewer; window.LogViewer = LogViewer;');
+    LogViewer = global.LogViewer;
   });
 
   afterEach(() => {

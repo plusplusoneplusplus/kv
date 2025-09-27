@@ -31,6 +31,21 @@ let THRIFT_PORT = process.env.THRIFT_PORT || 9090;
 let clusterConfig = null;
 let clusterLogPath = null;
 
+// Helper functions to get cluster configuration (supports test overrides)
+function getClusterConfig(req) {
+    if (process.env.NODE_ENV === 'test' && req && req.app && req.app.locals.testClusterConfig) {
+        return req.app.locals.testClusterConfig;
+    }
+    return clusterConfig;
+}
+
+function getClusterLogPath(req) {
+    if (process.env.NODE_ENV === 'test' && req && req.app && req.app.locals.testClusterLogPath) {
+        return req.app.locals.testClusterLogPath;
+    }
+    return clusterLogPath;
+}
+
 // Parse command line arguments for cluster configuration
 if (process.argv.length > 2) {
     try {
@@ -827,18 +842,19 @@ app.post('/api/admin/update-endpoint', (req, res) => {
 app.get('/api/logs/search', async (req, res) => {
     try {
         const { query, node_id, limit = 100 } = req.query;
+        const currentClusterLogPath = getClusterLogPath(req);
 
-        if (!clusterLogPath) {
+        if (!currentClusterLogPath) {
             return res.status(400).json({
                 success: false,
                 error: 'Log path not configured. Server must be started with cluster configuration.'
             });
         }
 
-        let searchPath = clusterLogPath;
+        let searchPath = currentClusterLogPath;
         if (node_id !== undefined) {
             const nodeNum = parseInt(node_id) + 1; // Convert 0-based to 1-based
-            searchPath = path.join(clusterLogPath, `node${nodeNum}/logs`);
+            searchPath = path.join(currentClusterLogPath, `node${nodeNum}/logs`);
         }
 
         // Validate search path exists
@@ -915,7 +931,10 @@ app.get('/api/logs/search', async (req, res) => {
 // Get available log files
 app.get('/api/logs/files', async (req, res) => {
     try {
-        if (!clusterLogPath) {
+        const currentClusterLogPath = getClusterLogPath(req);
+        const currentClusterConfig = getClusterConfig(req);
+
+        if (!currentClusterLogPath) {
             return res.status(400).json({
                 success: false,
                 error: 'Log path not configured. Server must be started with cluster configuration.'
@@ -925,9 +944,9 @@ app.get('/api/logs/files', async (req, res) => {
         const logFiles = [];
 
         // Scan each node's log directory
-        if (clusterConfig && clusterConfig.nodes) {
-            for (let i = 0; i < clusterConfig.nodes.length; i++) {
-                const nodeLogPath = path.join(clusterLogPath, `node${i + 1}/logs`);
+        if (currentClusterConfig && currentClusterConfig.nodes) {
+            for (let i = 0; i < currentClusterConfig.nodes.length; i++) {
+                const nodeLogPath = path.join(currentClusterLogPath, `node${i + 1}/logs`);
 
                 if (fs.existsSync(nodeLogPath)) {
                     const files = fs.readdirSync(nodeLogPath)
@@ -946,13 +965,13 @@ app.get('/api/logs/files', async (req, res) => {
             }
         } else {
             // Fallback: scan all subdirectories
-            if (fs.existsSync(clusterLogPath)) {
-                const subdirs = fs.readdirSync(clusterLogPath, { withFileTypes: true })
+            if (fs.existsSync(currentClusterLogPath)) {
+                const subdirs = fs.readdirSync(currentClusterLogPath, { withFileTypes: true })
                     .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('node'))
                     .map(dirent => dirent.name);
 
                 for (const subdir of subdirs) {
-                    const nodeLogPath = path.join(clusterLogPath, subdir, 'logs');
+                    const nodeLogPath = path.join(currentClusterLogPath, subdir, 'logs');
 
                     if (fs.existsSync(nodeLogPath)) {
                         const files = fs.readdirSync(nodeLogPath)
@@ -974,7 +993,7 @@ app.get('/api/logs/files', async (req, res) => {
 
         res.json({
             success: true,
-            clusterLogPath: clusterLogPath,
+            clusterLogPath: currentClusterLogPath,
             files: logFiles.sort((a, b) => b.modified - a.modified)
         });
 
@@ -1001,17 +1020,27 @@ app.get('/api/logs/file', async (req, res) => {
 
         const filePath = decodeURIComponent(req.query.path);
         const lines = parseInt(req.query.lines) || 300;
+        const currentClusterLogPath = getClusterLogPath(req);
 
         // Security check: ensure file is within cluster log path
-        if (!clusterLogPath || !filePath.startsWith(clusterLogPath)) {
+        if (!currentClusterLogPath || !filePath.startsWith(currentClusterLogPath)) {
             return res.status(403).json({
                 success: false,
                 error: 'Access denied: file must be within cluster log directory'
             });
         }
 
-        // Check if file exists
+        // Check if file exists and is actually a file (not a directory)
         if (!fs.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                error: 'File not found'
+            });
+        }
+
+        // Check if path is a file, not a directory
+        const stats = fs.statSync(filePath);
+        if (!stats.isFile()) {
             return res.status(404).json({
                 success: false,
                 error: 'File not found'
@@ -1065,11 +1094,14 @@ app.get('/api/logs/file', async (req, res) => {
 
 // Get cluster configuration
 app.get('/api/cluster/config', (req, res) => {
+    const currentClusterConfig = getClusterConfig(req);
+    const currentClusterLogPath = getClusterLogPath(req);
+
     res.json({
         success: true,
-        clusterConfig: clusterConfig,
-        clusterLogPath: clusterLogPath,
-        hasClusterConfig: !!clusterConfig
+        clusterConfig: currentClusterConfig,
+        clusterLogPath: currentClusterLogPath,
+        hasClusterConfig: !!currentClusterConfig
     });
 });
 
