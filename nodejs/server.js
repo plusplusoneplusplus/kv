@@ -991,6 +991,14 @@ app.get('/api/logs/files', async (req, res) => {
 // Get individual log file content (last N lines)
 app.get('/api/logs/file', async (req, res) => {
     try {
+        // Validate path parameter
+        if (!req.query.path || req.query.path.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                error: 'path parameter is required'
+            });
+        }
+
         const filePath = decodeURIComponent(req.query.path);
         const lines = parseInt(req.query.lines) || 300;
 
