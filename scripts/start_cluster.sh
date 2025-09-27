@@ -12,6 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 declare -a NODE_PIDS=()
 
+# Generate cluster ID with random number
+CLUSTER_ID="cluster-$(date +%Y%m%d-%H%M%S)-$$"
+CLUSTER_ROOT="/tmp/$CLUSTER_ID"
+
 # Parse command line arguments
 NODE_COUNT=${1:-3}  # Default to 3 nodes if no argument provided
 
@@ -53,7 +57,13 @@ cleanup() {
     pkill -f "rocksdbserver-thrift" 2>/dev/null || true
     pkill -f "node.*server.js" 2>/dev/null || true
 
-    # Clean up log files
+    # Clean up cluster directory
+    if [ -d "$CLUSTER_ROOT" ]; then
+        echo "Cleaning up cluster directory: $CLUSTER_ROOT"
+        rm -rf "$CLUSTER_ROOT" 2>/dev/null || true
+    fi
+
+    # Clean up old-style log files (for backwards compatibility)
     rm -f /tmp/kv-multinode-*.log 2>/dev/null || true
     rm -f /tmp/kv-singlenode-*.log 2>/dev/null || true
     rm -f /tmp/kv-nodejs-*.log 2>/dev/null || true
@@ -70,8 +80,17 @@ else
     echo "🚀 Starting $NODE_COUNT-node cluster..."
 fi
 echo "Project: $PROJECT_ROOT"
+echo "Cluster directory: $CLUSTER_ROOT"
 echo "Press Ctrl+C to stop"
 echo
+
+# Create cluster directory structure
+echo "Creating cluster directory structure..."
+mkdir -p "$CLUSTER_ROOT"
+for ((i=1; i<=NODE_COUNT; i++)); do
+    mkdir -p "$CLUSTER_ROOT/node$i/data"
+    mkdir -p "$CLUSTER_ROOT/node$i/logs"
+done
 
 # Build server using CMake
 cd "$PROJECT_ROOT"
@@ -81,7 +100,7 @@ cmake --build build --target rust_thrift_server
 # Start Node.js web server
 echo "Starting Node.js web server..."
 cd "$PROJECT_ROOT/nodejs"
-nohup node server.js > "/tmp/kv-nodejs-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+nohup node server.js > "$CLUSTER_ROOT/nodejs.log" 2>&1 &
 NODEJS_PID=$!
 NODE_PIDS+=($NODEJS_PID)
 echo "Node.js server started on port 3000 (PID: $NODEJS_PID)"
@@ -89,17 +108,21 @@ cd "$PROJECT_ROOT"
 
 if [ "$NODE_COUNT" -eq 1 ]; then
     echo "Starting single node on port 9090..."
-    # Single node mode - no config file needed
-    nohup "$PROJECT_ROOT/build/bin/rocksdbserver-thrift" \
+    # Single node mode - no config file needed, use Rust binary directly
+    nohup "$PROJECT_ROOT/rust/target/debug/thrift-server" \
         --port 9090 \
         --verbose \
-        > "/tmp/kv-singlenode-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+        --log-dir "$CLUSTER_ROOT/node1/logs" \
+        --db-path "$CLUSTER_ROOT/node1/data" \
+        > "$CLUSTER_ROOT/node1/logs/stdout.log" 2>&1 &
     NODE_PIDS+=($!)
 
     echo
     echo "🎉 Single-node server running:"
     echo "  Node.js web server: localhost:3000 (PID: ${NODE_PIDS[0]})"
     echo "  Thrift server: localhost:9090 (PID: ${NODE_PIDS[1]})"
+    echo "    Data: $CLUSTER_ROOT/node1/data"
+    echo "    Logs: $CLUSTER_ROOT/node1/logs"
 else
     # Multi-node cluster mode
     echo "Generating cluster configs..."
@@ -123,11 +146,12 @@ else
 
     # Generate config files for each node
     for ((node=0; node<NODE_COUNT; node++)); do
+        node_num=$((node + 1))
         cat > "$PROJECT_ROOT/build/bin/cluster_configs/node_$node.toml" << EOF
 # Configuration for Node $node in $NODE_COUNT-node cluster
 
 [database]
-base_path = "./data/multi-node-node-$node"
+base_path = "$CLUSTER_ROOT/node$node_num/data"
 
 [rocksdb]
 write_buffer_size_mb = 32
@@ -191,22 +215,21 @@ endpoints = [$CONSENSUS_ENDPOINTS]
 EOF
     done
 
-    # Create data directories
-    mkdir -p "$PROJECT_ROOT/data/multi-node-node-"{0..$((NODE_COUNT-1))}
-
     # Start nodes
     echo "Starting nodes..."
 
     for ((node=0; node<NODE_COUNT; node++)); do
         port=$((9090 + node))
+        node_num=$((node + 1))
         echo "Node $node on port $port..."
-        # Start each process - use nohup for better process isolation on macOS
-        nohup "$PROJECT_ROOT/build/bin/rocksdbserver-thrift" \
+        # Start each process using Rust binary directly
+        nohup "$PROJECT_ROOT/rust/target/debug/thrift-server" \
             --config "$PROJECT_ROOT/build/bin/cluster_configs/node_$node.toml" \
             --node-id $node \
             --port $port \
             --verbose \
-            > "/tmp/kv-multinode-$node-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+            --log-dir "$CLUSTER_ROOT/node$node_num/logs" \
+            > "$CLUSTER_ROOT/node$node_num/logs/stdout.log" 2>&1 &
         NODE_PIDS+=($!)
         sleep 1
     done
@@ -216,12 +239,21 @@ EOF
     echo "  Node.js web server: localhost:3000 (PID: ${NODE_PIDS[0]})"
     for ((i=0; i<NODE_COUNT; i++)); do
         thrift_pid_index=$((i + 1))
+        node_num=$((i + 1))
         kv_port=$((9090 + i))
         consensus_port=$((7090 + i))
         role=$([ $i -eq 0 ] && echo "Leader" || echo "Follower")
         echo "  Node $i ($role): KV=localhost:$kv_port, Consensus=localhost:$consensus_port (PID: ${NODE_PIDS[thrift_pid_index]})"
+        echo "    Data: $CLUSTER_ROOT/node$node_num/data"
+        echo "    Logs: $CLUSTER_ROOT/node$node_num/logs"
     done
 fi
+echo
+echo "📁 Cluster directory: $CLUSTER_ROOT"
+echo "🔍 Log search examples:"
+echo "  grep -r 'ERROR' $CLUSTER_ROOT/*/logs/"
+echo "  grep -r 'Starting' $CLUSTER_ROOT/*/logs/"
+echo "  ls -la $CLUSTER_ROOT/*/logs/"
 echo
 echo "Press Ctrl+C to stop..."
 
