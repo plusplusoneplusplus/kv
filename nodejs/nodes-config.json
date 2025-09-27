@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "id": "node-0",
+      "name": "Node 0 (Primary)",
+      "host": "localhost",
+      "port": 9090,
+      "description": "Primary KV store node"
+    },
+    {
+      "id": "node-1",
+      "name": "Node 1 (Secondary)",
+      "host": "localhost",
+      "port": 9091,
+      "description": "Secondary KV store node"
+    },
+    {
+      "id": "node-2",
+      "name": "Node 2 (Secondary)",
+      "host": "localhost",
+      "port": 9092,
+      "description": "Secondary KV store node"
+    }
+  ],
+  "defaultNode": "node-0"
+}

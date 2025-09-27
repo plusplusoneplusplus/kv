@@ -81,19 +81,30 @@ async function testConnection() {
     try {
         const response = await fetch('/api/ping');
         const result = await response.json();
-        
+
         if (result.success) {
             document.getElementById('statusIndicator').classList.add('connected');
-            document.getElementById('statusText').textContent = `Connected (${result.roundTripTime}ms)`;
-            document.getElementById('connectionStats').textContent = 'Connected';
+
+            // Get current node info for display
+            const currentNode = getCurrentNodeInfo();
+            const nodeInfo = currentNode ? ` - ${currentNode}` : '';
+
+            document.getElementById('statusText').textContent = `Connected (${result.roundTripTime}ms)${nodeInfo}`;
+            if (document.getElementById('connectionStats')) {
+                document.getElementById('connectionStats').textContent = 'Connected';
+            }
+            return true;
         } else {
             throw new Error('Ping failed');
         }
     } catch (error) {
         document.getElementById('statusIndicator').classList.remove('connected');
         document.getElementById('statusText').textContent = 'Connection failed';
-        document.getElementById('connectionStats').textContent = 'Disconnected';
+        if (document.getElementById('connectionStats')) {
+            document.getElementById('connectionStats').textContent = 'Disconnected';
+        }
         console.error('Connection test failed:', error);
+        return false;
     }
 }
 
@@ -333,6 +344,8 @@ function updateEndpoint() {
     .then(data => {
         if (data.success) {
             document.getElementById('currentEndpoint').textContent = `${host}:${port}`;
+            updateCurrentNodeDisplay(host, port);
+            updateNodeSelection();
             showEndpointStatus(`Endpoint updated to ${host}:${port}`, 'success');
             // Refresh connection status
             setTimeout(testConnection, 1000);
@@ -382,8 +395,104 @@ function showEndpointStatus(message, type) {
     }
 }
 
+// Global variable to store nodes configuration
+let availableNodes = [];
+
+// Helper function to get current node info for display
+function getCurrentNodeInfo() {
+    const hostInput = document.getElementById('thriftHost');
+    const portInput = document.getElementById('thriftPort');
+
+    if (!hostInput || !portInput) return null;
+
+    const currentHost = hostInput.value;
+    const currentPort = parseInt(portInput.value);
+
+    // Find matching node
+    const matchingNode = availableNodes.find(node =>
+        node.host === currentHost && node.port === currentPort
+    );
+
+    if (matchingNode) {
+        return matchingNode.name;
+    } else {
+        return `${currentHost}:${currentPort}`;
+    }
+}
+
+// UI State Management for Node Switching
+function showNodeSwitchingOverlay(targetHost, targetPort) {
+    const overlay = document.getElementById('nodeSwitchingOverlay');
+    const details = document.getElementById('switchingDetails');
+
+    if (overlay && details) {
+        details.textContent = `Connecting to ${targetHost}:${targetPort}...`;
+        overlay.style.display = 'flex';
+
+        // Freeze main UI elements
+        freezeUI();
+    }
+}
+
+function hideNodeSwitchingOverlay() {
+    const overlay = document.getElementById('nodeSwitchingOverlay');
+
+    if (overlay) {
+        overlay.style.display = 'none';
+
+        // Unfreeze main UI elements
+        unfreezeUI();
+
+        // Update tab highlighting to reflect current node
+        updateHeaderNodeSelection();
+
+        // Refresh key-value data from the new node
+        loadKeys();
+
+        // Reset switching flag
+        isSwitchingNode = false;
+    }
+}
+
+function freezeUI() {
+    // Freeze tabs
+    const nodeTabs = document.getElementById('nodeTabs');
+    if (nodeTabs) {
+        nodeTabs.classList.add('switching');
+    }
+
+    // Freeze other main UI elements
+    const tabNav = document.querySelector('.tab-nav');
+    const tabContainers = document.querySelectorAll('[id$="-tab-container"]');
+
+    if (tabNav) tabNav.classList.add('ui-frozen');
+    tabContainers.forEach(container => container.classList.add('ui-frozen'));
+}
+
+function unfreezeUI() {
+    // Unfreeze tabs
+    const nodeTabs = document.getElementById('nodeTabs');
+    if (nodeTabs) {
+        nodeTabs.classList.remove('switching');
+    }
+
+    // Remove switching-from class from all tabs
+    const allTabs = document.querySelectorAll('.node-tab');
+    allTabs.forEach(tab => tab.classList.remove('switching-from'));
+
+    // Unfreeze other UI elements
+    const tabNav = document.querySelector('.tab-nav');
+    const tabContainers = document.querySelectorAll('[id$="-tab-container"]');
+
+    if (tabNav) tabNav.classList.remove('ui-frozen');
+    tabContainers.forEach(container => container.classList.remove('ui-frozen'));
+}
+
 // Initialize settings when page loads
 function initializeSettings() {
+    // Load available nodes
+    loadAvailableNodes();
+
     // Get current endpoint from server
     fetch('/api/admin/current-endpoint')
         .then(response => response.json())
@@ -392,11 +501,328 @@ function initializeSettings() {
                 document.getElementById('thriftHost').value = data.host;
                 document.getElementById('thriftPort').value = data.port;
                 document.getElementById('currentEndpoint').textContent = `${data.host}:${data.port}`;
+                updateCurrentNodeDisplay(data.host, data.port);
             }
         })
         .catch(error => {
             console.log('Could not fetch current endpoint, using defaults');
         });
+}
+
+// Load available nodes from server
+function loadAvailableNodes() {
+    fetch('/api/admin/nodes')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                availableNodes = data.nodes;
+                populateNodeSelector(data.nodes, data.defaultNode);
+                populateHeaderNodeSelector(data.nodes, data.defaultNode);
+                updateCurrentNodeDisplay(data.currentNode.host, data.currentNode.port);
+            }
+        })
+        .catch(error => {
+            console.error('Could not fetch available nodes:', error);
+            populateNodeSelector([], null);
+            populateHeaderNodeSelector([], null);
+        });
+}
+
+// Populate node selector dropdown
+function populateNodeSelector(nodes, defaultNode) {
+    const selector = document.getElementById('nodeSelector');
+    if (!selector) return;
+
+    selector.innerHTML = '';
+
+    // Add nodes from configuration
+    nodes.forEach(node => {
+        const option = document.createElement('option');
+        option.value = node.id;
+        option.textContent = node.name;
+        option.dataset.host = node.host;
+        option.dataset.port = node.port;
+        option.dataset.description = node.description;
+        selector.appendChild(option);
+    });
+
+    // Add custom option
+    const customOption = document.createElement('option');
+    customOption.value = 'custom';
+    customOption.textContent = 'Custom Configuration';
+    selector.appendChild(customOption);
+
+    // Set current selection
+    updateNodeSelection();
+}
+
+// Populate header node tabs
+function populateHeaderNodeSelector(nodes, defaultNode) {
+    const tabsContainer = document.getElementById('nodeTabs');
+    if (!tabsContainer) return;
+
+    tabsContainer.innerHTML = '';
+
+    // Add nodes from configuration
+    nodes.forEach(node => {
+        const tab = document.createElement('div');
+        tab.className = 'node-tab';
+        tab.dataset.nodeId = node.id;
+        tab.dataset.host = node.host;
+        tab.dataset.port = node.port;
+        tab.onclick = () => onNodeTabClick(node.id);
+
+        // Determine label (Primary/Secondary)
+        const isFirstNode = node.id === 'node-0';
+        const label = isFirstNode ? 'Primary' : 'Secondary';
+
+        tab.innerHTML = `
+            <span class="tab-label">${label}</span>
+            <span class="tab-port">${node.port}</span>
+        `;
+
+        tabsContainer.appendChild(tab);
+    });
+
+    // Add custom tab
+    const customTab = document.createElement('div');
+    customTab.className = 'node-tab custom';
+    customTab.dataset.nodeId = 'custom';
+    customTab.onclick = () => onNodeTabClick('custom');
+    customTab.innerHTML = `
+        <span class="tab-label">Custom</span>
+        <span class="tab-port">⚙️</span>
+    `;
+    tabsContainer.appendChild(customTab);
+
+    // Set current selection
+    updateHeaderNodeSelection();
+}
+
+// Update current node display
+function updateCurrentNodeDisplay(host, port) {
+    const currentEndpoint = document.getElementById('currentEndpoint');
+    const currentNode = document.getElementById('currentNode');
+
+    if (currentEndpoint) {
+        currentEndpoint.textContent = `${host}:${port}`;
+    }
+
+    if (currentNode) {
+        // Find matching node
+        const matchingNode = availableNodes.find(node =>
+            node.host === host && node.port == port
+        );
+
+        if (matchingNode) {
+            currentNode.textContent = matchingNode.name;
+        } else {
+            currentNode.textContent = `Custom (${host}:${port})`;
+        }
+    }
+}
+
+// Update node selector based on current endpoint
+function updateNodeSelection() {
+    const selector = document.getElementById('nodeSelector');
+    const hostInput = document.getElementById('thriftHost');
+    const portInput = document.getElementById('thriftPort');
+
+    if (!selector || !hostInput || !portInput) return;
+
+    const currentHost = hostInput.value;
+    const currentPort = parseInt(portInput.value);
+
+    // Find matching node
+    const matchingNode = availableNodes.find(node =>
+        node.host === currentHost && node.port === currentPort
+    );
+
+    if (matchingNode) {
+        selector.value = matchingNode.id;
+    } else {
+        selector.value = 'custom';
+    }
+}
+
+// Handle node selection change
+function onNodeSelectionChange() {
+    const selector = document.getElementById('nodeSelector');
+    const hostInput = document.getElementById('thriftHost');
+    const portInput = document.getElementById('thriftPort');
+
+    if (!selector || !hostInput || !portInput) return;
+
+    const selectedValue = selector.value;
+
+    if (selectedValue === 'custom') {
+        // User selected custom, don't change the inputs
+        return;
+    }
+
+    // Find the selected node
+    const selectedNode = availableNodes.find(node => node.id === selectedValue);
+    if (selectedNode) {
+        hostInput.value = selectedNode.host;
+        portInput.value = selectedNode.port;
+
+        // Show description in status
+        if (selectedNode.description) {
+            showEndpointStatus(selectedNode.description, 'info');
+        }
+    }
+}
+
+// Update header node selection based on current endpoint
+function updateHeaderNodeSelection() {
+    const tabsContainer = document.getElementById('nodeTabs');
+    const hostInput = document.getElementById('thriftHost');
+    const portInput = document.getElementById('thriftPort');
+
+    if (!tabsContainer) return;
+
+    // Try to get current host/port from inputs, or use current endpoint
+    let currentHost, currentPort;
+    if (hostInput && portInput) {
+        currentHost = hostInput.value;
+        currentPort = parseInt(portInput.value);
+    } else {
+        // Extract from current endpoint display if inputs not available
+        const currentEndpoint = document.getElementById('currentEndpoint');
+        if (currentEndpoint) {
+            const parts = currentEndpoint.textContent.split(':');
+            currentHost = parts[0];
+            currentPort = parseInt(parts[1]);
+        }
+    }
+
+    if (!currentHost || !currentPort) return;
+
+    // Remove active class from all tabs
+    const allTabs = tabsContainer.querySelectorAll('.node-tab');
+    allTabs.forEach(tab => tab.classList.remove('active'));
+
+    // Find matching node and set active
+    const matchingNode = availableNodes.find(node =>
+        node.host === currentHost && node.port === currentPort
+    );
+
+    if (matchingNode) {
+        const matchingTab = tabsContainer.querySelector(`[data-node-id="${matchingNode.id}"]`);
+        if (matchingTab) {
+            matchingTab.classList.add('active');
+        }
+    } else {
+        // Set custom tab as active
+        const customTab = tabsContainer.querySelector('[data-node-id="custom"]');
+        if (customTab) {
+            customTab.classList.add('active');
+        }
+    }
+}
+
+// Global flag to prevent double-clicking during switching
+let isSwitchingNode = false;
+
+// Handle node tab click
+function onNodeTabClick(nodeId) {
+    // Prevent double-clicks and clicks during switching
+    if (isSwitchingNode) {
+        console.log('Node switching in progress, ignoring click');
+        return;
+    }
+
+    if (nodeId === 'custom') {
+        // For custom tab, just highlight it and let user use settings
+        updateHeaderNodeSelection();
+        return;
+    }
+
+    // Find the selected node
+    const selectedNode = availableNodes.find(node => node.id === nodeId);
+    if (selectedNode) {
+        // Check if we're already on this node
+        const currentHost = document.getElementById('currentEndpoint')?.textContent?.split(':')[0];
+        const currentPort = parseInt(document.getElementById('currentEndpoint')?.textContent?.split(':')[1]);
+
+        if (selectedNode.host === currentHost && selectedNode.port === currentPort) {
+            console.log('Already on this node, ignoring click');
+            return;
+        }
+
+        // Set switching flag
+        isSwitchingNode = true;
+
+        // Mark the current tab as switching-from
+        const currentActiveTab = document.querySelector('.node-tab.active');
+        if (currentActiveTab) {
+            currentActiveTab.classList.add('switching-from');
+        }
+
+        // Show loading overlay and update endpoint
+        showNodeSwitchingOverlay(selectedNode.host, selectedNode.port);
+        updateEndpointDirectWithLoading(selectedNode.host, selectedNode.port);
+    }
+}
+
+// Direct endpoint update function (legacy - for non-loading contexts)
+function updateEndpointDirect(host, port) {
+    updateEndpointDirectWithLoading(host, port);
+}
+
+// Direct endpoint update function with loading states
+function updateEndpointDirectWithLoading(host, port) {
+    // Send update request to server
+    fetch('/api/admin/update-endpoint', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            host: host,
+            port: port
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update all displays
+            updateCurrentNodeDisplay(host, port);
+            updateHeaderNodeSelection();
+
+            // Update settings inputs if they exist
+            const hostInput = document.getElementById('thriftHost');
+            const portInput = document.getElementById('thriftPort');
+            if (hostInput && portInput) {
+                hostInput.value = host;
+                portInput.value = port;
+                updateNodeSelection();
+            }
+
+            // Test connection and hide overlay after response
+            setTimeout(() => {
+                testConnection().finally(() => {
+                    // Hide loading overlay after connection test completes
+                    setTimeout(hideNodeSwitchingOverlay, 300);
+                });
+            }, 200);
+        } else {
+            console.error('Failed to update endpoint:', data.error);
+            // Hide overlay on error and reset flag
+            setTimeout(() => {
+                hideNodeSwitchingOverlay();
+                isSwitchingNode = false;
+            }, 500);
+        }
+    })
+    .catch(error => {
+        console.error('Failed to update endpoint:', error);
+        // Hide overlay on error and reset flag
+        setTimeout(() => {
+            hideNodeSwitchingOverlay();
+            isSwitchingNode = false;
+        }, 500);
+    });
 }
 
 // Close modal when clicking outside
@@ -472,6 +898,10 @@ function initializeTabFromURL() {
 function initializeApp() {
     setupTabNavigation();
     initializeTabFromURL();
+
+    // Load available nodes for header selector (needs to be done early)
+    loadAvailableNodes();
+
     testConnection();
     loadKeys();
     initializeSettings();
