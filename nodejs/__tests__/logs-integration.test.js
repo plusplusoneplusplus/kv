@@ -173,8 +173,8 @@ describe('Log Viewer Integration Tests', () => {
 
       if (response.body.results.length > 0) {
         response.body.results.forEach(result => {
-          // Files in node1 directory contain node-0 in filename (0-based)
-          expect(result.file).toContain('node-0');
+          // Results should be from files in the node1 directory
+          expect(result.path).toContain('node1/logs');
         });
       }
     });

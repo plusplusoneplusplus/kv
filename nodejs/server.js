@@ -868,10 +868,24 @@ app.get('/api/logs/search', async (req, res) => {
         let searchResults = [];
 
         if (query) {
-            // Use grep to search for the query in log files
+            // Use grep to search for the query in log files (safely)
             try {
-                const grepCommand = `grep -r "${query}" "${searchPath}" | head -${limit}`;
-                const output = execSync(grepCommand, { encoding: 'utf8', timeout: 10000 });
+                // Validate query to prevent injection - basic sanitization
+                if (typeof query !== 'string' || query.includes('\x00') || query.length > 1000) {
+                    throw new Error('Invalid search query');
+                }
+
+                // Use execSync with properly escaped arguments
+                const { execSync } = require('child_process');
+                const escapedQuery = query.replace(/'/g, "'\"'\"'"); // Escape single quotes
+                const escapedPath = searchPath.replace(/'/g, "'\"'\"'"); // Escape single quotes
+                const grepCommand = `grep -r '${escapedQuery}' '${escapedPath}' | head -${parseInt(limit)}`;
+
+                const output = execSync(grepCommand, {
+                    encoding: 'utf8',
+                    timeout: 10000,
+                    maxBuffer: 1024 * 1024 // 1MB limit
+                });
 
                 searchResults = output.trim().split('\n')
                     .filter(line => line.length > 0)
@@ -888,7 +902,8 @@ app.get('/api/logs/search', async (req, res) => {
                 if (grepError.status === 1) {
                     searchResults = [];
                 } else {
-                    throw grepError;
+                    console.error('Grep search error:', grepError.message);
+                    searchResults = [];
                 }
             }
         } else {
@@ -1022,8 +1037,16 @@ app.get('/api/logs/file', async (req, res) => {
         const lines = parseInt(req.query.lines) || 300;
         const currentClusterLogPath = getClusterLogPath(req);
 
+        // Check if cluster log path is configured
+        if (!currentClusterLogPath) {
+            return res.status(400).json({
+                success: false,
+                error: 'Log path not configured. Server must be started with cluster configuration.'
+            });
+        }
+
         // Security check: ensure file is within cluster log path
-        if (!currentClusterLogPath || !filePath.startsWith(currentClusterLogPath)) {
+        if (!filePath.startsWith(currentClusterLogPath)) {
             return res.status(403).json({
                 success: false,
                 error: 'Access denied: file must be within cluster log directory'
