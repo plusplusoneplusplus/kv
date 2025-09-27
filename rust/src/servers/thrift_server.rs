@@ -7,6 +7,9 @@ use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use tracing::{debug, error, info};
+use tracing::warn;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use rocksdb_server::generated::kvstore::*;
 use rocksdb_server::lib::replication::RoutingManager;
@@ -17,7 +20,6 @@ use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine}
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
 use consensus_mock::{MockConsensusEngine, ThriftTransport, ConsensusServer};
-use tracing::warn;
 use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
@@ -42,6 +44,10 @@ struct Args {
     /// This node's ID in the cluster (required for multi-node mode)
     #[arg(short, long)]
     node_id: Option<u32>,
+
+    /// Directory to write log files (defaults to logs/)
+    #[arg(long, default_value = "logs")]
+    log_dir: String,
 }
 
 #[tokio::main]
@@ -56,10 +62,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Initialize tracing with appropriate level
+    // Initialize tracing with file-based logging
     let log_level = if args.verbose { "debug" } else { "info" };
     std::env::set_var("RUST_LOG", log_level);
-    tracing_subscriber::fmt::init();
+
+    // Determine node ID for log file naming
+    let node_id_for_logs = args.node_id.unwrap_or(0);
+
+    // Create logs directory if it doesn't exist
+    std::fs::create_dir_all(&args.log_dir).unwrap_or_else(|e| {
+        eprintln!("Failed to create logs directory {}: {}", args.log_dir, e);
+        std::process::exit(1);
+    });
+
+    // Create file appender with daily rotation
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix(format!("thrift-server-node-{}", node_id_for_logs))
+        .filename_suffix("log")
+        .build(&args.log_dir)
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to create log file appender: {}", e);
+            std::process::exit(1);
+        });
+
+    // Setup subscriber with both console and file output
+    let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking_stdout, _guard2) = tracing_appender::non_blocking(std::io::stdout());
+
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking_file)
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_file(true)
+                .with_line_number(true)
+        )
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking_stdout)
+                .with_target(false)
+                .compact()
+        )
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    // Store guards to prevent early cleanup
+    std::mem::forget(_guard);
+    std::mem::forget(_guard2);
 
     if args.verbose {
         info!("Verbose logging enabled");
