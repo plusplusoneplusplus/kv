@@ -32,6 +32,7 @@ class ComponentLoader {
             { path: 'components/clear-data.html', targetId: 'clear-tab-container' },
             { path: 'components/settings.html', targetId: 'settings-tab-container' },
             { path: 'components/cluster-health.html', targetId: 'cluster-tab-container' },
+            { path: 'components/logs.html', targetId: 'logs-tab-container' },
             { path: 'components/modals.html', targetId: 'modals-container' }
         ];
 

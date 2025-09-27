@@ -97,13 +97,36 @@ cd "$PROJECT_ROOT"
 echo "Building..."
 cmake --build build --target rust_thrift_server
 
-# Start Node.js web server
+# Start Node.js web server with cluster configuration
 echo "Starting Node.js web server..."
 cd "$PROJECT_ROOT/nodejs"
-nohup node server.js > "$CLUSTER_ROOT/nodejs.log" 2>&1 &
+
+# Prepare cluster configuration for Node.js server
+if [ "$NODE_COUNT" -eq 1 ]; then
+    # Single node configuration
+    CLUSTER_CONFIG="{\"nodes\": [{\"id\": 0, \"port\": 9090}], \"nodeCount\": 1, \"mode\": \"single\"}"
+else
+    # Multi-node configuration
+    CLUSTER_NODES="["
+    for ((i=0; i<NODE_COUNT; i++)); do
+        port=$((9090 + i))
+        if [ $i -eq 0 ]; then
+            CLUSTER_NODES="$CLUSTER_NODES{\"id\": $i, \"port\": $port}"
+        else
+            CLUSTER_NODES="$CLUSTER_NODES, {\"id\": $i, \"port\": $port}"
+        fi
+    done
+    CLUSTER_NODES="$CLUSTER_NODES]"
+    CLUSTER_CONFIG="{\"nodes\": $CLUSTER_NODES, \"nodeCount\": $NODE_COUNT, \"mode\": \"cluster\"}"
+fi
+
+# Start Node.js server with cluster configuration and log path
+nohup node server.js "$CLUSTER_CONFIG" "$CLUSTER_ROOT" > "$CLUSTER_ROOT/nodejs.log" 2>&1 &
 NODEJS_PID=$!
 NODE_PIDS+=($NODEJS_PID)
 echo "Node.js server started on port 3000 (PID: $NODEJS_PID)"
+echo "  Cluster config: $CLUSTER_CONFIG"
+echo "  Log path: $CLUSTER_ROOT"
 cd "$PROJECT_ROOT"
 
 if [ "$NODE_COUNT" -eq 1 ]; then
@@ -250,10 +273,16 @@ EOF
 fi
 echo
 echo "📁 Cluster directory: $CLUSTER_ROOT"
-echo "🔍 Log search examples:"
-echo "  grep -r 'ERROR' $CLUSTER_ROOT/*/logs/"
-echo "  grep -r 'Starting' $CLUSTER_ROOT/*/logs/"
-echo "  ls -la $CLUSTER_ROOT/*/logs/"
+echo "🔍 Log search options:"
+echo "  Command line:"
+echo "    grep -r 'ERROR' $CLUSTER_ROOT/*/logs/"
+echo "    grep -r 'Starting' $CLUSTER_ROOT/*/logs/"
+echo "    ls -la $CLUSTER_ROOT/*/logs/"
+echo "  Web interface (http://localhost:3000):"
+echo "    GET /api/logs/search?query=ERROR"
+echo "    GET /api/logs/search?query=Starting&node_id=0"
+echo "    GET /api/logs/files"
+echo "    GET /api/cluster/config"
 echo
 echo "Press Ctrl+C to stop..."
 

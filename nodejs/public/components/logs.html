@@ -1,0 +1,164 @@
+<div class="tab-content" id="logsTab">
+    <h2>Log Viewer</h2>
+
+    <!-- Log Search Controls -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Search Logs</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="logSearchQuery" class="form-label">Search Query</label>
+                    <input type="text" class="form-control" id="logSearchQuery"
+                           placeholder="Enter search term (e.g., ERROR, Starting, INFO)">
+                </div>
+                <div class="col-md-3">
+                    <label for="logNodeFilter" class="form-label">Node Filter</label>
+                    <select class="form-select" id="logNodeFilter">
+                        <option value="">All Nodes</option>
+                        <option value="0">Node 0</option>
+                        <option value="1">Node 1</option>
+                        <option value="2">Node 2</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="logResultLimit" class="form-label">Result Limit</label>
+                    <select class="form-select" id="logResultLimit">
+                        <option value="50">50 results</option>
+                        <option value="100" selected>100 results</option>
+                        <option value="200">200 results</option>
+                        <option value="500">500 results</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <button class="btn btn-primary" id="searchLogsBtn">
+                        <i class="fas fa-search"></i> Search Logs
+                    </button>
+                    <button class="btn btn-secondary ms-2" id="clearLogSearchBtn">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                    <button class="btn btn-info ms-2" id="recentLogsBtn">
+                        <i class="fas fa-clock"></i> Recent Logs
+                    </button>
+                    <button class="btn btn-outline-secondary ms-2" id="refreshLogFilesBtn">
+                        <i class="fas fa-refresh"></i> Refresh Files
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cluster Status -->
+    <div class="card mb-4" id="logClusterStatus" style="display: none;">
+        <div class="card-header">
+            <h6 class="card-title mb-0">Cluster Configuration</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Mode:</strong> <span id="clusterMode">-</span>
+                </div>
+                <div class="col-md-6">
+                    <strong>Node Count:</strong> <span id="clusterNodeCount">-</span>
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-12">
+                    <strong>Log Path:</strong> <span id="clusterLogPath" class="text-muted">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Files List -->
+    <div class="card mb-4" id="logFilesSection" style="display: none;">
+        <div class="card-header">
+            <h6 class="card-title mb-0">Available Log Files</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Node</th>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Modified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logFilesTableBody">
+                        <!-- Files will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    <div class="card" id="logResultsSection" style="display: none;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="card-title mb-0">Search Results</h6>
+            <div>
+                <span id="logResultsCount" class="badge bg-info">0 results</span>
+                <span id="logSearchInfo" class="text-muted ms-2"></span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="logResultsContainer" class="log-results">
+                <!-- Search results will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading indicator -->
+    <div id="logLoadingIndicator" style="display: none;" class="text-center mt-4">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Searching logs...</p>
+    </div>
+</div>
+
+<style>
+.log-results {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    max-height: 600px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+    padding: 0;
+    background-color: transparent;
+    border: none;
+    word-wrap: break-word;
+}
+
+.log-file-info {
+    font-size: 10px;
+    color: #6c757d;
+    margin-bottom: 2px;
+}
+
+.log-content {
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.no-logs-message {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 2rem;
+}
+</style>
+
+<!-- JavaScript is now in logs.js -->

@@ -310,6 +310,15 @@ function showTab(tabName, updateHistory = true) {
         if (typeof initializeClusterDashboard === 'function') {
             initializeClusterDashboard();
         }
+    } else if (tabName === 'logs') {
+        // Initialize log viewer when logs tab is shown
+        console.log('Initializing logs tab...');
+        if (typeof initializeLogViewer === 'function') {
+            console.log('Calling initializeLogViewer');
+            initializeLogViewer();
+        } else {
+            console.error('initializeLogViewer function not found');
+        }
     }
 }
 
@@ -461,5 +470,33 @@ window.addEventListener('popstate', (event) => {
         initializeTabFromURL();
     }
 });
+
+// Initialize tab based on current URL
+function initializeTabFromURL() {
+    const path = window.location.pathname;
+    let tabName = 'browse'; // default tab
+
+    // Extract tab name from URL path
+    if (path === '/clear') {
+        tabName = 'clear';
+    } else if (path === '/settings') {
+        tabName = 'settings';
+    } else if (path === '/cluster') {
+        tabName = 'cluster';
+    } else if (path === '/logs') {
+        tabName = 'logs';
+    } else if (path === '/dashboard') {
+        tabName = 'browse'; // dashboard redirects to browse
+    }
+
+    // Show the appropriate tab without updating history
+    showTab(tabName, false);
+}
+
+// Initialize the application
+function initializeApp() {
+    setupTabNavigation();
+    initializeTabFromURL();
+}
 
 // This initialization will be called by component-loader.js after components are loaded
