@@ -1,4 +1,4 @@
-use consensus_api::{ConsensusResult, ConsensusError, ConsensusEngine};
+use consensus_api::{ConsensusResult, ConsensusError, ConsensusEngine, LogEntry};
 use std::sync::Arc;
 use parking_lot::RwLock;
 
@@ -38,48 +38,71 @@ impl ConsensusServiceHandler {
         let consensus_engine = self.consensus_engine.as_ref().ok_or_else(|| {
             ConsensusError::Other { message: "Consensus engine not initialized".to_string() }
         })?;
+        {
+            let engine = consensus_engine.read();
 
-        let engine = consensus_engine.read();
+            tracing::info!(
+                "Node {}: Received append_entries from leader {}: term={}, prev_index={}, entries={}, leader_commit={}",
+                engine.node_id(),
+                request.leader_id,
+                request.term,
+                request.prev_log_index,
+                request.entries.len(),
+                request.leader_commit
+            );
 
-        tracing::info!(
-            "Node {}: Received append_entries from leader {}: term={}, prev_index={}, entries={}",
-            engine.node_id(),
-            request.leader_id,
-            request.term,
-            request.prev_log_index,
-            request.entries.len()
-        );
+            // Downcast to concrete engine to invoke follower-side log/commit helpers
+            let mock_engine = engine
+                .as_any()
+                .downcast_ref::<crate::mock_node::MockConsensusEngine>()
+                .ok_or_else(|| ConsensusError::Other { message: "Unsupported consensus engine for Thrift handler".to_string() })?;
 
-        // Convert Thrift entries to consensus API entries and process them
-        // For now, simulate processing the entries and applying them to the follower's state machine
+            // Append entries to follower log
+            for e in &request.entries {
+                let entry = LogEntry {
+                    index: e.index as u64,
+                    term: e.term as u64,
+                    data: e.data.clone(),
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                };
+                mock_engine.append_entry_from_network(entry);
+            }
 
-        // In a real implementation, this would:
-        // 1. Validate the entries against the follower's log
-        // 2. Append the entries to the follower's log
-        // 3. Apply committed entries to the state machine
+            // Apply up to leader's commit index
+            let leader_commit = if request.leader_commit > 0 { request.leader_commit as u64 } else { 0 };
+            if leader_commit > 0 {
+                if let Err(e) = mock_engine.apply_up_to_commit(leader_commit) {
+                    tracing::error!("Node {}: apply_up_to_commit failed: {:?}", engine.node_id(), e);
+                    return Err(e);
+                }
+            }
 
-        // For mock implementation, just simulate successful processing
-        let last_log_index = if request.entries.is_empty() {
-            request.prev_log_index
-        } else {
-            // Get the index of the last entry
-            request.prev_log_index + request.entries.len() as i64
-        };
+            // Compute last log index after appending
+            let last_log_index = if let Some(last) = request.entries.last() {
+                last.index
+            } else {
+                request.prev_log_index
+            };
 
-        let response = ThriftAppendEntriesResponse::new(
-            request.term,
-            true, // success - follower accepted the entries
-            Some(last_log_index),
-            None, // no error
-        );
+            let response = ThriftAppendEntriesResponse::new(
+                request.term,
+                true,
+                Some(last_log_index),
+                None::<String>,
+            );
 
-        tracing::info!(
-            "Node {}: Successfully processed append_entries: last_index={}",
-            engine.node_id(),
-            last_log_index
-        );
+            tracing::info!(
+                "Node {}: append_entries processed: last_index={}, leader_commit={}",
+                engine.node_id(),
+                last_log_index,
+                request.leader_commit
+            );
 
-        Ok(response)
+            Ok(response)
+        }
     }
 }
 

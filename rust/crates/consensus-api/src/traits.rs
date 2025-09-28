@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use std::any::Any;
 use uuid::Uuid;
 
 use crate::ConsensusResult;
@@ -85,4 +86,9 @@ pub trait ConsensusEngine: Send + Sync + Debug {
 
     /// Remove a node from the cluster
     async fn remove_node(&mut self, node_id: &NodeId) -> ConsensusResult<()>;
+
+    /// Downcast support for implementations that need concrete access
+    /// This enables adapters (e.g., Thrift handlers) to reach
+    /// implementation-specific functionality in a controlled way.
+    fn as_any(&self) -> &dyn Any;
 }

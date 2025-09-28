@@ -503,6 +503,10 @@ impl ConsensusEngine for RsmlConsensusEngine {
             message: "Dynamic membership changes not yet supported in RSML".to_string(),
         })
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]

@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use consensus_api::LogEntry;
-use consensus_mock::{ThriftTransport, MockConsensusEngine, ConsensusMessageBus, NetworkTransport};
+use consensus_mock::{MockConsensusEngine, ConsensusMessageBus, NetworkTransport};
+use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
+use rocksdb_server::lib::consensus_thrift::ConsensusThriftServer;
 use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::lib::operations::KvOperation;
@@ -21,7 +23,7 @@ fn create_test_database(path: &str) -> Arc<TransactionalKvDatabase> {
 /// Test that ThriftTransport can validate connections between nodes
 #[tokio::test]
 async fn test_thrift_transport_connection_validation() {
-    let mut transport = ThriftTransport::new("leader".to_string());
+    let mut transport = GeneratedThriftTransport::new("leader".to_string());
 
     // Add follower endpoints
     transport.update_node_endpoint("follower1".to_string(), "localhost:7091".to_string()).await.unwrap();
@@ -101,8 +103,8 @@ async fn test_multi_node_consensus_setup() {
         let (database, _) = &databases[i];
         let endpoints = endpoint_maps[i].clone();
 
-        // Create ThriftTransport
-        let transport = ThriftTransport::with_endpoints(i.to_string(), endpoints).await;
+        // Create generated Thrift transport
+        let transport = GeneratedThriftTransport::with_endpoints(i.to_string(), endpoints).await;
 
         // Create state machine with executor
         let executor = Arc::new(KvStoreExecutor::new(database.clone()));
@@ -173,6 +175,117 @@ async fn test_multi_node_consensus_setup() {
     for (_, db_path) in databases {
         std::fs::remove_dir_all(db_path).ok();
     }
+}
+
+/// Test that with Thrift transport, a committed write on the leader
+/// is applied on the follower (driving RocksDB writes via state machine apply).
+#[tokio::test(flavor = "multi_thread")]
+async fn test_thrift_replication_commit_applies_to_follower() {
+    // Unique DB paths
+    let leader_db_path = format!("/tmp/test_leader_db_{}", uuid::Uuid::new_v4());
+    let follower_db_path = format!("/tmp/test_follower_db_{}", uuid::Uuid::new_v4());
+
+    let leader_db = create_test_database(&leader_db_path);
+    let follower_db = create_test_database(&follower_db_path);
+
+    // Choose test ports for consensus servers
+    let leader_port: u16 = 18090;
+    let follower_port: u16 = 18091;
+
+    // Build endpoint maps
+    let mut endpoints = HashMap::new();
+    endpoints.insert("0".to_string(), format!("127.0.0.1:{}", leader_port));
+    endpoints.insert("1".to_string(), format!("127.0.0.1:{}", follower_port));
+
+    // Build transports
+    let leader_transport = GeneratedThriftTransport::with_endpoints("0".to_string(), endpoints.clone()).await;
+    let follower_transport = GeneratedThriftTransport::with_endpoints("1".to_string(), endpoints.clone()).await;
+
+    // Build state machines
+    let leader_executor = Arc::new(KvStoreExecutor::new(leader_db.clone()));
+    let follower_executor = Arc::new(KvStoreExecutor::new(follower_db.clone()));
+    let leader_sm = Box::new(KvStateMachine::new(leader_executor));
+    let follower_sm = Box::new(KvStateMachine::new(follower_executor));
+
+    // Build consensus engines
+    let leader_engine = MockConsensusEngine::with_network_transport(
+        "0".to_string(),
+        leader_sm,
+        Arc::new(leader_transport),
+    );
+    let follower_engine = MockConsensusEngine::follower_with_network_transport(
+        "1".to_string(),
+        follower_sm,
+        Arc::new(follower_transport),
+    );
+
+    // Wrap in ConsensusKvDatabase
+    let leader_consensus = ConsensusKvDatabase::new(
+        Box::new(leader_engine),
+        leader_db.clone() as Arc<dyn KvDatabase>,
+    );
+    let follower_consensus = ConsensusKvDatabase::new(
+        Box::new(follower_engine),
+        follower_db.clone() as Arc<dyn KvDatabase>,
+    );
+
+    // Add cluster membership so leader replicates to follower
+    {
+        let engine_ref = leader_consensus.consensus_engine().clone();
+        let mut engine = engine_ref.write();
+        engine.add_node("1".to_string(), format!("127.0.0.1:{}", follower_port)).await.unwrap();
+    }
+    {
+        let engine_ref = follower_consensus.consensus_engine().clone();
+        let mut engine = engine_ref.write();
+        engine.add_node("0".to_string(), format!("127.0.0.1:{}", leader_port)).await.unwrap();
+    }
+
+    // Start follower consensus Thrift server (handles append_entries)
+    let follower_server = {
+        let engine = follower_consensus.consensus_engine().clone();
+        let server = ConsensusThriftServer::with_consensus_engine(follower_port, 1, engine);
+        server.start().expect("Failed to start follower consensus Thrift server")
+    };
+
+    // Give server time to bind
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Start engines
+    leader_consensus.start().await.expect("Leader start failed");
+    follower_consensus.start().await.expect("Follower start failed");
+
+    // Perform a write on leader through consensus DB (Set key)
+    let key = b"thrift_commit_key".to_vec();
+    let val = b"thrift_commit_value".to_vec();
+    let op = KvOperation::Set { key: key.clone(), value: val.clone(), column_family: None };
+    let res = leader_consensus.execute_operation(op).await;
+    assert!(res.is_ok(), "Leader execute_operation failed: {:?}", res);
+
+    // Allow time for replication + commit heartbeat
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Read from follower directly (reads bypass consensus and hit DB)
+    let get_op = KvOperation::Get { key: key.clone(), column_family: None };
+    let get_res = follower_consensus.execute_operation(get_op).await.expect("Follower get failed");
+
+    match get_res {
+        rocksdb_server::lib::operations::OperationResult::GetResult(Ok(gr)) => {
+            assert!(gr.found, "Follower should have applied committed key");
+            assert_eq!(gr.value, val);
+        }
+        other => panic!("Unexpected get result: {:?}", other),
+    }
+
+    // Cleanup: stop engines and remove DBs
+    leader_consensus.stop().await.ok();
+    follower_consensus.stop().await.ok();
+
+    // Detach follower server thread by not joining; it will exit with process
+    drop(follower_server);
+
+    std::fs::remove_dir_all(leader_db_path).ok();
+    std::fs::remove_dir_all(follower_db_path).ok();
 }
 
 /// Test consensus message propagation (simulated)
