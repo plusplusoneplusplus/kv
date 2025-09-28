@@ -24,6 +24,14 @@ pub use engine::*;
 // Re-export key types from consensus-api for convenience
 pub use consensus_api::{ConsensusEngine, ConsensusConfig, StateMachine, ProposeResponse, LogEntry};
 
+/// Initialize test logging with ANSI colors disabled
+/// Available for both unit tests and integration tests
+pub fn init_test_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_ansi(false)  // Disable ANSI color codes
+        .try_init();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,7 +147,7 @@ mod tests {
     #[tokio::test]
     async fn test_consensus_factory_workflow() {
         // Initialize tracing for debugging
-        let _ = tracing_subscriber::fmt::try_init();
+        init_test_logging();
 
         println!("Hello World Consensus Test");
         println!("==========================");

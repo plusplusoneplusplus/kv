@@ -25,3 +25,11 @@ pub use consensus_server::ConsensusServer;
 pub use types::{
     AppendEntriesRequest, AppendEntriesResponse, LogEntry,
 };
+
+/// Initialize test logging with ANSI colors disabled
+/// Available for both unit tests and integration tests
+pub fn init_test_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_ansi(false)  // Disable ANSI color codes
+        .try_init();
+}
