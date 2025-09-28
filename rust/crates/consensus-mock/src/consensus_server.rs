@@ -77,28 +77,26 @@ impl ConsensusServer {
 
                             // Handle consensus requests
                             let mut request_count = 0;
-                            loop {
-                                match Self::process_consensus_request(
-                                    &service_handler,
-                                    &mut input_protocol,
-                                    &mut output_protocol,
-                                    node_id,
-                                    peer_addr,
-                                ) {
-                                    Ok(()) => {
-                                        request_count += 1;
-                                        debug!(
-                                            "Consensus Node {}: Request {} from {} processed successfully",
-                                            node_id, request_count, peer_addr
-                                        );
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            "Consensus Node {}: Error processing request from {}: {}",
-                                            node_id, peer_addr, e
-                                        );
-                                        break;
-                                    }
+                            // Process only a single request per TCP connection to avoid spinning
+                            match Self::process_consensus_request(
+                                &service_handler,
+                                &mut input_protocol,
+                                &mut output_protocol,
+                                node_id,
+                                peer_addr,
+                            ) {
+                                Ok(()) => {
+                                    request_count += 1;
+                                    debug!(
+                                        "Consensus Node {}: Request {} from {} processed successfully",
+                                        node_id, request_count, peer_addr
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Consensus Node {}: Error processing request from {}: {}",
+                                        node_id, peer_addr, e
+                                    );
                                 }
                             }
 

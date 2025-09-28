@@ -175,6 +175,37 @@ impl MockConsensusEngine {
         }
     }
 
+    /// Simple leader election that returns hard-coded results
+    /// Returns (is_elected_leader, new_term)
+    pub async fn trigger_leader_election(&self) -> ConsensusResult<(bool, Term)> {
+        let current_term = self.current_term();
+        let new_term = current_term + 1;
+
+        // Hard-coded election logic: node wins if its ID starts with "leader"
+        let wins_election = self.node_id.starts_with("leader");
+
+        if wins_election {
+            self.is_leader.store(true, Ordering::SeqCst);
+            self.term.store(new_term, Ordering::SeqCst);
+
+            // Publish leadership change message
+            if let Some(ref bus) = self.message_bus {
+                bus.publish(ConsensusMessage::LeadershipChange {
+                    new_leader: self.node_id.clone(),
+                    term: new_term,
+                });
+            }
+
+            tracing::info!("Node {} won election for term {}", self.node_id, new_term);
+        } else {
+            self.is_leader.store(false, Ordering::SeqCst);
+            self.term.store(new_term, Ordering::SeqCst);
+            tracing::info!("Node {} lost election for term {}", self.node_id, new_term);
+        }
+
+        Ok((wins_election, new_term))
+    }
+
     pub fn new_follower(node_id: NodeId, state_machine: Box<dyn StateMachine>) -> Self {
         let mut cluster_members = HashMap::new();
         cluster_members.insert(node_id.clone(), "localhost:0".to_string());
@@ -1088,6 +1119,67 @@ mod tests {
         assert!(!response.success);
         assert_eq!(response.error, Some("Node not started".to_string()));
         assert_eq!(response.index, None);
+    }
+
+    #[tokio::test]
+    async fn test_leader_election() {
+        let state_machine = Box::new(TestStateMachine::new());
+
+        // Test node that should win election (starts with "leader")
+        let leader_node = MockConsensusEngine::new("leader-1".to_string(), state_machine);
+        let initial_term = leader_node.current_term();
+
+        let (won_election, new_term) = leader_node.trigger_leader_election().await.unwrap();
+
+        assert!(won_election);
+        assert_eq!(new_term, initial_term + 1);
+        assert!(leader_node.is_leader());
+        assert_eq!(leader_node.current_term(), new_term);
+    }
+
+    #[tokio::test]
+    async fn test_follower_election() {
+        let state_machine = Box::new(TestStateMachine::new());
+
+        // Test node that should lose election (doesn't start with "leader")
+        let follower_node = MockConsensusEngine::new("follower-1".to_string(), state_machine);
+        let initial_term = follower_node.current_term();
+
+        let (won_election, new_term) = follower_node.trigger_leader_election().await.unwrap();
+
+        assert!(!won_election);
+        assert_eq!(new_term, initial_term + 1);
+        assert!(!follower_node.is_leader());
+        assert_eq!(follower_node.current_term(), new_term);
+    }
+
+    #[tokio::test]
+    async fn test_leader_election_with_message_bus() {
+        let message_bus = Arc::new(ConsensusMessageBus::new());
+        let state_machine = Box::new(TestStateMachine::new());
+
+        let leader_node = MockConsensusEngine::with_message_bus(
+            "leader-test".to_string(),
+            state_machine,
+            message_bus.clone()
+        );
+
+        let (won_election, new_term) = leader_node.trigger_leader_election().await.unwrap();
+
+        assert!(won_election);
+        assert!(leader_node.is_leader());
+
+        // Check that leadership change message was published
+        let messages = message_bus.get_messages();
+        let leadership_msg = messages.iter().find(|msg| {
+            matches!(msg, ConsensusMessage::LeadershipChange { .. })
+        });
+
+        assert!(leadership_msg.is_some());
+        if let Some(ConsensusMessage::LeadershipChange { new_leader, term }) = leadership_msg {
+            assert_eq!(new_leader, "leader-test");
+            assert_eq!(*term, new_term);
+        }
     }
 
     // Tests for ConsensusMessageBus
