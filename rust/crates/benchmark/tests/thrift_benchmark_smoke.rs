@@ -64,7 +64,7 @@ fn thrift_ping_benchmark_smoke() {
     // Wait for server to be ready
     assert!(
         wait_for_port(&addr, Duration::from_secs(10)),
-        "Shard server did not become ready on {},"
+        "Shard server did not become ready on {},",
         addr
     );
 
