@@ -324,7 +324,7 @@ impl Drop for FullConsensusCluster {
 /// Test basic consensus server setup and connectivity
 #[tokio::test]
 async fn test_full_consensus_cluster_setup() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Testing full consensus cluster setup ===");
 
@@ -344,7 +344,7 @@ async fn test_full_consensus_cluster_setup() {
 /// Test single operation execution across the cluster
 #[tokio::test]
 async fn test_single_operation_execution() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Testing single operation execution ===");
 
@@ -379,7 +379,7 @@ async fn test_single_operation_execution() {
 /// Test multiple operations execution
 #[tokio::test]
 async fn test_multiple_operations_execution() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Testing multiple operations execution ===");
 
@@ -418,7 +418,7 @@ async fn test_multiple_operations_execution() {
 /// Test state machine behavior with complex operations
 #[tokio::test]
 async fn test_state_machine_operations() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Testing state machine operations ===");
 
@@ -458,7 +458,7 @@ async fn test_state_machine_operations() {
 /// Test error handling and network issues
 #[tokio::test]
 async fn test_error_handling() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Testing error handling ===");
 
@@ -487,7 +487,7 @@ async fn test_error_handling() {
 /// Comprehensive end-to-end test
 #[tokio::test]
 async fn test_full_consensus_end_to_end() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Full End-to-End Consensus Test ===");
 

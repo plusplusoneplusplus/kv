@@ -75,6 +75,7 @@ pub fn init_debug_logging() {
         .with_thread_names(true)
         .with_file(true)
         .with_line_number(true)
+        .with_ansi(false)  // Disable ANSI color codes
         .try_init()
         .is_ok() {
         DEBUG_ENABLED.store(true, Ordering::Relaxed);

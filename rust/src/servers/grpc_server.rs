@@ -9,7 +9,9 @@ use rocksdb_server::{Config, TransactionalKvDatabase};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_ansi(false)  // Disable ANSI color codes
+        .init();
 
     // Load configuration from binary's directory
     let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));

@@ -94,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(
             fmt::layer()
                 .with_writer(non_blocking_file)
+                .with_ansi(false)
                 .with_target(true)
                 .with_thread_ids(true)
                 .with_file(true)

@@ -66,7 +66,7 @@ impl ThriftConsensusCluster {
 /// Test that ThriftTransport can connect to endpoints
 #[tokio::test]
 async fn test_thrift_transport_connection_handling() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let cluster = ThriftConsensusCluster::new(3, 19000).await.unwrap();
 
@@ -84,7 +84,7 @@ async fn test_thrift_transport_connection_handling() {
 /// Test that ThriftTransport properly handles endpoint management
 #[tokio::test]
 async fn test_thrift_transport_endpoint_management() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let mut transport = ThriftTransport::new("test_node".to_string());
 
@@ -110,7 +110,7 @@ async fn test_thrift_transport_endpoint_management() {
 /// Test sending append entry requests through ThriftTransport
 #[tokio::test]
 async fn test_thrift_transport_append_entry_simulation() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let cluster = ThriftConsensusCluster::new(2, 19010).await.unwrap();
     let leader_transport = cluster.get_transport(0).unwrap();
@@ -148,7 +148,7 @@ async fn test_thrift_transport_append_entry_simulation() {
 /// Test sending commit notifications through ThriftTransport
 #[tokio::test]
 async fn test_thrift_transport_commit_notification_simulation() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let cluster = ThriftConsensusCluster::new(2, 19020).await.unwrap();
     let leader_transport = cluster.get_transport(0).unwrap();
@@ -175,7 +175,7 @@ async fn test_thrift_transport_commit_notification_simulation() {
 /// Test multi-node transport configuration
 #[tokio::test]
 async fn test_multi_node_thrift_transport_setup() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let cluster = ThriftConsensusCluster::new(5, 19030).await.unwrap();
 
@@ -197,7 +197,7 @@ async fn test_multi_node_thrift_transport_setup() {
 /// Test error handling for invalid endpoints
 #[tokio::test]
 async fn test_thrift_transport_error_handling() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let mut transport = ThriftTransport::new("test_node".to_string());
 
@@ -220,7 +220,7 @@ async fn test_thrift_transport_error_handling() {
 /// Test concurrent transport operations
 #[tokio::test]
 async fn test_concurrent_thrift_transport_operations() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     let cluster = ThriftConsensusCluster::new(3, 19040).await.unwrap();
     let transport = cluster.get_transport(0).unwrap().clone(); // Clone to avoid lifetime issues
@@ -250,7 +250,7 @@ async fn test_concurrent_thrift_transport_operations() {
 /// This test shows how the ThriftTransport would be used in a real consensus system
 #[tokio::test]
 async fn test_complete_consensus_flow_simulation() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_mock::init_test_logging();
 
     tracing::info!("=== Consensus Thrift Transport Integration Test ===");
 

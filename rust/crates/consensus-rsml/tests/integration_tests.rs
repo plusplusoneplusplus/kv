@@ -256,7 +256,7 @@ impl RsmlTestCluster {
 
 #[tokio::test]
 async fn test_rsml_single_node_basic_operations() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let mut config = RsmlConfig::default();
     config.base.node_id = "1".to_string();
@@ -292,7 +292,7 @@ async fn test_rsml_single_node_basic_operations() {
 
 #[tokio::test]
 async fn test_rsml_factory_pattern() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let mut factory = RsmlConsensusFactory::new();
 
@@ -323,7 +323,7 @@ async fn test_rsml_factory_pattern() {
 
 #[tokio::test]
 async fn test_rsml_multi_node_cluster_creation() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let result = RsmlTestCluster::new_inmemory(3).await;
 
@@ -353,7 +353,7 @@ async fn test_rsml_multi_node_cluster_creation() {
 
 #[tokio::test]
 async fn test_rsml_leader_follower_operations() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let result = RsmlTestCluster::new_inmemory(3).await;
 
@@ -403,7 +403,7 @@ async fn test_rsml_leader_follower_operations() {
 async fn test_rsml_tcp_transport() {
     use consensus_rsml::config::{TransportType, TcpConfig};
 
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let mut config = RsmlConfig::default();
     config.base.node_id = "1".to_string();
@@ -449,7 +449,7 @@ async fn test_rsml_tcp_transport() {
 
 #[tokio::test]
 async fn test_rsml_error_handling() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     // Test invalid node ID
     let mut config = RsmlConfig::default();
@@ -482,7 +482,7 @@ async fn test_rsml_error_handling() {
 
 #[tokio::test]
 async fn test_rsml_consensus_operations() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let mut config = RsmlConfig::default();
     config.base.node_id = "1".to_string();
@@ -532,7 +532,7 @@ async fn test_rsml_consensus_operations() {
 
 #[tokio::test]
 async fn test_rsml_state_machine_integration() {
-    let _ = tracing_subscriber::fmt::try_init();
+    consensus_rsml::init_test_logging();
 
     let state_machine = Arc::new(TestStateMachine::new());
 

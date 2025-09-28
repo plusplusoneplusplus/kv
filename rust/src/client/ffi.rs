@@ -116,7 +116,9 @@ pub struct KvCommitResult {
 #[no_mangle]
 pub extern "C" fn kv_init() -> c_int {
     // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_ansi(false)  // Disable ANSI color codes
+        .try_init();
     0  // Return 0 for success (C convention)
 }
 
