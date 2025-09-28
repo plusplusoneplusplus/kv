@@ -19,7 +19,9 @@ use rocksdb_server::lib::config::Config as ClusterConfig;
 use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
-use consensus_mock::{MockConsensusEngine, ThriftTransport, ConsensusServer};
+use consensus_mock::MockConsensusEngine;
+use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
+use rocksdb_server::lib::consensus_thrift::ConsensusThriftServer;
 use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
@@ -263,14 +265,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         info!("Consensus endpoints: {:?}", consensus_endpoints);
 
-        // Create endpoint map for ThriftTransport
+        // Create endpoint map for Thrift transport
         let mut endpoint_map = HashMap::new();
         for (i, endpoint) in consensus_endpoints.iter().enumerate() {
             endpoint_map.insert(i.to_string(), endpoint.clone());
         }
 
-        // Create ThriftTransport
-        let transport = ThriftTransport::with_endpoints(
+        // Create Thrift transport backed by generated client
+        let transport = GeneratedThriftTransport::with_endpoints(
             node_id.to_string(),
             endpoint_map,
         ).await;
@@ -342,15 +344,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Consensus engine started successfully");
 
     // For multi-node mode, start the consensus service
-    let _consensus_server_handle = if is_multi_node {
-        let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
+        let _consensus_server_handle = if is_multi_node {
+            let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
 
-        let consensus_server = ConsensusServer::with_consensus_engine(
+        // Start real Thrift consensus server using generated processor + adapter
+        let consensus_server = ConsensusThriftServer::with_consensus_engine(
             consensus_port,
             node_id,
-            consensus_database.consensus_engine().clone()
+            consensus_database.consensus_engine().clone(),
         );
-
         info!("Starting consensus service on port {}", consensus_port);
         let handle = consensus_server.start()?;
         Some(handle)

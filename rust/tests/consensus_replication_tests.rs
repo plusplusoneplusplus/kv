@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use consensus_api::LogEntry;
-use consensus_mock::{ThriftTransport, MockConsensusEngine, ConsensusMessageBus, NetworkTransport};
+use consensus_mock::{MockConsensusEngine, ConsensusMessageBus, NetworkTransport};
+use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
 use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::lib::operations::KvOperation;
@@ -21,7 +22,7 @@ fn create_test_database(path: &str) -> Arc<TransactionalKvDatabase> {
 /// Test that ThriftTransport can validate connections between nodes
 #[tokio::test]
 async fn test_thrift_transport_connection_validation() {
-    let mut transport = ThriftTransport::new("leader".to_string());
+    let mut transport = GeneratedThriftTransport::new("leader".to_string());
 
     // Add follower endpoints
     transport.update_node_endpoint("follower1".to_string(), "localhost:7091".to_string()).await.unwrap();
@@ -101,8 +102,8 @@ async fn test_multi_node_consensus_setup() {
         let (database, _) = &databases[i];
         let endpoints = endpoint_maps[i].clone();
 
-        // Create ThriftTransport
-        let transport = ThriftTransport::with_endpoints(i.to_string(), endpoints).await;
+        // Create generated Thrift transport
+        let transport = GeneratedThriftTransport::with_endpoints(i.to_string(), endpoints).await;
 
         // Create state machine with executor
         let executor = Arc::new(KvStoreExecutor::new(database.clone()));

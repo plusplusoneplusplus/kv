@@ -10,6 +10,8 @@ pub mod lib {
     pub mod cluster;
     pub mod config;
     pub mod kv_state_machine;
+    pub mod consensus_transport;
+    pub mod consensus_thrift;
 }
 
 pub mod generated {

@@ -124,10 +124,13 @@ nohup "$PROJECT_ROOT/rust/target/debug/thrift-server" \
 
 ### Network Transport
 
-**ThriftTransport** provides network communication:
-- Connects nodes using endpoint mappings
-- Handles message passing between consensus nodes
-- Supports both leader and follower communication patterns
+Network communication uses the generated Thrift protocol:
+- Client: `GeneratedThriftTransport` (rocksdb_server::lib::consensus_transport)
+  - Uses generated `ConsensusServiceSyncClient` to send real RPCs
+  - Manages endpoint map (node_id → host:port)
+- Server: `ConsensusThriftServer` (rocksdb_server::lib::consensus_thrift)
+  - Wraps `ConsensusServiceSyncProcessor` and adapts to `ConsensusServiceHandler`
+  - Blocks on IO and processes actual AppendEntries/RequestVote/Snapshot
 
 ## Testing Patterns
 
@@ -169,9 +172,9 @@ assert_eq!(consensus.is_leader(), false);
 
 ## Limitations
 
-1. **Deterministic Leadership**: Node 0 is always the initial leader
-2. **No Dynamic Elections**: Leadership changes only through explicit triggers
-3. **Simple Election Logic**: Based on string prefix matching
-4. **Mock Implementation**: Not suitable for production consensus requirements
+1. Deterministic leadership on startup (node 0 leader) remains
+2. No dynamic elections unless explicitly triggered in tests
+3. Simplified request/response logic in the adapter for non-AppendEntries calls
+4. Still a mock consensus; not production-grade
 
 This implementation is designed for testing and development, providing predictable behavior without the complexity of production consensus algorithms like Raft or PBFT.
