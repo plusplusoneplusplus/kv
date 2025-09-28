@@ -1,6 +1,6 @@
 # KV Store Web Viewer
 
-A simple Node.js web interface for viewing and managing key-value pairs in the Thrift RocksDB server.
+A simple Node.js web interface for viewing and managing key-value pairs in the shard node RocksDB server.
 
 ## Features
 
@@ -15,7 +15,7 @@ A simple Node.js web interface for viewing and managing key-value pairs in the T
 ## Prerequisites
 
 1. Node.js (v14 or later)
-2. Thrift RocksDB server running (default port: 9090)
+2. Shard node RocksDB server running (default port: 9090)
 
 ## Installation
 
@@ -44,8 +44,8 @@ The web interface will be available at http://localhost:3000
 
 Environment variables:
 - `PORT`: Web server port (default: 3000)
-- `THRIFT_HOST`: Thrift server host (default: localhost)
-- `THRIFT_PORT`: Thrift server port (default: 9090)
+- `SHARD_NODE_HOST`: Shard node host (default: localhost)
+- `SHARD_NODE_PORT`: Shard node port (default: 9090)
 
 Example:
 ```bash

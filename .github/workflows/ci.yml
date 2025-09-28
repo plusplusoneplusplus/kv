@@ -75,9 +75,9 @@ jobs:
         cmake -B build -S .
         cmake --build build
 
-    - name: Start Thrift server for tests
+    - name: Start shard server for tests
       run: |
-        ./build/bin/rocksdbserver-thrift &
+        ./build/bin/shard-server &
         # Wait for server to start
         for i in {1..30}; do
           if nc -z localhost 9090 2>/dev/null; then

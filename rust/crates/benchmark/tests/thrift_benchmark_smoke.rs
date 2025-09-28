@@ -23,13 +23,13 @@ fn find_free_port() -> u16 {
         .port()
 }
 
-fn spawn_thrift_server(port: u16) -> Option<Child> {
+fn spawn_shard_server(port: u16) -> Option<Child> {
     // Prefer an explicit path from env for CI, fallback to relative debug path
-    let server_bin = env::var("THRIFT_SERVER_BIN")
-        .unwrap_or_else(|_| "../rust/target/debug/thrift-server".to_string());
+    let server_bin = env::var("SHARD_SERVER_BIN")
+        .unwrap_or_else(|_| "../rust/target/debug/shard-server".to_string());
     if !std::path::Path::new(&server_bin).exists() {
         eprintln!(
-            "thrift-server binary not found at {} — skipping smoke test",
+            "shard-server binary not found at {} — skipping smoke test",
             server_bin
         );
         return None;
@@ -42,7 +42,7 @@ fn spawn_thrift_server(port: u16) -> Option<Child> {
     match cmd.spawn() {
         Ok(child) => Some(child),
         Err(e) => {
-            eprintln!("failed to spawn thrift-server: {}", e);
+            eprintln!("failed to spawn shard-server: {}", e);
             None
         }
     }
@@ -53,10 +53,10 @@ fn thrift_ping_benchmark_smoke() {
     // Pick a free port and start the server
     let port = find_free_port();
     let addr = format!("127.0.0.1:{}", port);
-    let maybe_child = spawn_thrift_server(port);
+    let maybe_child = spawn_shard_server(port);
     if maybe_child.is_none() {
         // Skip test gracefully if we cannot start the server (e.g. local dev)
-        eprintln!("Skipping thrift ping benchmark smoke test");
+        eprintln!("Skipping shard server ping benchmark smoke test");
         return;
     }
     let mut child = maybe_child.unwrap();
@@ -64,7 +64,7 @@ fn thrift_ping_benchmark_smoke() {
     // Wait for server to be ready
     assert!(
         wait_for_port(&addr, Duration::from_secs(10)),
-        "Thrift server did not become ready on {}",
+        "Shard server did not become ready on {},"
         addr
     );
 

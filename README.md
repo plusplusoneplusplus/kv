@@ -11,7 +11,7 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   │   ├── lib.rs        # Library exports and re-exports
 │   │   ├── servers/      # Server implementations
 │   │   │   ├── grpc_server.rs  # Rust gRPC server binary
-│   │   │   └── thrift_server.rs # Rust Thrift server binary
+│   │   │   └── shard_server.rs  # Rust shard server binary
 │   │   ├── lib/          # Core library modules
 │   │   │   ├── service.rs     # gRPC service implementation
 │   │   │   ├── db.rs          # Database operations
@@ -40,7 +40,7 @@ A high-performance key-value service supporting both gRPC and Thrift protocols, 
 │   └── kvstore.proto     # gRPC service and message definitions
 ├── thrift/               # Thrift definitions
 │   └── kvstore.thrift    # Thrift service and message definitions
-├── nodejs/               # Node.js web viewer for the Thrift server
+├── nodejs/               # Node.js web viewer for the shard server
 ├── data/                  # Database storage directory (auto-created)
 ├── bin/                   # Compiled binaries (auto-created)
 ├── configs/               # Database configuration files
@@ -134,7 +134,7 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
 # Verify build
-ls bin/             # Should show: rocksdbserver-rust, rocksdbserver-thrift, benchmark-rust, etc.
+ls bin/             # Should show: rocksdbserver-rust, shard-node, benchmark-rust, etc.
 ```
 
 ### Manual Rust Build
@@ -154,11 +154,11 @@ cp target/debug/server ../bin/rocksdbserver-rust
 # For release: cargo build --release --bin server
 ```
 
-**Rust Thrift Server:**
+**Rust Shard Node:**
 ```bash
-cd rust && cargo build --bin thrift-server
-cp target/debug/thrift-server ../bin/rocksdbserver-thrift
-# For release: cargo build --release --bin thrift-server
+cd rust && cargo build --bin shard-node
+cp target/debug/shard-node ../bin/shard-node
+# For release: cargo build --release --bin shard-node
 ```
 
 **Rust Benchmark Tool:**
@@ -177,7 +177,7 @@ cd rust && cargo build --release --features ffi
 ```bash
 cmake --build build --target build_help    # Show available targets
 cmake --build build --target rust_grpc_server     # Build Rust gRPC server
-cmake --build build --target rust_thrift_server   # Build Rust Thrift server
+cmake --build build --target rust_shard_node       # Build Rust shard node
 cmake --build build --target rust_benchmark       # Build benchmark tool
 cmake --build build --target rust_client_lib      # Build client library
 cmake --build build --target unified_ffi_test     # Build FFI tests
@@ -232,10 +232,10 @@ All servers use port 50051 by default. Start one server at a time:
 # Database: ./data/rocksdb-rust/
 ```
 
-**Rust Thrift Server:**
+**Rust Shard Node:**
 ```bash
-./bin/rocksdbserver-thrift
-# Database: ./data/rocksdb-thrift/
+./bin/shard-node
+# Database: ./data/rocksdb-shard-node/
 ```
 
 ### Using the Rust Client Library
@@ -308,7 +308,7 @@ npm install
 THRIFT_HOST=localhost THRIFT_PORT=9090 npm start
 ```
 
-The web UI runs on http://localhost:3000 and communicates with the Thrift server.
+The web UI runs on http://localhost:3000 and communicates with the shard node.
 
 ### Protocol-Specific Usage
 
@@ -341,7 +341,7 @@ cmake --build build
 # Start a server (choose one)
 ./bin/rocksdbserver-rust &     # Rust gRPC server  
 # OR
-./bin/rocksdbserver-thrift &   # Rust Thrift server
+./bin/shard-node &               # Rust shard node
 
 # Run benchmark
 ./bin/benchmark-rust           # gRPC protocol
@@ -525,7 +525,7 @@ cmake --build build --target test_ffi
 **Port Already in Use:**
 ```bash
 lsof -i :50051          # Check what's using the port
-killall rocksdbserver-rust rocksdbserver-thrift
+killall rocksdbserver-rust shard-node
 ```
 
 **Database Issues:**

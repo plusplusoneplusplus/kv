@@ -12,7 +12,7 @@ This is a unified Rust implementation of a transactional key-value store service
 - **Main Library** (`src/lib.rs`): Unified library exports and re-exports for both server and client
 - **Server Implementations**:
   - `src/servers/grpc_server.rs`: gRPC server binary using Tokio async runtime
-  - `src/servers/thrift_server.rs`: Thrift server binary with async support
+  - `src/servers/shard_server.rs`: Shard server binary with async support
 - **Core Server Libraries** (`src/lib/`):
   - `service.rs`: gRPC service implementation with TransactionalKvDatabase
   - `db.rs`: RocksDB wrapper with transaction support
@@ -36,7 +36,7 @@ This is a unified Rust implementation of a transactional key-value store service
 
 ### Data Storage
 - gRPC server database: `./data/rocksdb-rust/`
-- Thrift server database: `./data/rocksdb-thrift/`
+- Shard server database: `./data/rocksdb-shard-server/`
 
 ## Development Commands
 
@@ -50,7 +50,7 @@ cargo build --release
 
 # Build specific server
 cargo build --bin server          # gRPC server
-cargo build --bin thrift-server   # Thrift server
+cargo build --bin shard-server      # Shard server
 
 # Build unified library with client SDK
 cargo build --release
@@ -76,10 +76,10 @@ cargo run --bin server
 # or from bin directory:
 ./bin/rocksdbserver-rust
 
-# Thrift server (port 9090)
-cargo run --bin thrift-server
+# Shard server (port 9090)
+cargo run --bin shard-server
 # or from bin directory:
-./bin/rocksdbserver-thrift
+./bin/shard-server
 ```
 
 ### Protocol Code Generation
@@ -102,7 +102,7 @@ cargo test
 # Integration tests (requires running server)
 cargo test --test integration_tests
 
-# Client SDK tests (requires Thrift server)
+# Client SDK tests (requires shard node)
 cargo test client
 
 # C FFI tests (via CMake)
@@ -201,7 +201,7 @@ KvTransactionHandle tx = kv_future_get_transaction(tx_future);
 2. Run `make proto thrift` to regenerate all protocol files
 3. Implement methods:
    - gRPC: Add to `KvStoreGrpcService` impl in `src/lib/service.rs`
-   - Thrift: Add to `ThriftKvStoreService` impl in `src/servers/thrift_server.rs`
+   - Thrift: Add to `ThriftKvStoreService` impl in `src/servers/shard_node.rs`
 4. Update client SDK in `src/client/` if needed
 5. Add tests to verify functionality
 

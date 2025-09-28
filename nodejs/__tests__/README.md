@@ -8,7 +8,7 @@ This directory contains comprehensive tests for the Node.js KV Store web interfa
 
 - **`api.test.js`** - Tests for basic REST API endpoints (`/api/keys`, `/api/key/:key`, `/api/ping`, etc.)
 - **`diagnostic.test.js`** - Tests for diagnostic and cluster monitoring endpoints (`/api/cluster/*`)
-- **`integration.test.js`** - Integration tests for end-to-end workflows and Thrift connectivity
+- **`integration.test.js`** - Integration tests for end-to-end workflows and shard node connectivity
 - **`error-handling.test.js`** - Edge cases, error conditions, and input validation tests
 - **`setup.js`** - Test environment setup and configuration
 
@@ -34,7 +34,7 @@ The tests cover:
 - ✅ `GET /api/cluster/replication` - Replication status
 
 #### Integration Testing
-- ✅ Thrift connection management
+- ✅ Shard node connection management
 - ✅ End-to-end CRUD operations
 - ✅ Bulk operations and pagination
 - ✅ Buffer value conversion
@@ -74,7 +74,7 @@ npm run test:coverage
 
 ### Test Environment
 
-The tests use mocked Thrift connections to avoid requiring a running Thrift server. This allows for:
+The tests use mocked shard node connections to avoid requiring a running shard node. This allows for:
 
 - Fast test execution
 - Reliable test results
@@ -83,7 +83,7 @@ The tests use mocked Thrift connections to avoid requiring a running Thrift serv
 
 ### Mocking Strategy
 
-- **Thrift Client**: Fully mocked using Jest mocks
+- **Shard Node Client**: Fully mocked using Jest mocks
 - **Network Calls**: Simulated with controllable responses
 - **Error Conditions**: Artificially triggered for comprehensive testing
 - **Buffer Handling**: Tests both binary and string data scenarios
@@ -121,4 +121,4 @@ To debug failing tests:
 1. Run individual test files: `npx jest api.test.js`
 2. Use `--verbose` flag for detailed output
 3. Check mock implementations match expected API behavior
-4. Verify test data matches actual Thrift response formats
+4. Verify test data matches actual shard node response formats

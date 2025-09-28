@@ -40,7 +40,7 @@ pub trait TestCluster: Send + Sync {
 pub struct StandaloneTestCluster {
     config: Config,
     database: Option<Arc<dyn KvDatabase>>,
-    thrift_server: Option<super::ThriftTestServer>,
+    shard_server: Option<super::ThriftTestServer>,
     client: Option<KvStoreClient>,
 }
 
@@ -52,7 +52,7 @@ impl StandaloneTestCluster {
         Ok(Self {
             config,
             database: None,
-            thrift_server: None,
+            shard_server: None,
             client: None,
         })
     }
@@ -74,7 +74,7 @@ impl StandaloneTestCluster {
     /// Get the port the server is running on
     #[allow(dead_code)]
     pub fn get_port(&self) -> Option<u16> {
-        self.thrift_server.as_ref().and_then(|s| s.port)
+        self.shard_server.as_ref().and_then(|s| s.port)
     }
 }
 
@@ -94,7 +94,7 @@ impl TestCluster for StandaloneTestCluster {
             .start()
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;
-        self.thrift_server = Some(server);
+        self.shard_server = Some(server);
 
         // Create client
         let address = format!("localhost:{}", port);
@@ -109,7 +109,7 @@ impl TestCluster for StandaloneTestCluster {
         self.client = None;
 
         // Stop server
-        if let Some(mut server) = self.thrift_server.take() {
+        if let Some(mut server) = self.shard_server.take() {
             server.stop().await;
         }
 
@@ -425,10 +425,10 @@ node_timeout_ms = 10000
             println!("Starting node {} on {}", node.node_id, node.endpoint);
 
             // Use the test configuration to get the correct binary path
-            let binary = test_config::thrift_server_binary();
+            let binary = test_config::shard_server_binary();
 
             // Validate the binary exists
-            if let Err(e) = test_config::TestConfig::global().validate_thrift_server() {
+            if let Err(e) = test_config::TestConfig::global().validate_shard_server() {
                 return Err(format!("Thrift server binary validation failed: {}", e).into());
             }
 
@@ -863,7 +863,7 @@ node_timeout_ms = 10000
 
         println!("Simulating partition healing (restarting nodes 1 and 2)");
 
-        let process1 = Command::new(test_config::thrift_server_binary())
+        let process1 = Command::new(test_config::shard_server_binary())
             .arg("--config")
             .arg(&self.nodes[1].config_path)
             .arg("--node-id")
@@ -873,7 +873,7 @@ node_timeout_ms = 10000
             .spawn()?;
         self.nodes[1].process = Some(process1);
 
-        let process2 = Command::new(test_config::thrift_server_binary())
+        let process2 = Command::new(test_config::shard_server_binary())
             .arg("--config")
             .arg(&self.nodes[2].config_path)
             .arg("--node-id")
@@ -955,7 +955,7 @@ node_timeout_ms = 10000
                 }
             }
 
-            let process = Command::new(test_config::thrift_server_binary())
+            let process = Command::new(test_config::shard_server_binary())
                 .arg("--config")
                 .arg(&self.nodes[i].config_path)
                 .arg("--node-id")

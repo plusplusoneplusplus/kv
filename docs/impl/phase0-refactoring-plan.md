@@ -226,7 +226,7 @@ impl TransactionalKvStoreThriftHandler {
 
 **Files to Modify**:
 - Modify: `rust/src/lib/config.rs`
-- Modify: `rust/src/servers/thrift_server.rs`
+- Modify: `rust/src/servers/shard_node.rs`
 
 **Implementation Steps**:
 
@@ -333,7 +333,7 @@ pub struct StandaloneServerManager {
     database: Arc<dyn KvDatabase>,
     service_core: Arc<KvServiceCore>,
     router: Arc<DirectRouter>,
-    thrift_server: Option<JoinHandle<()>>,
+    shard_node: Option<JoinHandle<()>>,
     start_time: Instant,
 }
 
@@ -347,14 +347,14 @@ impl StandaloneServerManager {
             database,
             service_core,
             router,
-            thrift_server: None,
+            shard_node: None,
             start_time: Instant::now(),
         })
     }
 }
 ```
 
-2. **Update main function** (`rust/src/servers/thrift_server.rs`):
+2. **Update main function** (`rust/src/servers/shard_node.rs`):
 ```rust
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

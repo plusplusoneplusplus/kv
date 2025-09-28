@@ -54,7 +54,7 @@ cleanup() {
 
     # Clean up any remaining processes by name (fallback)
     echo "Cleaning up any remaining processes..."
-    pkill -f "rocksdbserver-thrift" 2>/dev/null || true
+    pkill -f "shard-server" 2>/dev/null || true
     pkill -f "node.*server.js" 2>/dev/null || true
 
     # Clean up cluster directory
@@ -95,7 +95,7 @@ done
 # Build server using CMake
 cd "$PROJECT_ROOT"
 echo "Building..."
-cmake --build build --target rust_thrift_server
+cmake --build build --target rust_shard_server
 
 # Start Node.js web server with cluster configuration
 echo "Starting Node.js web server..."
@@ -132,7 +132,7 @@ cd "$PROJECT_ROOT"
 if [ "$NODE_COUNT" -eq 1 ]; then
     echo "Starting single node on port 9090..."
     # Single node mode - no config file needed, use Rust binary directly
-    nohup "$PROJECT_ROOT/rust/target/debug/thrift-server" \
+    nohup "$PROJECT_ROOT/rust/target/debug/shard-server" \
         --port 9090 \
         --verbose \
         --log-dir "$CLUSTER_ROOT/node1/logs" \
@@ -246,7 +246,7 @@ EOF
         node_num=$((node + 1))
         echo "Node $node on port $port..."
         # Start each process using Rust binary directly
-        nohup "$PROJECT_ROOT/rust/target/debug/thrift-server" \
+        nohup "$PROJECT_ROOT/rust/target/debug/shard-server" \
             --config "$PROJECT_ROOT/build/bin/cluster_configs/node_$node.toml" \
             --node-id $node \
             --port $port \

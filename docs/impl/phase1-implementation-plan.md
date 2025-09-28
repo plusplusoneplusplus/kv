@@ -31,7 +31,7 @@ This document provides a detailed implementation plan for Phase 1 of the Paxos-r
 - ❌ Three-replica manager (ReplicaManager)
 - ❌ Primary routing logic (ConsensusRouter)
 - ❌ Integration with existing Thrift/gRPC handlers
-- ❌ New replicated server executable (`thrift-replicated-server`)
+- ❌ New replicated server executable (`shard-node-replicated`)
 
 ## Prerequisites & Setup
 
@@ -455,7 +455,7 @@ impl DatabaseFactory {
 }
 ```
 
-#### File: `rust/src/bin/thrift_replicated_server.rs` (new executable)
+#### File: `rust/src/bin/shard_node_replicated.rs` (new executable)
 
 ```rust
 // New executable for replicated Thrift server
@@ -485,7 +485,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("Starting Thrift server in replicated mode");
         }
         _ => {
-            return Err("This executable only supports replicated mode. Use thrift-server for standalone mode.".into());
+            return Err("This executable only supports replicated mode. Use shard-node for standalone mode.".into());
         }
     }
 
@@ -509,8 +509,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```toml
 # Add to existing [[bin]] entries
 [[bin]]
-name = "thrift-replicated-server"
-path = "src/bin/thrift_replicated_server.rs"
+name = "shard-node-replicated"
+path = "src/bin/shard_node_replicated.rs"
 ```
 
 ## Testing Plan
@@ -542,7 +542,7 @@ EOF
 cargo build --release
 
 # Run Thrift server in replicated mode
-RUST_LOG=info cargo run --bin thrift-replicated-server
+RUST_LOG=info cargo run --bin shard-node-replicated
 ```
 
 #### Step 3: Test Basic Operations
@@ -707,7 +707,7 @@ rust/
 │   │   ├── database_factory.rs # Modified for replicated mode
 │   │   └── ...              # Existing files unchanged
 │   └── servers/
-│       └── thrift_server.rs # Minor modifications for replicated mode
+│       └── shard_node.rs    # Minor modifications for replicated mode
 ├── tests/
 │   └── consensus/           # New test directory
 │       ├── mod.rs

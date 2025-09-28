@@ -1,8 +1,8 @@
-# Multi-Node Architecture for RocksDB Thrift Server
+# Multi-Node Architecture for RocksDB Shard Node
 
 ## Overview
 
-This document describes the multi-node architecture of the RocksDB Thrift server. The server is already built as a multi-node capable system with RSML consensus integration, but currently operates in single-node mode within the consensus framework. The architecture separates read and write operations for optimal performance and uses the RSML consensus library for distributed coordination.
+This document describes the multi-node architecture of the RocksDB shard node. The server is already built as a multi-node capable system with RSML consensus integration, but currently operates in single-node mode within the consensus framework. The architecture separates read and write operations for optimal performance and uses the RSML consensus library for distributed coordination.
 
 ## Design Principles
 
@@ -145,7 +145,7 @@ sequenceDiagram
 
 **All core components for multi-node operation are implemented:**
 
-1. ✅ **Multi-Node Server Architecture** (`servers/thrift_server.rs`)
+1. ✅ **Multi-Node Server Architecture** (`servers/shard_node.rs`)
    - ✅ Configuration-driven deployment mode (standalone vs. replicated)
    - ✅ Node ID assignment and cluster endpoint configuration
    - ✅ Per-node database path management (`./data/multi_node/node_{id}`)
