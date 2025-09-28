@@ -13,7 +13,7 @@ The mock consensus implementation provides a simplified consensus algorithm for 
 ```
 start_cluster.sh: --node-id 0, 1, 2, ...
         ↓
-thrift_server.rs: node_id.to_string()
+shard_node.rs: node_id.to_string()
         ↓
 MockConsensusEngine: "0", "1", "2", ...
         ↓
@@ -22,7 +22,7 @@ Leadership: "0"=Leader, others=Followers
 
 ### Implementation Details
 
-**Command Line Parsing** (`rust/src/servers/thrift_server.rs:44-46`):
+**Command Line Parsing** (`rust/src/servers/shard_node.rs:44-46`):
 ```rust
 #[derive(Parser, Debug)]
 struct Args {
@@ -31,7 +31,7 @@ struct Args {
 }
 ```
 
-**String Conversion** (`rust/src/servers/thrift_server.rs:273, 285, 293`):
+**String Conversion** (`rust/src/servers/shard_node.rs:273, 285, 293`):
 ```rust
 // Convert for transport layer
 let transport = ThriftTransport::with_endpoints(
@@ -53,7 +53,7 @@ MockConsensusEngine::with_network_transport(
 
 The mock consensus uses a **hardcoded leadership assignment** approach:
 
-**Primary Assignment** (`rust/src/servers/thrift_server.rs:282-296`):
+**Primary Assignment** (`rust/src/servers/shard_node.rs:282-296`):
 - **Node ID 0**: Always becomes **Leader**
 - **Node ID 1+**: Always become **Followers**
 
@@ -164,7 +164,7 @@ assert_eq!(consensus.is_leader(), false);
 
 ## Key Files
 
-- **Server Entry Point**: `rust/src/servers/thrift_server.rs`
+- **Server Entry Point**: `rust/src/servers/shard_node.rs`
 - **Mock Consensus**: `rust/crates/consensus-mock/src/mock_node.rs`
 - **Consensus API**: `rust/crates/consensus-api/src/traits.rs`
 - **Start Script**: `scripts/start_cluster.sh`

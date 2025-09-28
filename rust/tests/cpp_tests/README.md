@@ -100,13 +100,13 @@ g++ -std=c++14 -o cpp_ffi_test \
 
 ## Prerequisites
 
-1. **KV Server Running**: Tests require a Thrift server running (configurable port)
+1. **KV Server Running**: Tests require a shard node running (configurable port)
    ```bash
    # Default port (9090)
-   ./target/debug/thrift-server --verbose --port 9090
+   ./target/debug/shard-node --verbose --port 9090
 
    # Custom port (configurable via environment)
-   ./target/debug/thrift-server --verbose --port 9097
+   ./target/debug/shard-node --verbose --port 9097
    ```
 
 2. **Server Configuration**: Tests automatically connect to the configured server

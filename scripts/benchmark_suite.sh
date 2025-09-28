@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Comprehensive KV Store Benchmark Suite
-# Tests multiple protocols (raw, grpc, thrift) with different workload patterns
+# Tests multiple protocols (raw, grpc, shard-server) with different workload patterns
 # Generates JSON results and provides aggregated analysis
 
 set -e
@@ -12,7 +12,7 @@ BENCHMARK_ITERATIONS=3  # Number of times to run each configuration
 # Thread configurations (will iterate over these)
 RAW_THREAD_CONFIGS=(1 2 4 8 16)
 GRPC_THREAD_CONFIGS=(32 64 128 256)
-THRIFT_THREAD_CONFIGS=(32 64 128 256)
+SHARD_SERVER_THREAD_CONFIGS=(32 64 128 256)
 
 # Minimum benchmark mode configuration
 MIN_BENCHMARK_REQUESTS=10000
@@ -25,7 +25,7 @@ CLIENT_TYPES=""
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 RESULTS_BASE_DIR="../benchmark_results"
 GRPC_SERVER_PORT=50051
-THRIFT_SERVER_PORT=9090
+SHARD_SERVER_PORT=9090
 SERVER_STARTUP_TIMEOUT=10
 
 # Ensure we're running from the scripts directory
@@ -64,10 +64,10 @@ cleanup() {
         kill $GRPC_SERVER_PID 2>/dev/null || true
         wait $GRPC_SERVER_PID 2>/dev/null || true
     fi
-    if [ ! -z "$THRIFT_SERVER_PID" ]; then
-        log_info "Stopping Thrift server (PID: $THRIFT_SERVER_PID)"
-        kill $THRIFT_SERVER_PID 2>/dev/null || true
-        wait $THRIFT_SERVER_PID 2>/dev/null || true
+    if [ ! -z "$SHARD_SERVER_PID" ]; then
+        log_info "Stopping shard server (PID: $SHARD_SERVER_PID)"
+        kill $SHARD_SERVER_PID 2>/dev/null || true
+        wait $SHARD_SERVER_PID 2>/dev/null || true
     fi
 }
 
@@ -98,58 +98,58 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check Thrift server binary - try both release and debug
-    if [ -f "../rust/target/release/thrift-server" ]; then
-        THRIFT_SERVER_BINARY="../rust/target/release/thrift-server"
-    elif [ -f "../rust/target/debug/thrift-server" ]; then
-        THRIFT_SERVER_BINARY="../rust/target/debug/thrift-server"
+    # Check shard server binary - try both release and debug
+    if [ -f "../rust/target/release/shard-server" ]; then
+        SHARD_SERVER_BINARY="../rust/target/release/shard-server"
+    elif [ -f "../rust/target/debug/shard-server" ]; then
+        SHARD_SERVER_BINARY="../rust/target/debug/shard-server"
     else
-        log_error "Thrift server binary not found. Please run 'cd rust && cargo build' first."
+        log_error "Shard server binary not found. Please run 'cd rust && cargo build' first."
         exit 1
     fi
     
     log_success "Prerequisites check passed"
     log_info "Using benchmark binary: $BENCHMARK_BINARY"
     log_info "Using gRPC server binary: $GRPC_SERVER_BINARY"
-    log_info "Using Thrift server binary: $THRIFT_SERVER_BINARY"
+    log_info "Using shard server binary: $SHARD_SERVER_BINARY"
 }
 
-# Start Thrift server
-start_thrift_server() {
-    log_info "Starting Thrift server on port $THRIFT_SERVER_PORT..."
+# Start shard server
+start_shard_server() {
+    log_info "Starting shard server on port $SHARD_SERVER_PORT..."
     
     # Clean up any existing server process
-    pkill -f "thrift-server" 2>/dev/null || true
+    pkill -f "shard-server" 2>/dev/null || true
     sleep 2
     
     # Start the server in background
-    $THRIFT_SERVER_BINARY > thrift_server.log 2>&1 &
-    THRIFT_SERVER_PID=$!
-    
-    log_info "Thrift server started with PID: $THRIFT_SERVER_PID"
+    $SHARD_SERVER_BINARY > shard_server.log 2>&1 &
+    SHARD_SERVER_PID=$!
+
+    log_info "Shard server started with PID: $SHARD_SERVER_PID"
     
     # Wait for server to be ready
-    log_info "Waiting for Thrift server to be ready..."
+    log_info "Waiting for shard server to be ready..."
     for i in $(seq 1 $SERVER_STARTUP_TIMEOUT); do
-        if nc -z localhost $THRIFT_SERVER_PORT 2>/dev/null; then
-            log_success "Thrift server is ready"
+        if nc -z localhost $SHARD_SERVER_PORT 2>/dev/null; then
+            log_success "Shard server is ready"
             return 0
         fi
         sleep 1
     done
-    
-    log_error "Thrift server failed to start within $SERVER_STARTUP_TIMEOUT seconds"
-    cat thrift_server.log
+
+    log_error "Shard server failed to start within $SERVER_STARTUP_TIMEOUT seconds"
+    cat shard_server.log
     exit 1
 }
 
-# Stop Thrift server
-stop_thrift_server() {
-    if [ ! -z "$THRIFT_SERVER_PID" ]; then
-        log_info "Stopping Thrift server (PID: $THRIFT_SERVER_PID)"
-        kill $THRIFT_SERVER_PID 2>/dev/null || true
-        wait $THRIFT_SERVER_PID 2>/dev/null || true
-        THRIFT_SERVER_PID=""
+# Stop shard server
+stop_shard_server() {
+    if [ ! -z "$SHARD_SERVER_PID" ]; then
+        log_info "Stopping shard server (PID: $SHARD_SERVER_PID)"
+        kill $SHARD_SERVER_PID 2>/dev/null || true
+        wait $SHARD_SERVER_PID 2>/dev/null || true
+        SHARD_SERVER_PID=""
         sleep 2
     fi
 }
@@ -325,13 +325,13 @@ run_min_benchmarks() {
     fi
     
     # Run Thrift benchmarks (requires server)
-    if should_run_client "thrift"; then
+    if should_run_client "shard-server"; then
         log_info "=== Running Thrift Protocol Benchmarks (Minimal) ==="
-        
-        start_thrift_server
+
+        start_shard_server
         log_info "Running Thrift benchmark with $threads threads"
-        run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
-        stop_thrift_server
+        run_benchmark "shard-server" "mixed" "10" "$RESULTS_DIR/shard_server_mixed_90_10_${threads}t.json" "$threads"
+        stop_shard_server
         echo
     fi
     
@@ -385,20 +385,20 @@ run_all_benchmarks() {
     fi
     
     # Run Thrift benchmarks (requires server)
-    if should_run_client "thrift"; then
+    if should_run_client "shard-server"; then
         log_info "=== Running Thrift Protocol Benchmarks ==="
-        
-        start_thrift_server
-        
-        for threads in "${THRIFT_THREAD_CONFIGS[@]}"; do
+
+        start_shard_server
+
+        for threads in "${SHARD_SERVER_THREAD_CONFIGS[@]}"; do
             log_info "Running Thrift benchmarks with $threads threads"
-            run_benchmark "thrift" "read" "0" "$RESULTS_DIR/thrift_read_100_${threads}t.json" "$threads"
-            run_benchmark "thrift" "write" "100" "$RESULTS_DIR/thrift_write_100_${threads}t.json" "$threads"
-            run_benchmark "thrift" "mixed" "10" "$RESULTS_DIR/thrift_mixed_90_10_${threads}t.json" "$threads"
+            run_benchmark "shard-server" "read" "0" "$RESULTS_DIR/shard_server_read_100_${threads}t.json" "$threads"
+            run_benchmark "shard-server" "write" "100" "$RESULTS_DIR/shard_server_write_100_${threads}t.json" "$threads"
+            run_benchmark "shard-server" "mixed" "10" "$RESULTS_DIR/shard_server_mixed_90_10_${threads}t.json" "$threads"
         done
-        
-        stop_thrift_server
-        
+
+        stop_shard_server
+
         echo
     fi
     
@@ -511,8 +511,8 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "                           • All three protocols (unless --client specified)"
     echo
     echo "  --client, -c TYPE[,TYPE] Run only specified client types"
-    echo "                           • TYPE can be: raw, grpc, thrift"
-    echo "                           • Examples: --client raw, --client grpc,thrift"
+    echo "                           • TYPE can be: raw, grpc, shard-server"
+    echo "                           • Examples: --client raw, --client grpc,shard-server"
     echo
     echo "  -h, --help               Show this help message"
     echo
@@ -521,7 +521,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "  Iterations per configuration: $BENCHMARK_ITERATIONS"
     echo "  Raw protocol threads: ${RAW_THREAD_CONFIGS[*]}"
     echo "  gRPC protocol threads: ${GRPC_THREAD_CONFIGS[*]}"
-    echo "  Thrift protocol threads: ${THRIFT_THREAD_CONFIGS[*]}"
+    echo "  Shard server protocol threads: ${SHARD_SERVER_THREAD_CONFIGS[*]}"
     echo "  Workloads: 100% Read, 100% Write, 90% Read + 10% Write"
     echo
     echo "Minimum mode configuration:"
@@ -539,7 +539,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "  $0                      # Run full comprehensive benchmark suite"
     echo "  $0 --min                # Run quick benchmark for testing (recommended for development)"
     echo "  $0 --client raw         # Run only raw protocol benchmarks"
-    echo "  $0 --client grpc,thrift # Run only gRPC and Thrift benchmarks"
+    echo "  $0 --client grpc,shard-server # Run only gRPC and shard server benchmarks"
     echo "  $0 --min --client grpc  # Run minimum benchmark only for gRPC"
     exit 0
 fi

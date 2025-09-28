@@ -76,7 +76,7 @@ jobs:
         cargo test --test consensus_tests --no-default-features --features ffi
 
   test-benchmark:
-    name: Test Benchmark (Thrift)
+    name: Test Benchmark (Shard Server)
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -136,7 +136,7 @@ jobs:
 
     - name: Run benchmark crate tests
       env:
-        THRIFT_SERVER_BIN: ./build/bin/rocksdbserver-thrift
+        SHARD_SERVER_BIN: ./build/bin/shard-server
       run: |
         cd rust
         cargo test -p kv-benchmark --verbose -- --nocapture

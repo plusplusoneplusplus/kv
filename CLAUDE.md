@@ -25,7 +25,7 @@ The project has been refactored to use a unified Rust workspace structure:
 
 ## Build and Test
 1. Run cmake --build build in the git root to build. **Give enough timeout like 15 min**
-2. Run ./build/bin/rocksdbserver-thrift to launch the thrift server
+2. Run ./build/bin/shard-node to launch the shard node
 3. Run cargo test --workspace under rust/ to run rust tests
 4. Run ./build/bin/cpp_ffi_test to run c++ tests
 

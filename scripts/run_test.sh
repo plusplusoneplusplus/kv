@@ -3,13 +3,13 @@
 # KV Store Comprehensive Test Suite
 # Tests basic operations and consistency of the KV store server
 # Verifies FFI interface and Rust workspace functionality
-# Tests both Thrift server with C++ FFI bindings and Rust workspace tests
+# Tests both shard node with C++ FFI bindings and Rust workspace tests
 
 set -e
 set -o pipefail
 
 # Configuration
-THRIFT_SERVER_PORT=${THRIFT_SERVER_PORT:-9097}  # Default to 9097, can be overridden with env var
+SHARD_SERVER_PORT=${SHARD_SERVER_PORT:-9097}  # Default to 9097, can be overridden with env var
 CONSENSUS_BASE_PORT=${CONSENSUS_BASE_PORT:-19200}  # Base port for consensus servers
 SERVER_STARTUP_TIMEOUT=10
 TEST_DATA_PREFIX="test_"
@@ -35,7 +35,7 @@ TEST_SERVER_LOG=""
 TEST_DB_DIR=""
 
 # Server PIDs for cleanup
-THRIFT_SERVER_PID=""
+SHARD_SERVER_PID=""
 CONSENSUS_SERVER_PIDS=()
 
 # Logging functions
@@ -65,10 +65,10 @@ log_test() {
 cleanup() {
     log_info "Cleaning up test environment..."
 
-    if [ -n "$THRIFT_SERVER_PID" ]; then
-        log_info "Stopping Thrift server (PID: $THRIFT_SERVER_PID)"
-        kill "$THRIFT_SERVER_PID" 2>/dev/null || true
-        wait "$THRIFT_SERVER_PID" 2>/dev/null || true
+    if [ -n "$SHARD_SERVER_PID" ]; then
+        log_info "Stopping shard server (PID: $SHARD_SERVER_PID)"
+        kill "$SHARD_SERVER_PID" 2>/dev/null || true
+        wait "$SHARD_SERVER_PID" 2>/dev/null || true
     fi
 
     # Stop consensus servers
@@ -100,8 +100,8 @@ check_prerequisites() {
         exit 1
     fi
 
-    if [ ! -f "../rust/target/debug/thrift-server" ] && [ ! -f "../rust/target/release/thrift-server" ]; then
-        log_error "Thrift server binary not found. Please run 'cargo build --bin thrift-server' first from the rust directory."
+    if [ ! -f "../rust/target/debug/shard-server" ] && [ ! -f "../rust/target/release/shard-server" ]; then
+        log_error "Shard server binary not found. Please run 'cargo build --bin shard-server' first from the rust directory."
         exit 1
     fi
     
@@ -117,7 +117,7 @@ setup_test_environment() {
         exit 1
     fi
 
-    TEST_SERVER_LOG="$TEST_WORK_DIR/thrift_server.log"
+    TEST_SERVER_LOG="$TEST_WORK_DIR/shard_server.log"
     TEST_DB_DIR="$TEST_WORK_DIR/db"
 
     mkdir -p "$TEST_DB_DIR"
@@ -125,48 +125,48 @@ setup_test_environment() {
     log_info "Test artifacts will be stored in $TEST_WORK_DIR"
 }
 
-# Start Thrift server
+# Start shard server
 start_server() {
-    log_info "Starting Thrift server on port $THRIFT_SERVER_PORT..."
+    log_info "Starting shard server on port $SHARD_SERVER_PORT..."
 
     # Clean up any existing server process
-    pkill -f "thrift-server" 2>/dev/null || true
+    pkill -f "shard-server" 2>/dev/null || true
     sleep 2
 
-    # Find the thrift server binary (prefer release, fallback to debug)
-    local thrift_server_bin
-    if [ -f "../rust/target/release/thrift-server" ]; then
-        thrift_server_bin="../rust/target/release/thrift-server"
+    # Find the shard server binary (prefer release, fallback to debug)
+    local shard_server_bin
+    if [ -f "../rust/target/release/shard-server" ]; then
+        shard_server_bin="../rust/target/release/shard-server"
     else
-        thrift_server_bin="../rust/target/debug/thrift-server"
+        shard_server_bin="../rust/target/debug/shard-server"
     fi
 
     # Start the server in background with custom port
-    "$thrift_server_bin" --port "$THRIFT_SERVER_PORT" --db-path "$TEST_DB_DIR" > "$TEST_SERVER_LOG" 2>&1 &
-    THRIFT_SERVER_PID=$!
+    "$shard_server_bin" --port "$SHARD_SERVER_PORT" --db-path "$TEST_DB_DIR" > "$TEST_SERVER_LOG" 2>&1 &
+    SHARD_SERVER_PID=$!
 
-    log_info "Thrift server started with PID: $THRIFT_SERVER_PID"
+    log_info "Shard server started with PID: $SHARD_SERVER_PID"
 
     # Wait for server to be ready
-    log_info "Waiting for Thrift server to be ready..."
+    log_info "Waiting for shard server to be ready..."
     for i in $(seq 1 "$SERVER_STARTUP_TIMEOUT"); do
-        if nc -z localhost "$THRIFT_SERVER_PORT" 2>/dev/null; then
-            log_success "Thrift server is ready"
+        if nc -z localhost "$SHARD_SERVER_PORT" 2>/dev/null; then
+            log_success "Shard server is ready"
             return 0
         fi
         sleep 1
     done
 
-    log_error "Thrift server failed to start within $SERVER_STARTUP_TIMEOUT seconds"
+    log_error "Shard server failed to start within $SERVER_STARTUP_TIMEOUT seconds"
     if [ -f "$TEST_SERVER_LOG" ]; then
         cat "$TEST_SERVER_LOG"
     fi
     exit 1
 }
 
-# Start consensus Thrift servers for consensus-mock integration tests
+# Start consensus shard servers for consensus-mock integration tests
 start_consensus_servers() {
-    log_info "Starting consensus Thrift servers for integration tests..."
+    log_info "Starting consensus shard servers for integration tests..."
 
     # Clean up any existing consensus server processes
     pkill -f "mock-consensus-server" 2>/dev/null || true
@@ -176,7 +176,7 @@ start_consensus_servers() {
     # For now, the tests expect servers to be started but handle connection failures gracefully
     log_info "Consensus servers configured for ports ${CONSENSUS_BASE_PORT}+ (tests handle missing servers gracefully)"
 
-    # TODO: When implementing actual consensus Thrift servers:
+    # TODO: When implementing actual consensus shard nodes:
     # 1. Build consensus server binaries from consensus-mock crate
     # 2. Start multiple servers on sequential ports (CONSENSUS_BASE_PORT, CONSENSUS_BASE_PORT+1, etc.)
     # 3. Track their PIDs in CONSENSUS_SERVER_PIDS array for cleanup
@@ -202,10 +202,10 @@ start_consensus_servers() {
 test_ffi_interface() {
     log_test "Testing C++ FFI interface"
 
-    log_info "Configuring FFI tests to use server port $THRIFT_SERVER_PORT"
+    log_info "Configuring FFI tests to use server port $SHARD_SERVER_PORT"
 
     # Run the FFI tests with the correct server configuration
-    if KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" ../build/bin/cpp_ffi_test; then
+    if KV_TEST_SERVER_PORT="$SHARD_SERVER_PORT" ../build/bin/cpp_ffi_test; then
         log_success "FFI tests completed successfully"
         return 0
     else
@@ -221,7 +221,7 @@ test_rust_workspace() {
 
     # Change to rust directory and run tests with correct server ports
     # Set environment variables for both regular and consensus servers
-    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --workspace); then
+    if (cd ../rust && KV_TEST_SERVER_PORT="$SHARD_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --workspace); then
         log_success "Rust workspace tests completed successfully"
         return 0
     else
@@ -236,7 +236,7 @@ test_consensus_integration() {
     log_info "Running consensus-mock specific tests with server environment"
 
     # Change to rust directory and run only consensus-mock tests
-    if (cd ../rust && KV_TEST_SERVER_PORT="$THRIFT_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --package consensus-mock); then
+    if (cd ../rust && KV_TEST_SERVER_PORT="$SHARD_SERVER_PORT" CONSENSUS_BASE_PORT="$CONSENSUS_BASE_PORT" cargo test --package consensus-mock); then
         log_success "Consensus integration tests completed successfully"
         return 0
     else
@@ -322,7 +322,7 @@ show_help() {
     echo
     echo "This script runs comprehensive tests to verify the KV store:"
     echo "  - C++ FFI bindings functionality"
-    echo "  - Thrift server integration"
+    echo "  - Shard server integration"
     echo "  - Basic KV operations through FFI"
     echo "  - Rust workspace tests (cargo test --workspace)"
     echo
@@ -332,14 +332,14 @@ show_help() {
     echo "  -h, --help      Show this help message"
     echo
     echo "The script will:"
-    echo "  1. Start a Thrift server instance on port $THRIFT_SERVER_PORT"
+    echo "  1. Start a shard server instance on port $SHARD_SERVER_PORT"
     echo "  2. Run C++ FFI tests"
     echo "  3. Run Rust workspace tests"
     echo "  4. Clean up automatically"
     echo "  5. Report test results and exit with appropriate code"
     echo
     echo "Environment variables:"
-    echo "  THRIFT_SERVER_PORT: Main server port (default: 9097)"
+    echo "  SHARD_SERVER_PORT: Main server port (default: 9097)"
     echo "    FFI tests will be automatically configured to use this port"
     echo "    Default 9097 avoids conflicts with production workloads on 9090"
     echo "  CONSENSUS_BASE_PORT: Base port for consensus servers (default: 19200)"
@@ -347,8 +347,8 @@ show_help() {
     echo
     echo "Prerequisites:"
     echo "  - Run 'cmake --build build' from project root to build FFI tests"
-    echo "  - Run 'cargo build --bin thrift-server' from rust/ directory"
-    echo "  - Ensure port $THRIFT_SERVER_PORT is available"
+    echo "  - Run 'cargo build --bin shard-server' from rust/ directory"
+    echo "  - Ensure port $SHARD_SERVER_PORT is available"
     echo "  - Ensure ports ${CONSENSUS_BASE_PORT}+ are available for consensus servers"
     echo "  - Rust toolchain for workspace tests (cargo test)"
 }

@@ -142,15 +142,15 @@ add_custom_target(rust_grpc_server ALL
     COMMENT "Building Rust gRPC server"
 )
 
-# Rust Thrift server
-add_custom_target(rust_thrift_server ALL
-    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin thrift-server
-    COMMAND ${CMAKE_COMMAND} -E copy 
-        "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/thrift-server"
-        "${CMAKE_BINARY_DIR}/bin/rocksdbserver-thrift"
+# Rust shard server
+add_custom_target(rust_shard_server ALL
+    COMMAND ${CARGO_EXECUTABLE} build ${CARGO_BUILD_FLAGS} ${CARGO_BUILD_JOBS_ARGS} --bin shard-server
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_SOURCE_DIR}/rust/target/${CARGO_TARGET_DIR}/shard-server"
+        "${CMAKE_BINARY_DIR}/bin/shard-server"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/rust"
     DEPENDS generate_proto generate_thrift
-    COMMENT "Building Rust Thrift server"
+    COMMENT "Building Rust shard server"
 )
 
 # Rust benchmark tool
@@ -296,7 +296,7 @@ add_custom_target(build ALL
         generate_proto
         generate_thrift
         rust_grpc_server
-        rust_thrift_server
+        rust_shard_server
         rust_benchmark
         rust_client_lib
         cpp_ffi_test
@@ -360,7 +360,7 @@ add_custom_target(build_help
     COMMAND ${CMAKE_COMMAND} -E echo "  generate_proto - Generate protobuf files"
     COMMAND ${CMAKE_COMMAND} -E echo "  generate_thrift- Generate thrift files"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_grpc_server   - Build Rust gRPC server"
-    COMMAND ${CMAKE_COMMAND} -E echo "  rust_thrift_server - Build Rust Thrift server"
+    COMMAND ${CMAKE_COMMAND} -E echo "  rust_shard_server  - Build Rust shard server"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_benchmark - Build Rust benchmark tool"
     COMMAND ${CMAKE_COMMAND} -E echo "  rust_client_lib- Build Rust client library with FFI"
     COMMAND ${CMAKE_COMMAND} -E echo "  cpp_ffi_test   - Build C++ FFI tests (organized by category)"

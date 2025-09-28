@@ -63,8 +63,8 @@ name = "server"
 path = "src/servers/grpc_server.rs"
 
 [[bin]]
-name = "thrift-server"
-path = "src/servers/thrift_server.rs"
+name = "shard-server"
+path = "src/servers/shard_server.rs"
 
 [dependencies]
 kv-storage-api = { path = "crates/kv-storage-api" }

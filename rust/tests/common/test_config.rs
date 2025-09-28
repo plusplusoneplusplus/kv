@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 /// Configuration for test binaries and paths
 #[derive(Debug, Clone)]
 pub struct TestConfig {
-    pub thrift_server_path: PathBuf,
+    pub shard_server_path: PathBuf,
     pub grpc_server_path: PathBuf,
     pub workspace_root: PathBuf,
 }
@@ -26,11 +26,11 @@ impl TestConfig {
     fn detect_config() -> TestConfig {
         let workspace_root = Self::find_workspace_root();
 
-        let thrift_server_path = Self::find_thrift_server_binary(&workspace_root);
+        let shard_server_path = Self::find_shard_server_binary(&workspace_root);
         let grpc_server_path = Self::find_grpc_server_binary(&workspace_root);
 
         TestConfig {
-            thrift_server_path,
+            shard_server_path,
             grpc_server_path,
             workspace_root,
         }
@@ -70,12 +70,12 @@ impl TestConfig {
         current_dir
     }
 
-    /// Find the Thrift server binary with multiple fallback strategies
-    fn find_thrift_server_binary(workspace_root: &Path) -> PathBuf {
-        // Priority order for Thrift server binary detection:
+    /// Find the shard server binary with multiple fallback strategies
+    fn find_shard_server_binary(workspace_root: &Path) -> PathBuf {
+        // Priority order for shard server binary detection:
 
         // 1. Environment variable override
-        if let Ok(path) = env::var("THRIFT_SERVER_BINARY") {
+        if let Ok(path) = env::var("SHARD_SERVER_BINARY") {
             let binary_path = PathBuf::from(path);
             if binary_path.exists() {
                 return binary_path;
@@ -83,28 +83,28 @@ impl TestConfig {
         }
 
         // 2. CMake build directory (preferred for integrated builds)
-        let cmake_thrift = workspace_root.join("build/bin/rocksdbserver-thrift");
-        if cmake_thrift.exists() {
-            return cmake_thrift;
+        let cmake_shard_server = workspace_root.join("build/bin/shard-server");
+        if cmake_shard_server.exists() {
+            return cmake_shard_server;
         }
 
         // 3. Cargo debug build (current working solution)
-        let cargo_debug = workspace_root.join("target/debug/thrift-server");
+        let cargo_debug = workspace_root.join("target/debug/shard-server");
         if cargo_debug.exists() {
             return cargo_debug;
         }
 
         // 4. Cargo release build
-        let cargo_release = workspace_root.join("target/release/thrift-server");
+        let cargo_release = workspace_root.join("target/release/shard-server");
         if cargo_release.exists() {
             return cargo_release;
         }
 
         // 5. Check common locations relative to test directory
         let relative_paths = [
-            "./target/debug/thrift-server",
-            "../target/debug/thrift-server",
-            "../../target/debug/thrift-server",
+            "./target/debug/shard-server",
+            "../target/debug/shard-server",
+            "../../target/debug/shard-server",
         ];
 
         for relative_path in &relative_paths {
@@ -115,7 +115,7 @@ impl TestConfig {
         }
 
         // 6. Fallback to expected Cargo location (for error messaging)
-        workspace_root.join("target/debug/thrift-server")
+        workspace_root.join("target/debug/shard-server")
     }
 
     /// Find the gRPC server binary with multiple fallback strategies
@@ -152,9 +152,9 @@ impl TestConfig {
         workspace_root.join("target/debug/server")
     }
 
-    /// Get the Thrift server binary path
-    pub fn thrift_server_binary(&self) -> &Path {
-        &self.thrift_server_path
+    /// Get the shard server binary path
+    pub fn shard_server_binary(&self) -> &Path {
+        &self.shard_server_path
     }
 
     /// Get the gRPC server binary path
@@ -162,22 +162,22 @@ impl TestConfig {
         &self.grpc_server_path
     }
 
-    /// Check if the Thrift server binary exists and is executable
-    pub fn validate_thrift_server(&self) -> Result<(), String> {
-        if !self.thrift_server_path.exists() {
+    /// Check if the shard server binary exists and is executable
+    pub fn validate_shard_server(&self) -> Result<(), String> {
+        if !self.shard_server_path.exists() {
             return Err(format!(
-                "Thrift server binary not found at: {}\n\
+                "Shard server binary not found at: {}\n\
                  Tried locations:\n\
-                 - Environment variable: THRIFT_SERVER_BINARY\n\
-                 - CMake build: {}/build/bin/rocksdbserver-thrift\n\
-                 - Cargo debug: {}/target/debug/thrift-server\n\
-                 - Cargo release: {}/target/release/thrift-server\n\
+                 - Environment variable: SHARD_SERVER_BINARY\n\
+                 - CMake build: {}/build/bin/shard-server\n\
+                 - Cargo debug: {}/target/debug/shard-server\n\
+                 - Cargo release: {}/target/release/shard-server\n\
                  \n\
                  To fix this:\n\
-                 1. Run 'cargo build --bin thrift-server' to build the binary\n\
-                 2. Or set THRIFT_SERVER_BINARY environment variable to the correct path\n\
+                 1. Run 'cargo build --bin shard-server' to build the binary\n\
+                 2. Or set SHARD_SERVER_BINARY environment variable to the correct path\n\
                  3. Or run CMake build: 'cmake --build build'",
-                self.thrift_server_path.display(),
+                self.shard_server_path.display(),
                 self.workspace_root.display(),
                 self.workspace_root.display(),
                 self.workspace_root.display()
@@ -205,18 +205,18 @@ impl TestConfig {
     pub fn print_config(&self) {
         println!("Test Configuration:");
         println!("  Workspace root: {}", self.workspace_root.display());
-        println!("  Thrift server:  {} (exists: {})",
-                self.thrift_server_path.display(),
-                self.thrift_server_path.exists());
+        println!("  Shard server:   {} (exists: {})",
+                self.shard_server_path.display(),
+                self.shard_server_path.exists());
         println!("  gRPC server:    {} (exists: {})",
                 self.grpc_server_path.display(),
                 self.grpc_server_path.exists());
     }
 }
 
-/// Convenience function to get the Thrift server binary path
-pub fn thrift_server_binary() -> &'static Path {
-    TestConfig::global().thrift_server_binary()
+/// Convenience function to get the shard server binary path
+pub fn shard_server_binary() -> &'static Path {
+    TestConfig::global().shard_server_binary()
 }
 
 /// Convenience function to get the gRPC server binary path
@@ -228,7 +228,7 @@ pub fn grpc_server_binary() -> &'static Path {
 #[allow(dead_code)]
 pub fn validate_test_binaries() -> Result<(), String> {
     let config = TestConfig::global();
-    config.validate_thrift_server()?;
+    config.validate_shard_server()?;
     config.validate_grpc_server()?;
     Ok(())
 }
@@ -243,7 +243,7 @@ mod tests {
         config.print_config();
 
         // At minimum, paths should be set
-        assert!(!config.thrift_server_path.as_os_str().is_empty());
+        assert!(!config.shard_server_path.as_os_str().is_empty());
         assert!(!config.grpc_server_path.as_os_str().is_empty());
     }
 
@@ -259,10 +259,10 @@ mod tests {
 
     #[test]
     fn test_convenience_functions() {
-        let thrift_path = thrift_server_binary();
+        let shard_server_path = shard_server_binary();
         let grpc_path = grpc_server_binary();
 
-        assert!(!thrift_path.as_os_str().is_empty());
+        assert!(!shard_server_path.as_os_str().is_empty());
         assert!(!grpc_path.as_os_str().is_empty());
     }
 
@@ -270,14 +270,14 @@ mod tests {
     fn test_env_var_override() {
         // This test would need to be run with environment variables set
         // to verify the override functionality works
-        env::set_var("THRIFT_SERVER_BINARY", "/tmp/fake-thrift-server");
+        env::set_var("SHARD_SERVER_BINARY", "/tmp/fake-shard-server");
 
         // Create a new config to test env var detection
         // Note: This won't affect the global config due to OnceLock
         let config = TestConfig::detect_config();
 
         // Clean up
-        env::remove_var("THRIFT_SERVER_BINARY");
+        env::remove_var("SHARD_SERVER_BINARY");
 
         println!("Config with env var: {:?}", config);
     }

@@ -266,13 +266,13 @@ pub trait ServerManager: Send + Sync {
 
 pub struct StandaloneServerManager {
     database: Arc<TransactionalKvDatabase>,
-    thrift_server: Option<ThriftServer>,
+    shard_node: Option<ShardNodeServer>,
 }
 
 pub struct ReplicatedServerManager {
     replicas: Vec<Replica>,
     consensus: ConsensusManager,
-    thrift_server: Option<ThriftServer>,
+    shard_node: Option<ShardNodeServer>,
 }
 
 // Single main() function works for both modes

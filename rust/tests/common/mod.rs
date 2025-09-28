@@ -83,11 +83,11 @@ block_based = true
         self.port = Some(port);
 
         // Get the thrift server binary path from test configuration
-        let server_path = test_config::thrift_server_binary();
+        let server_path = test_config::shard_server_binary();
 
         // Validate the binary exists
-        test_config::TestConfig::global().validate_thrift_server()
-            .map_err(|e| format!("Thrift server validation failed: {}", e))?;
+        test_config::TestConfig::global().validate_shard_server()
+            .map_err(|e| format!("Shard node validation failed: {}", e))?;
         let _config_path = self.config_dir.path().join("db_config.toml");
 
         // Start server process from the config directory so it finds the config file
