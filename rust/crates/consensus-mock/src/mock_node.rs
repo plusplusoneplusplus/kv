@@ -1712,4 +1712,58 @@ impl ConsensusEngine for MockConsensusEngine {
 
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl MockConsensusEngine {
+    /// Append a single log entry received via network/Thrift.
+    /// This is a synchronous helper to avoid holding async locks in handlers.
+    pub(crate) fn append_entry_from_network(&self, entry: LogEntry) {
+        let mut log = self.log.write();
+        log.push(entry);
+    }
+
+    /// Apply entries up to the given commit index (inclusive).
+    /// Mirrors the logic used in commit notification handling but synchronously,
+    /// so it can be invoked from synchronous contexts (e.g., Thrift handlers).
+    pub(crate) fn apply_up_to_commit(&self, commit_index: Index) -> ConsensusResult<()> {
+        // Build the list of entries to apply without holding the write lock during apply
+        let entries_to_apply: Vec<LogEntry> = {
+            let log = self.log.read();
+            let current_applied = self.last_applied_index.load(Ordering::SeqCst);
+
+            log.iter()
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    let entry_index = (i + 1) as Index;
+                    if entry_index > current_applied && entry_index <= commit_index {
+                        Some(entry.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        for entry in entries_to_apply {
+            // State machine apply is synchronous
+            match self.state_machine.apply(&entry) {
+                Ok(_bytes) => {
+                    self.last_applied_index.store(entry.index, Ordering::SeqCst);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "State machine apply failed for entry {}: {:?}",
+                        entry.index, e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

@@ -128,18 +128,63 @@ impl NetworkTransport for GeneratedThriftTransport {
         target_node: &NodeId,
         request: CommitNotificationRequest,
     ) -> ConsensusResult<CommitNotificationResponse> {
-        // Simple reachability check
-        if !self.is_node_reachable(target_node).await {
+        // Send a heartbeat-style AppendEntries with empty entries carrying leader_commit
+        let endpoint = {
+            let endpoints = self.endpoints.lock().await;
+            endpoints.get(target_node).cloned().ok_or_else(|| {
+                ConsensusError::TransportError(format!("No endpoint found for node {}", target_node))
+            })?
+        };
+
+        let parts: Vec<&str> = endpoint.split(':').collect();
+        if parts.len() != 2 {
             return Err(ConsensusError::TransportError(format!(
-                "Cannot reach target node {} for commit notification",
-                target_node
+                "Invalid endpoint format for node {}: {}",
+                target_node, endpoint
             )));
         }
-        debug!(
-            "GeneratedThriftTransport: commit notification to {} commit_index={}",
-            target_node, request.commit_index
+        let host = parts[0].to_string();
+        let port: u16 = parts[1].parse().map_err(|e| {
+            ConsensusError::TransportError(format!("Invalid port in endpoint {}: {}", endpoint, e))
+        })?;
+
+        // Open TCP channel
+        let mut tcp = TTcpChannel::new();
+        tcp.open(&format!("{}:{}", host, port)).map_err(|e| {
+            ConsensusError::TransportError(format!("Failed to connect to {}: {}", endpoint, e))
+        })?;
+
+        let (read_chan, write_chan) = tcp.split().map_err(|e| {
+            ConsensusError::TransportError(format!("Failed to split TCP channel: {}", e))
+        })?;
+
+        let mut client = {
+            let i = TBinaryInputProtocol::new(read_chan, true);
+            let o = TBinaryOutputProtocol::new(write_chan, true);
+            ConsensusServiceSyncClient::new(i, o)
+        };
+
+        // Build AppendEntriesRequest with empty entries and leader_commit set
+        let leader_id_num: i32 = request.leader_id.parse().unwrap_or(0);
+        let gen_req = GenAppendEntriesRequest::new(
+            request.leader_term as i64,
+            leader_id_num,
+            request.commit_index as i64, // prev_log_index (best-effort)
+            request.leader_term as i64,  // prev_log_term (best-effort)
+            vec![],                       // empty entries: heartbeat/commit
+            request.commit_index as i64, // leader_commit drives follower apply
         );
-        Ok(CommitNotificationResponse { success: true })
+
+        let gen_resp = client
+            .append_entries(gen_req)
+            .map_err(|e| ConsensusError::TransportError(format!("Thrift commit (append_entries) error: {}", e)))?;
+
+        debug!(
+            "GeneratedThriftTransport: commit notification to {} commit_index={} success={}",
+            target_node, request.commit_index, gen_resp.success
+        );
+
+        Ok(CommitNotificationResponse { success: gen_resp.success })
     }
 
     fn node_id(&self) -> &NodeId {
