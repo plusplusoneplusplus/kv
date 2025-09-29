@@ -676,79 +676,72 @@ async fn test_rsml_tcp_leader_follower_replication() {
     // Test 1: SET operation through leader
     info!("Proposing SET operation through TCP leader");
 
-    // Note: Leader election may still not be complete, or node 1 may not be the leader
-    match cluster.propose_operation("SET key1 value1").await {
-        Ok(_) => {
-            info!("Successfully proposed SET operation via TCP");
+    cluster.propose_operation("SET key1 value1").await
+        .expect("First proposal should succeed after leader election");
 
-            // WORKAROUND: Manually deliver committed values to all replicas
-            // This is necessary because RSML doesn't wire Acceptor -> Learner notification
-            info!("Manually delivering committed value to learners (RSML workaround)");
-            let operation_data = b"SET key1 value1".to_vec();
-            for node in &cluster.nodes {
-                node.engine.deliver_committed_value_for_testing(1, operation_data.clone(), 1).await
-                    .expect("Failed to deliver committed value");
-            }
+    info!("Successfully proposed SET operation via TCP");
 
-            // Wait for execution through ExecutionNotifier
-            cluster.wait_for_consensus(1).await
-                .expect("Consensus should be achieved for SET operation");
-
-            info!("Consensus achieved for SET operation over TCP");
-
-            // Verify state consistency across all TCP nodes
-            cluster.verify_state_consistency()
-                .expect("State should be consistent across all TCP nodes after replication");
-
-            info!("State consistency verified across TCP cluster");
-
-            // Test 2: Multiple operations to verify continuous replication
-            info!("Testing multiple operations over TCP");
-            cluster.propose_operation("SET key2 value2").await
-                .expect("SET key2 should succeed");
-            // Manually deliver sequence 2
-            let op2_data = b"SET key2 value2".to_vec();
-            for node in &cluster.nodes {
-                node.engine.deliver_committed_value_for_testing(2, op2_data.clone(), 1).await
-                    .expect("Failed to deliver committed value 2");
-            }
-
-            cluster.propose_operation("SET key3 value3").await
-                .expect("SET key3 should succeed");
-            // Manually deliver sequence 3
-            let op3_data = b"SET key3 value3".to_vec();
-            for node in &cluster.nodes {
-                node.engine.deliver_committed_value_for_testing(3, op3_data.clone(), 1).await
-                    .expect("Failed to deliver committed value 3");
-            }
-
-            cluster.propose_operation("DELETE key1").await
-                .expect("DELETE key1 should succeed");
-            // Manually deliver sequence 4
-            let op4_data = b"DELETE key1".to_vec();
-            for node in &cluster.nodes {
-                node.engine.deliver_committed_value_for_testing(4, op4_data.clone(), 1).await
-                    .expect("Failed to deliver committed value 4");
-            }
-
-            // Wait for all operations to execute through ExecutionNotifier
-            cluster.wait_for_consensus(4).await
-                .expect("Consensus should be achieved for multiple operations");
-
-            info!("Multiple operations replicated successfully over TCP");
-
-            // Verify final state consistency
-            cluster.verify_state_consistency()
-                .expect("Final state should be consistent after multiple TCP operations");
-
-            info!("All operations successfully replicated and verified over TCP");
-        }
-        Err(e) => {
-            info!("Proposal failed (may be due to leader election not complete or node 1 not being leader): {:?}", e);
-            info!("TCP cluster creation, startup, and shutdown all succeeded!");
-            info!("Note: Full end-to-end replication test requires waiting for leader election");
-        }
+    // WORKAROUND: Manually deliver committed values to all replicas
+    // This is necessary because RSML doesn't wire Acceptor -> Learner notification
+    info!("Manually delivering committed value to learners (RSML workaround)");
+    let operation_data = b"SET key1 value1".to_vec();
+    for node in &cluster.nodes {
+        node.engine.deliver_committed_value_for_testing(1, operation_data.clone(), 1).await
+            .expect("Failed to deliver committed value");
     }
+
+    // Wait for execution through ExecutionNotifier
+    cluster.wait_for_consensus(1).await
+        .expect("Consensus should be achieved for SET operation");
+
+    info!("Consensus achieved for SET operation over TCP");
+
+    // Verify state consistency across all TCP nodes
+    cluster.verify_state_consistency()
+        .expect("State should be consistent across all TCP nodes after replication");
+
+    info!("State consistency verified across TCP cluster");
+
+    // Test 2: Multiple operations to verify continuous replication
+    info!("Testing multiple operations over TCP");
+    cluster.propose_operation("SET key2 value2").await
+        .expect("SET key2 should succeed");
+    // Manually deliver sequence 2
+    let op2_data = b"SET key2 value2".to_vec();
+    for node in &cluster.nodes {
+        node.engine.deliver_committed_value_for_testing(2, op2_data.clone(), 1).await
+            .expect("Failed to deliver committed value 2");
+    }
+
+    cluster.propose_operation("SET key3 value3").await
+        .expect("SET key3 should succeed");
+    // Manually deliver sequence 3
+    let op3_data = b"SET key3 value3".to_vec();
+    for node in &cluster.nodes {
+        node.engine.deliver_committed_value_for_testing(3, op3_data.clone(), 1).await
+            .expect("Failed to deliver committed value 3");
+    }
+
+    cluster.propose_operation("DELETE key1").await
+        .expect("DELETE key1 should succeed");
+    // Manually deliver sequence 4
+    let op4_data = b"DELETE key1".to_vec();
+    for node in &cluster.nodes {
+        node.engine.deliver_committed_value_for_testing(4, op4_data.clone(), 1).await
+            .expect("Failed to deliver committed value 4");
+    }
+
+    // Wait for all operations to execute through ExecutionNotifier
+    cluster.wait_for_consensus(4).await
+        .expect("Consensus should be achieved for multiple operations");
+
+    info!("Multiple operations replicated successfully over TCP");
+
+    // Verify final state consistency
+    cluster.verify_state_consistency()
+        .expect("Final state should be consistent after multiple TCP operations");
+
+    info!("All operations successfully replicated and verified over TCP");
 
     cluster.stop_all().await
         .expect("TCP cluster stop should succeed");
