@@ -67,6 +67,22 @@ ConsensusKvDatabase implications:
   - Feature rsml-consensus: ConsensusKvDatabase uses RsmlConsensusEngine.propose() (blocking until commit), then returns OperationResult produced by the notifier. wait_for_commit becomes a no-op for the caller path.
   - Non-rsml: Keep current mock implementation behavior (propose -> wait_for_commit -> local apply).
 
+## Shard Server + Database Integration
+
+Integration points and behavior changes:
+- `rust/src/lib/kv_state_machine.rs`
+  - Under feature `rsml-consensus`, change `execute_write_operation` to:
+    - `propose(op)` → get `index` → `wait_for_commit(index)` → deserialize `OperationResult` and return it.
+    - Do not re-apply the operation locally; RSML Learner applies via `KvExecutionNotifier`.
+  - Non-RSML path remains unchanged (mock engine: `wait_for_commit` returns the committed operation then local apply).
+- `rust/src/servers/shard_server.rs`
+  - Add engine selection: if config selects RSML, instantiate `RsmlConsensusEngine` and skip `ConsensusThriftServer` (only used by mock path).
+  - Support both RSML in-memory transport (tests/dev, single-process) and TCP transport (multi-process) based on config.
+- `rust/src/lib/config.rs`
+  - Extend `ConsensusConfig` with `engine: String` (values: `"mock"`, `"rsml"`) and optional RSML transport fields (e.g., `transport = { type = "memory" | "tcp", bind = "host:port" }`).
+  - Provide cluster endpoint mapping for RSML TCP (`[consensus.cluster.endpoints]`).
+  - Preserve backward compatibility by defaulting to mock when unspecified.
+
 ## Execution Bridge (KvExecutionNotifier)
 
 Responsibilities:
@@ -168,9 +184,22 @@ consensus-rsml/src/id.rs
 consensus-rsml/src/error.rs
 - Map RSML RSMLError/ReplicaError/NetworkError to consensus_api::ConsensusError.
 
+Core crate changes (feature-gated wiring):
+- `rust/src/lib/kv_state_machine.rs`
+  - Add RSML branch that deserializes `OperationResult` from `wait_for_commit(index)` and returns it without re-applying ops.
+- `rust/src/servers/shard_server.rs`
+  - Engine selection and RSML transport setup; skip `ConsensusThriftServer` when RSML is active.
+- `rust/src/lib/config.rs`
+  - Add `engine` field and RSML transport/endpoint config.
+
 rust/tests/rsml_integration/
 - in_memory_cluster.rs: 3-node in-process test (election, propose, commit, apply verification).
 - tcp_cluster_smoke.rs (optional): spawns external RSML binaries based on JSON config as smoke test.
+
+Workspace and features:
+- `rust/Cargo.toml`
+  - Add feature `rsml-consensus` that pulls in `consensus-rsml` and gates the RSML paths.
+  - Keep `consensus-rsml` excluded from workspace by default to avoid CI dependency on the submodule; include locally when available.
 
 ## Configuration Surfaces
 
@@ -213,6 +242,13 @@ Phase 3: Expand tests and stabilize
 - In-process 3-node tests, failure injection, timeouts.
 - Optional cross-process smoke test against RSML binaries.
 - Benchmark vs. mock engine; iterate on buffer/batch settings.
+
+## Milestones
+
+- M1: Scaffold `consensus-rsml` crate, single-node in-memory RSML engine compiles with no warnings; basic propose/commit test passes.
+- M2: Feature-gated wiring in `kv_state_machine.rs`, `shard_server.rs`, and config; 3-node in-process RSML test passes.
+- M3: RSML TCP networking and a multi-process smoke test; shard server selection works with config.
+- M4: Observability (leader/view/sequence), robustness (timeouts/retries), and parity hardening with mock path.
 
 ## Open Questions / Follow-ups
 
