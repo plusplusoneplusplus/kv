@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use consensus_api::LogEntry;
 use consensus_mock::{MockConsensusEngine, ConsensusMessageBus, NetworkTransport};
-use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
-use rocksdb_server::lib::consensus_thrift::ConsensusThriftServer;
+use rocksdb_server::lib::consensus_network_thrift::GeneratedThriftTransport;
+use rocksdb_server::lib::consensus_network_thrift::ConsensusThriftServer;
 use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
 use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::lib::operations::KvOperation;

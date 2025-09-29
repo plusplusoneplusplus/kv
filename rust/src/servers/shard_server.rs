@@ -7,7 +7,6 @@ use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::server::TProcessor;
 use thrift::transport::{TBufferedReadTransport, TBufferedWriteTransport};
 use tracing::{debug, error, info};
-use tracing::warn;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -16,13 +15,8 @@ use rocksdb_server::lib::replication::RoutingManager;
 use rocksdb_server::lib::thrift_adapter::ThriftKvAdapter;
 use rocksdb_server::lib::cluster::ClusterManager;
 use rocksdb_server::lib::config::Config as ClusterConfig;
-use rocksdb_server::lib::kv_state_machine::{ConsensusKvDatabase, KvStateMachine};
-use rocksdb_server::lib::replication::KvStoreExecutor;
 use rocksdb_server::{Config, KvDatabase, TransactionalKvDatabase};
-use consensus_mock::MockConsensusEngine;
-use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
-use rocksdb_server::lib::consensus_thrift::ConsensusThriftServer;
-use std::collections::HashMap;
+use rocksdb_server::lib::consensus_factory::{DefaultConsensusFactory, ConsensusFactory};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -240,101 +234,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Create consensus database based on deployment mode
-    let consensus_database = if is_multi_node {
-        // Multi-node: use real consensus with ThriftTransport
-        info!("Creating multi-node consensus database for Node {}", node_id);
+    // Create consensus using simplified factory
+    let consensus_factory = DefaultConsensusFactory::new();
 
+    let endpoints = if is_multi_node {
         let cluster_config_ref = cluster_config.as_ref().unwrap();
-
-        // Use consensus endpoints if available, otherwise fall back to replica endpoints with offset
-        let consensus_endpoints = cluster_config_ref.consensus
+        // Prefer consensus endpoints if provided; fall back to replica_endpoints
+        let consensus_eps = cluster_config_ref
+            .consensus
             .as_ref()
-            .and_then(|c| c.endpoints.as_ref())
-            .cloned()
-            .unwrap_or_else(|| {
-                // Fallback: generate consensus ports from replica endpoints
-                cluster_config_ref.deployment.replica_endpoints.as_ref().unwrap()
-                    .iter()
-                    .map(|endpoint| {
-                        // Convert 9090 -> 7090, 9091 -> 7091, etc.
-                        endpoint.replace("9090", "7090").replace("9091", "7091").replace("9092", "7092")
-                    })
-                    .collect()
-            });
-
-        info!("Consensus endpoints: {:?}", consensus_endpoints);
-
-        // Create endpoint map for Thrift transport
-        let mut endpoint_map = HashMap::new();
-        for (i, endpoint) in consensus_endpoints.iter().enumerate() {
-            endpoint_map.insert(i.to_string(), endpoint.clone());
-        }
-
-        // Create Thrift transport backed by generated client
-        let transport = GeneratedThriftTransport::with_endpoints(
-            node_id.to_string(),
-            endpoint_map,
-        ).await;
-
-        // Create state machine with executor
-        let executor = Arc::new(KvStoreExecutor::new(database.clone()));
-        let state_machine = Box::new(KvStateMachine::new(executor));
-
-        // Create consensus engine
-        let consensus_engine = if node_id == 0 {
-            // Node 0 starts as leader
-            MockConsensusEngine::with_network_transport(
-                node_id.to_string(),
-                state_machine,
-                Arc::new(transport),
-            )
+            .and_then(|c| c.endpoints.clone())
+            .filter(|v| !v.is_empty());
+        if let Some(eps) = consensus_eps {
+            Some(eps)
         } else {
-            // Other nodes start as followers
-            MockConsensusEngine::follower_with_network_transport(
-                node_id.to_string(),
-                state_machine,
-                Arc::new(transport),
+            Some(
+                cluster_config_ref
+                    .deployment
+                    .replica_endpoints
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
             )
-        };
-
-        let consensus_db = ConsensusKvDatabase::new(
-            Box::new(consensus_engine),
-            database as Arc<dyn KvDatabase>
-        );
-
-        // Configure cluster membership for all nodes
-        {
-            let consensus_engine_ref = consensus_db.consensus_engine();
-            let mut engine_guard = consensus_engine_ref.write();
-
-            // Add all other nodes to this node's cluster membership using the trait interface
-            for (i, endpoint) in consensus_endpoints.iter().enumerate() {
-                if i as u32 != node_id {  // Don't add self
-                    let node_id_str = i.to_string();
-                    if let Err(e) = engine_guard.add_node(node_id_str.clone(), endpoint.clone()).await {
-                        warn!("Failed to add node {} to cluster: {}", node_id_str, e);
-                    } else {
-                        info!("Added node {} at {} to cluster", node_id_str, endpoint);
-                    }
-                }
-            }
         }
-
-        info!("Multi-node consensus database created for Node {}", node_id);
-        Arc::new(consensus_db)
     } else {
-        // Single-node: use mock consensus for immediate execution
-        info!("Creating single-node consensus database");
-
-        let consensus_db = ConsensusKvDatabase::new_with_mock(
-            node_id.to_string(),
-            database as Arc<dyn KvDatabase>
-        );
-
-        info!("Single-node consensus database created");
-        Arc::new(consensus_db)
+        None
     };
+
+    let consensus_setup = consensus_factory.create_consensus(
+        node_id,
+        endpoints,
+        database as Arc<dyn KvDatabase>
+    ).await.map_err(|e| format!("Failed to create consensus: {}", e))?;
+
+    let consensus_database = consensus_setup.database;
 
     // Start consensus engine
     if let Err(e) = consensus_database.start().await {
@@ -343,22 +276,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     info!("Consensus engine started successfully");
 
-    // For multi-node mode, start the consensus service
-        let _consensus_server_handle = if is_multi_node {
-            let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
-
-        // Start real Thrift consensus server using generated processor + adapter
-        let consensus_server = ConsensusThriftServer::with_consensus_engine(
-            consensus_port,
-            node_id,
-            consensus_database.consensus_engine().clone(),
-        );
-        info!("Starting consensus service on port {}", consensus_port);
-        let handle = consensus_server.start()?;
-        Some(handle)
-    } else {
-        None
-    };
+    // Store consensus server handle (if any)
+    let _consensus_server_handle = consensus_setup.server_handle.map(|handle| {
+        info!("Consensus server started on port {}", handle.port);
+        handle.handle
+    });
 
     // Create routing manager
     let routing_manager = Arc::new(RoutingManager::new(

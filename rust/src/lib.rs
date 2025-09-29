@@ -12,6 +12,10 @@ pub mod lib {
     pub mod kv_state_machine;
     pub mod consensus_transport;
     pub mod consensus_thrift;
+    pub mod consensus_factory;
+    pub mod consensus_plugin;
+    pub mod consensus_network_thrift;
+    pub mod consensus_plugin_mock;
 }
 
 pub mod generated {
