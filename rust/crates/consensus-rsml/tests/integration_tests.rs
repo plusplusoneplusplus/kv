@@ -218,8 +218,21 @@ impl RsmlTestCluster {
         Ok(())
     }
 
-    /// Get the leader node (assumes first node is leader for simplicity)
+    /// Get the leader node (finds the actual RSML leader)
     fn leader(&mut self) -> &mut RsmlTestNode {
+        // Find which node is actually the leader
+        for node in &mut self.nodes {
+            if node.engine.is_leader() {
+                // Found the leader, return a mutable reference
+                // We need to use unsafe here because we can't borrow mutably twice
+                let leader_id = node.node_id.clone();
+                return self.nodes.iter_mut()
+                    .find(|n| n.node_id == leader_id)
+                    .expect("Leader node not found");
+            }
+        }
+        // If no leader found, default to first node
+        // This will cause the proposal to fail with "Not current leader" which is expected
         &mut self.nodes[0]
     }
 
@@ -639,7 +652,7 @@ async fn test_rsml_state_machine_integration() {
 }
 
 #[cfg(feature = "tcp")]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_rsml_tcp_leader_follower_replication() {
     consensus_rsml::init_test_logging();
 

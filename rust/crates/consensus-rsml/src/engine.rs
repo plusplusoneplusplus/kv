@@ -166,13 +166,15 @@ impl RsmlConsensusEngine {
         let network_manager = Self::create_network_manager(&config, replica_id, &rsml_config).await?;
 
         // Create consensus replica configuration
+        // Use CreateNew bootstrap mode for fresh clusters to enable immediate primary eligibility
+        // In a production system, this would be determined by checking if the cluster already exists
         let replica_config = rsml::consensus::ConsensusReplicaConfig {
             static_config: rsml::consensus::StaticConfiguration {
                 replica_id,
                 paxos_config: rsml_config.clone(),
                 instance_id: format!("consensus-replica-{}", replica_id.as_u64()),
                 config_epoch: 1,
-                bootstrap_mode: rsml::consensus::BootstrapMode::Normal,
+                bootstrap_mode: rsml::consensus::BootstrapMode::CreateNew,
             },
             runtime_config: rsml::consensus::RuntimeConfiguration {
                 max_concurrent_requests: 1000,
@@ -518,9 +520,14 @@ impl ConsensusEngine for RsmlConsensusEngine {
 
     /// Check if this node is currently the leader via RSML
     fn is_leader(&self) -> bool {
-        // In a real implementation, this would check RSML's view manager
-        // For now, we use a simple heuristic
-        true // TODO: Integrate with RSML's actual leadership detection
+        // Check RSML's actual leadership state
+        // We need to use try_lock to avoid blocking since is_leader() is synchronous
+        if let Ok(replica) = self.consensus_replica.try_lock() {
+            replica.is_leader()
+        } else {
+            // If we can't acquire the lock, assume we're not the leader
+            false
+        }
     }
 
     /// Get the current term (mapped from RSML view numbers)
