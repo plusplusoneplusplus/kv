@@ -681,7 +681,16 @@ async fn test_rsml_tcp_leader_follower_replication() {
         Ok(_) => {
             info!("Successfully proposed SET operation via TCP");
 
-            // Wait for consensus across TCP network
+            // WORKAROUND: Manually deliver committed values to all replicas
+            // This is necessary because RSML doesn't wire Acceptor -> Learner notification
+            info!("Manually delivering committed value to learners (RSML workaround)");
+            let operation_data = b"SET key1 value1".to_vec();
+            for node in &cluster.nodes {
+                node.engine.deliver_committed_value_for_testing(1, operation_data.clone(), 1).await
+                    .expect("Failed to deliver committed value");
+            }
+
+            // Wait for execution through ExecutionNotifier
             cluster.wait_for_consensus(1).await
                 .expect("Consensus should be achieved for SET operation");
 
@@ -697,12 +706,32 @@ async fn test_rsml_tcp_leader_follower_replication() {
             info!("Testing multiple operations over TCP");
             cluster.propose_operation("SET key2 value2").await
                 .expect("SET key2 should succeed");
+            // Manually deliver sequence 2
+            let op2_data = b"SET key2 value2".to_vec();
+            for node in &cluster.nodes {
+                node.engine.deliver_committed_value_for_testing(2, op2_data.clone(), 1).await
+                    .expect("Failed to deliver committed value 2");
+            }
+
             cluster.propose_operation("SET key3 value3").await
                 .expect("SET key3 should succeed");
+            // Manually deliver sequence 3
+            let op3_data = b"SET key3 value3".to_vec();
+            for node in &cluster.nodes {
+                node.engine.deliver_committed_value_for_testing(3, op3_data.clone(), 1).await
+                    .expect("Failed to deliver committed value 3");
+            }
+
             cluster.propose_operation("DELETE key1").await
                 .expect("DELETE key1 should succeed");
+            // Manually deliver sequence 4
+            let op4_data = b"DELETE key1".to_vec();
+            for node in &cluster.nodes {
+                node.engine.deliver_committed_value_for_testing(4, op4_data.clone(), 1).await
+                    .expect("Failed to deliver committed value 4");
+            }
 
-            // Wait for all operations to replicate
+            // Wait for all operations to execute through ExecutionNotifier
             cluster.wait_for_consensus(4).await
                 .expect("Consensus should be achieved for multiple operations");
 

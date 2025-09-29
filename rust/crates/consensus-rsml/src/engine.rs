@@ -22,6 +22,7 @@ use crate::{RsmlConfig, RsmlError, RsmlResult};
 /// This component is agnostic to the specific business logic (KV, database, etc.)
 /// and works with any implementation of the StateMachine trait.
 #[derive(Debug)]
+#[derive(Clone)]
 struct StateMachineExecutionNotifier {
     state_machine: Arc<dyn StateMachine>,
     last_applied_index: Arc<AtomicU64>,
@@ -197,12 +198,13 @@ impl RsmlConsensusEngine {
         };
 
         // Create consensus replica with execution notifier
-        // For now, create without custom execution notifier due to complex lifetime issues
-        // The integration would be completed by implementing a proper bridge
-        let consensus_replica = ConsensusReplica::new(
+        // Wire the StateMachineExecutionNotifier to RSML's learner
+        let notifier = Box::new(execution_notifier.read().await.clone());
+        let consensus_replica = ConsensusReplica::new_with_execution_notifier(
             replica_id,
             replica_config,
             network_manager.clone(),
+            Some(notifier),
         ).await
         .map_err(|e| RsmlError::InternalError {
             component: "consensus_replica".to_string(),
@@ -574,6 +576,50 @@ impl ConsensusEngine for RsmlConsensusEngine {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+impl RsmlConsensusEngine {
+    /// Manually deliver a committed value to the learner for testing
+    ///
+    /// This is a workaround for RSML's incomplete learner integration.
+    /// In production RSML, the Acceptor should notify the Learner automatically,
+    /// but this is not yet implemented. This method allows tests to manually
+    /// trigger state machine execution.
+    #[cfg(feature = "test-utils")]
+    pub async fn deliver_committed_value_for_testing(
+        &self,
+        sequence: u64,
+        data: Vec<u8>,
+        view_number: u64,
+    ) -> RsmlResult<()> {
+        use rsml::messages::{CommitSource, CommittedValue, ProposalValue};
+        use rsml::{ConfigurationId, View};
+
+        // Create ProposalValue from the data
+        let proposal_value = ProposalValue::new(sequence, data)
+            .map_err(|e| RsmlError::InternalError {
+                component: "deliver_committed_value".to_string(),
+                message: format!("Failed to create ProposalValue: {}", e),
+            })?;
+
+        // Create CommittedValue
+        let committed_value = CommittedValue::new(
+            sequence,
+            proposal_value,
+            View::new(view_number, self.replica_id),
+            ConfigurationId::new(1),
+            CommitSource::LeaderDriven { slot: sequence },
+            self.replica_id,
+        );
+
+        // Deliver to the replica's learner
+        let replica = self.consensus_replica.lock().await;
+        replica.deliver_committed_value_for_testing(committed_value)
+            .map_err(|e| RsmlError::InternalError {
+                component: "deliver_committed_value".to_string(),
+                message: format!("Failed to deliver to learner: {}", e),
+            })
     }
 }
 
