@@ -49,15 +49,24 @@ fn test_transport_config_inmemory() {
 #[test]
 fn test_transport_config_tcp() {
     let mut cluster_addresses = HashMap::new();
-    cluster_addresses.insert(1, "localhost:8000".to_string());
-    cluster_addresses.insert(2, "localhost:8001".to_string());
+    cluster_addresses.insert("1".to_string(), "localhost:8000".to_string());
+    cluster_addresses.insert("2".to_string(), "localhost:8001".to_string());
 
     let tcp_config = TcpConfig {
         bind_address: "0.0.0.0:8000".to_string(),
         cluster_addresses: cluster_addresses.clone(),
-        keepalive: Some(Duration::from_secs(30)),
-        nodelay: true,
-        buffer_size: 64 * 1024,
+        connection_timeout: Duration::from_secs(10),
+        read_timeout: Duration::from_secs(30),
+        max_message_size: 10 * 1024 * 1024,
+        max_connection_retries: 3,
+        retry_delay: Duration::from_millis(100),
+        enable_auto_reconnect: true,
+        initial_reconnect_delay: Duration::from_millis(100),
+        max_reconnect_delay: Duration::from_secs(30),
+        reconnect_backoff_multiplier: 2.0,
+        max_reconnect_attempts: Some(10),
+        heartbeat_interval: Duration::from_secs(5),
+        connection_pool_size: 4,
     };
 
     let mut config = RsmlConfig::default();
@@ -70,10 +79,10 @@ fn test_transport_config_tcp() {
     let tcp_conf = config.transport.tcp_config.unwrap();
     assert_eq!(tcp_conf.bind_address, "0.0.0.0:8000");
     assert_eq!(tcp_conf.cluster_addresses.len(), 2);
-    assert_eq!(tcp_conf.cluster_addresses.get(&1), Some(&"localhost:8000".to_string()));
-    assert_eq!(tcp_conf.buffer_size, 64 * 1024);
-    assert_eq!(tcp_conf.nodelay, true);
-    assert_eq!(tcp_conf.keepalive, Some(Duration::from_secs(30)));
+    assert_eq!(tcp_conf.cluster_addresses.get("1"), Some(&"localhost:8000".to_string()));
+    assert_eq!(tcp_conf.max_message_size, 10 * 1024 * 1024);
+    assert_eq!(tcp_conf.connection_timeout, Duration::from_secs(10));
+    assert_eq!(tcp_conf.heartbeat_interval, Duration::from_secs(5));
 }
 
 #[test]
@@ -209,34 +218,52 @@ fn test_tcp_config_edge_cases() {
     let tcp_config = TcpConfig {
         bind_address: "127.0.0.1:0".to_string(), // Let OS choose port
         cluster_addresses: HashMap::new(), // Empty cluster
-        keepalive: None,
-        nodelay: false,
-        buffer_size: 1024, // Small buffer
+        connection_timeout: Duration::from_secs(5),
+        read_timeout: Duration::from_secs(10),
+        max_message_size: 1024, // Small message size
+        max_connection_retries: 1,
+        retry_delay: Duration::from_millis(50),
+        enable_auto_reconnect: false,
+        initial_reconnect_delay: Duration::from_millis(50),
+        max_reconnect_delay: Duration::from_secs(5),
+        reconnect_backoff_multiplier: 1.5,
+        max_reconnect_attempts: Some(3),
+        heartbeat_interval: Duration::from_secs(10),
+        connection_pool_size: 1,
     };
 
     assert_eq!(tcp_config.bind_address, "127.0.0.1:0");
     assert!(tcp_config.cluster_addresses.is_empty());
-    assert_eq!(tcp_config.keepalive, None);
-    assert_eq!(tcp_config.nodelay, false);
-    assert_eq!(tcp_config.buffer_size, 1024);
+    assert_eq!(tcp_config.max_message_size, 1024);
+    assert!(!tcp_config.enable_auto_reconnect);
+    assert_eq!(tcp_config.connection_pool_size, 1);
 
     // Test with maximal TCP configuration
     let mut large_cluster = HashMap::new();
     for i in 1..=100 {
-        large_cluster.insert(i, format!("node{}.example.com:{}", i, 8000 + i));
+        large_cluster.insert(i.to_string(), format!("node{}.example.com:{}", i, 8000 + i));
     }
 
     let tcp_config_large = TcpConfig {
         bind_address: "0.0.0.0:8000".to_string(),
         cluster_addresses: large_cluster,
-        keepalive: Some(Duration::from_secs(3600)), // 1 hour
-        nodelay: true,
-        buffer_size: 1024 * 1024, // 1MB buffer
+        connection_timeout: Duration::from_secs(60),
+        read_timeout: Duration::from_secs(120),
+        max_message_size: 1024 * 1024 * 100, // 100MB
+        max_connection_retries: 10,
+        retry_delay: Duration::from_secs(1),
+        enable_auto_reconnect: true,
+        initial_reconnect_delay: Duration::from_secs(1),
+        max_reconnect_delay: Duration::from_secs(3600),
+        reconnect_backoff_multiplier: 3.0,
+        max_reconnect_attempts: Some(100),
+        heartbeat_interval: Duration::from_secs(1),
+        connection_pool_size: 16,
     };
 
     assert_eq!(tcp_config_large.cluster_addresses.len(), 100);
-    assert_eq!(tcp_config_large.keepalive, Some(Duration::from_secs(3600)));
-    assert_eq!(tcp_config_large.buffer_size, 1024 * 1024);
+    assert_eq!(tcp_config_large.heartbeat_interval, Duration::from_secs(1));
+    assert_eq!(tcp_config_large.max_message_size, 1024 * 1024 * 100);
 }
 
 #[test]

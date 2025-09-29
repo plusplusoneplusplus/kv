@@ -11,6 +11,9 @@ pub mod factory;
 #[cfg(feature = "rsml")]
 pub mod engine;
 
+#[cfg(feature = "rsml")]
+pub mod execution;
+
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
@@ -20,6 +23,9 @@ pub use factory::*;
 
 #[cfg(feature = "rsml")]
 pub use engine::*;
+
+#[cfg(feature = "rsml")]
+pub use execution::*;
 
 // Re-export key types from consensus-api for convenience
 pub use consensus_api::{ConsensusEngine, ConsensusConfig, StateMachine, ProposeResponse, LogEntry};

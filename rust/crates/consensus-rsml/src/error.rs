@@ -124,6 +124,12 @@ impl From<ConsensusError> for RsmlError {
                     message,
                 }
             }
+            ConsensusError::TransportError(message) => {
+                RsmlError::NetworkError {
+                    node_id: None,
+                    message,
+                }
+            }
             ConsensusError::Other { message } => {
                 RsmlError::InternalError {
                     component: "unknown".to_string(),

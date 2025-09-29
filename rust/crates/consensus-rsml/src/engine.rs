@@ -284,13 +284,45 @@ impl RsmlConsensusEngine {
                         message: "TCP configuration required for TCP transport".to_string(),
                     })?;
 
+                // Parse bind address to SocketAddr
+                let bind_addr: std::net::SocketAddr = tcp_config.bind_address.parse()
+                    .map_err(|e| RsmlError::ConfigurationError {
+                        field: "transport.tcp_config.bind_address".to_string(),
+                        message: format!("Invalid bind address: {}", e),
+                    })?;
+
+                // Parse cluster addresses to HashMap<ReplicaId, SocketAddr>
+                let mut replica_addresses = std::collections::HashMap::new();
+                for (node_id_str, addr_str) in &tcp_config.cluster_addresses {
+                    let replica_id: u64 = node_id_str.parse()
+                        .map_err(|e| RsmlError::ConfigurationError {
+                            field: "transport.tcp_config.cluster_addresses".to_string(),
+                            message: format!("Invalid node ID '{}': {}", node_id_str, e),
+                        })?;
+                    let addr: std::net::SocketAddr = addr_str.parse()
+                        .map_err(|e| RsmlError::ConfigurationError {
+                            field: "transport.tcp_config.cluster_addresses".to_string(),
+                            message: format!("Invalid address '{}': {}", addr_str, e),
+                        })?;
+                    replica_addresses.insert(rsml::ReplicaId::new(replica_id), addr);
+                }
+
                 let transport = Arc::new(rsml::network::TcpTransport::new(
                     rsml::network::TcpConfig {
-                        bind_address: tcp_config.bind_address.clone(),
-                        replica_addresses: tcp_config.cluster_addresses.clone(),
-                        keepalive: tcp_config.keepalive,
-                        nodelay: tcp_config.nodelay,
-                        buffer_size: tcp_config.buffer_size,
+                        bind_address: bind_addr,
+                        replica_addresses,
+                        connection_timeout: tcp_config.connection_timeout,
+                        read_timeout: tcp_config.read_timeout,
+                        max_message_size: tcp_config.max_message_size,
+                        max_connection_retries: tcp_config.max_connection_retries,
+                        retry_delay: tcp_config.retry_delay,
+                        enable_auto_reconnect: tcp_config.enable_auto_reconnect,
+                        initial_reconnect_delay: tcp_config.initial_reconnect_delay,
+                        max_reconnect_delay: tcp_config.max_reconnect_delay,
+                        reconnect_backoff_multiplier: tcp_config.reconnect_backoff_multiplier,
+                        max_reconnect_attempts: tcp_config.max_reconnect_attempts,
+                        heartbeat_interval: tcp_config.heartbeat_interval,
+                        connection_pool_size: tcp_config.connection_pool_size,
                     }
                 ));
 

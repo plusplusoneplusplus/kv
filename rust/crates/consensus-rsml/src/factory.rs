@@ -9,7 +9,7 @@ use tracing::info;
 #[cfg(feature = "test-utils")]
 use tracing::warn;
 
-use crate::{RsmlConfig, RsmlResult};
+use crate::{RsmlConfig, RsmlResult, RsmlError};
 
 #[cfg(feature = "rsml")]
 use crate::RsmlConsensusEngine;
@@ -238,13 +238,23 @@ impl RsmlFactoryBuilder {
     /// Set transport type to TCP
     #[cfg(feature = "tcp")]
     pub fn tcp_transport(mut self, bind_address: String) -> Self {
+        use std::time::Duration;
         self.config.transport.transport_type = crate::config::TransportType::Tcp;
         self.config.transport.tcp_config = Some(crate::config::TcpConfig {
             bind_address,
             cluster_addresses: self.config.base.cluster_members.clone(),
-            keepalive: true,
-            nodelay: true,
-            buffer_size: 8192,
+            connection_timeout: Duration::from_secs(10),
+            read_timeout: Duration::from_secs(30),
+            max_message_size: 10 * 1024 * 1024, // 10MB
+            max_connection_retries: 3,
+            retry_delay: Duration::from_millis(100),
+            enable_auto_reconnect: true,
+            initial_reconnect_delay: Duration::from_millis(100),
+            max_reconnect_delay: Duration::from_secs(30),
+            reconnect_backoff_multiplier: 2.0,
+            max_reconnect_attempts: Some(10),
+            heartbeat_interval: Duration::from_secs(5),
+            connection_pool_size: 4,
         });
         self
     }

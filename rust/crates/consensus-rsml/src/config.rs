@@ -65,20 +65,47 @@ pub enum TransportType {
 #[cfg(feature = "tcp")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpConfig {
-    /// Bind address for this node
+    /// Bind address for this node (will be parsed to SocketAddr)
     pub bind_address: String,
 
-    /// Addresses of all cluster members
+    /// Addresses of all cluster members (will be parsed to SocketAddr)
     pub cluster_addresses: HashMap<NodeId, String>,
 
-    /// TCP keepalive settings
-    pub keepalive: bool,
+    /// Connection timeout
+    pub connection_timeout: Duration,
 
-    /// TCP nodelay setting
-    pub nodelay: bool,
+    /// Read timeout for messages
+    pub read_timeout: Duration,
 
-    /// Connection buffer sizes
-    pub buffer_size: usize,
+    /// Maximum message size in bytes
+    pub max_message_size: usize,
+
+    /// Number of connection retry attempts
+    pub max_connection_retries: u32,
+
+    /// Delay between connection retry attempts
+    pub retry_delay: Duration,
+
+    /// Enable automatic reconnection
+    pub enable_auto_reconnect: bool,
+
+    /// Initial delay for reconnection attempts
+    pub initial_reconnect_delay: Duration,
+
+    /// Maximum delay for reconnection attempts
+    pub max_reconnect_delay: Duration,
+
+    /// Backoff multiplier for reconnection delays
+    pub reconnect_backoff_multiplier: f64,
+
+    /// Maximum reconnection attempts before marking as failed (None = unlimited)
+    pub max_reconnect_attempts: Option<u32>,
+
+    /// Heartbeat interval for connection health monitoring
+    pub heartbeat_interval: Duration,
+
+    /// Connection pool size per replica
+    pub connection_pool_size: usize,
 }
 
 /// Connection retry configuration
