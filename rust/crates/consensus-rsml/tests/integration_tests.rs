@@ -90,6 +90,7 @@ impl StateMachine for TestStateMachine {
 /// Test cluster for multi-node RSML consensus testing
 struct RsmlTestCluster {
     nodes: Vec<RsmlTestNode>,
+    #[allow(dead_code)]
     cluster_config: HashMap<String, String>,
 }
 
@@ -237,6 +238,7 @@ impl RsmlTestCluster {
     }
 
     /// Get all follower nodes
+    #[allow(dead_code)]
     fn followers(&mut self) -> &mut [RsmlTestNode] {
         &mut self.nodes[1..]
     }

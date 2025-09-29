@@ -119,10 +119,12 @@ pub struct RsmlConsensusEngine {
     /// Last applied index
     last_applied_index: Arc<AtomicU64>,
     /// Execution notifier for state machine integration
+    #[allow(dead_code)]
     execution_notifier: Arc<RwLock<StateMachineExecutionNotifier>>,
     /// Result cache for propose operations
     result_cache: Arc<DashMap<u64, Vec<u8>>>,
     /// Network manager for RSML
+    #[allow(dead_code)]
     network_manager: Arc<NetworkManager>,
     /// Configuration used to create this engine
     config: RsmlConfig,

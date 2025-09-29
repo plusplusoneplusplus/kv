@@ -4,7 +4,7 @@
 //! factory and configuration functionality. Only available when the 'test-utils' feature is enabled.
 
 use std::collections::HashMap;
-use crate::{RsmlConsensusFactory, RsmlConfig};
+use crate::RsmlConsensusFactory;
 
 /// Create a test cluster configuration
 pub fn create_test_cluster_config(cluster_size: usize) -> HashMap<String, String> {
