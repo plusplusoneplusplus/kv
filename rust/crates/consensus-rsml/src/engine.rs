@@ -3,7 +3,7 @@
 //! This module implements the RsmlConsensusEngine that wraps RSML's ConsensusReplica
 //! and implements the ConsensusEngine trait for integration with any state machine.
 
-use consensus_api::{ConsensusEngine, StateMachine, ProposeResponse, LogEntry, NodeId, Term, Index, ConsensusResult};
+use consensus_api::{ConsensusEngine, StateMachine, ProposeResponse, LogEntry, NodeId, Term, Index, ConsensusResult, ConsensusError};
 use rsml::prelude::*;
 use rsml::consensus::ConsensusReplica;
 use rsml::learner::notification::ExecutionNotifier;
@@ -428,17 +428,30 @@ impl ConsensusEngine for RsmlConsensusEngine {
     async fn start(&mut self) -> ConsensusResult<()> {
         info!("Starting RSML consensus engine for replica {}", self.replica_id);
 
-        // Note: The NetworkManager start() method has complex Send trait requirements
-        // In a full integration, this would require additional async trait bounds
-        // For demonstration, we show the structure
+        // Clone Arc for the spawn_blocking task
+        let replica_arc = self.consensus_replica.clone();
 
-        info!("RSML consensus engine integration structure in place");
-        info!("  - ConsensusReplica: created and wrapped");
-        info!("  - NetworkManager: ready for start");
-        info!("  - StateMachineExecutionNotifier: integrated with state machine");
+        // Start the RSML ConsensusReplica in a blocking context
+        // This is necessary because ConsensusReplica uses std::sync::RwLock which is !Send
+        tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Handle::current();
+            runtime.block_on(async move {
+                let mut replica = replica_arc.lock().await;
+                replica.start().await
+            })
+        })
+        .await
+        .map_err(|e| ConsensusError::Other {
+            message: format!("Failed to join start task: {}", e),
+        })?
+        .map_err(|e| ConsensusError::Other {
+            message: format!("Failed to start RSML ConsensusReplica: {}", e),
+        })?;
 
-        // TODO: Complete RSML start sequence with proper async trait bounds
-        warn!("Full RSML start integration requires resolving async trait Send bounds");
+        info!("RSML ConsensusReplica started successfully");
+
+        // NetworkManager.start() is already called by ConsensusReplica.start()
+        // so we don't need to call it separately
 
         Ok(())
     }
@@ -447,11 +460,27 @@ impl ConsensusEngine for RsmlConsensusEngine {
     async fn stop(&mut self) -> ConsensusResult<()> {
         info!("Stopping RSML consensus engine for replica {}", self.replica_id);
 
-        // Note: RSML ConsensusReplica doesn't expose a public stop method yet
-        // In a full integration, this would properly stop all RSML components
-        warn!("ConsensusReplica stop method not yet implemented in RSML");
+        // Clone Arc for the spawn_blocking task
+        let replica_arc = self.consensus_replica.clone();
 
-        info!("RSML consensus engine stop integration structure in place");
+        // Shutdown the RSML ConsensusReplica in a blocking context
+        // This is necessary because ConsensusReplica uses std::sync::RwLock which is !Send
+        tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Handle::current();
+            runtime.block_on(async move {
+                let mut replica = replica_arc.lock().await;
+                replica.shutdown().await
+            })
+        })
+        .await
+        .map_err(|e| ConsensusError::Other {
+            message: format!("Failed to join shutdown task: {}", e),
+        })?
+        .map_err(|e| ConsensusError::Other {
+            message: format!("Failed to shutdown RSML ConsensusReplica: {}", e),
+        })?;
+
+        info!("RSML ConsensusReplica shutdown successfully");
         Ok(())
     }
 
