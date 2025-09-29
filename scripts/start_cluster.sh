@@ -132,7 +132,7 @@ cd "$PROJECT_ROOT"
 if [ "$NODE_COUNT" -eq 1 ]; then
     echo "Starting single node on port 9090..."
     # Single node mode - no config file needed, use Rust binary directly
-    nohup "$PROJECT_ROOT/rust/target/debug/shard-server" \
+    nohup "$PROJECT_ROOT/build/bin/shard-server" \
         --port 9090 \
         --verbose \
         --log-dir "$CLUSTER_ROOT/node1/logs" \
@@ -246,7 +246,7 @@ EOF
         node_num=$((node + 1))
         echo "Node $node on port $port..."
         # Start each process using Rust binary directly
-        nohup "$PROJECT_ROOT/rust/target/debug/shard-server" \
+        nohup "$PROJECT_ROOT/build/bin/shard-server" \
             --config "$PROJECT_ROOT/build/bin/cluster_configs/node_$node.toml" \
             --node-id $node \
             --port $port \
@@ -286,16 +286,64 @@ echo "    GET /api/cluster/config"
 echo
 echo "Press Ctrl+C to stop..."
 
-# Wait for interrupt
+# Helper: print a concise status of tracked PIDs
+print_pids_status() {
+    echo "--- Process status ---"
+    local idx=0
+    for pid in "${NODE_PIDS[@]}"; do
+        if [ $idx -eq 0 ]; then
+            label="Node.js"
+        else
+            label="shard-server node $((idx-1))"
+        fi
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  PID $pid: $label (alive)"
+        else
+            echo "  PID ${pid:-N/A}: $label (not running)"
+        fi
+        idx=$((idx+1))
+    done
+    echo "----------------------"
+}
+
+# Initial PID summary after startup
+print_pids_status
+
+# Wait and monitor child processes
+last_alive_count=-1
 while true; do
     sleep 5
-    # Check if all processes are still alive
     alive=0
+    dead_list=()
+    idx=0
     for pid in "${NODE_PIDS[@]}"; do
-        kill -0 "$pid" 2>/dev/null && ((alive++))
+        if kill -0 "$pid" 2>/dev/null; then
+            # Avoid set -e abort on post-increment returning 0
+            alive=$((alive+1))
+        else
+            if [ $idx -eq 0 ]; then
+                dead_list+=("Node.js:$pid")
+            else
+                dead_list+=("node$((idx-1)):$pid")
+            fi
+        fi
+        idx=$((idx+1))
     done
+
+    # Print a change-only heartbeat when some processes died
+    if [ $alive -ne $last_alive_count ]; then
+        echo "[watchdog] Alive processes: $alive/${#NODE_PIDS[@]}"
+        if [ ${#dead_list[@]} -gt 0 ]; then
+            echo "[watchdog] Not running: ${dead_list[*]}"
+        fi
+        last_alive_count=$alive
+    fi
+
     if [ $alive -eq 0 ]; then
         echo "❌ All nodes stopped unexpectedly"
+        print_pids_status
+        # Best-effort: hint where logs are
+        echo "Logs directory: $CLUSTER_ROOT"
         exit 1
     fi
 done
