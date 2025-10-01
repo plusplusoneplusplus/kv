@@ -14,6 +14,9 @@ pub mod engine;
 #[cfg(feature = "rsml")]
 pub mod execution;
 
+#[cfg(feature = "rsml")]
+pub mod kv_executor_adapter;
+
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
@@ -26,6 +29,9 @@ pub use engine::*;
 
 #[cfg(feature = "rsml")]
 pub use execution::*;
+
+#[cfg(feature = "rsml")]
+pub use kv_executor_adapter::*;
 
 // Re-export key types from consensus-api for convenience
 pub use consensus_api::{ConsensusEngine, ConsensusConfig, StateMachine, ProposeResponse, LogEntry};

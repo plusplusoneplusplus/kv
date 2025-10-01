@@ -89,6 +89,54 @@ impl RsmlConsensusFactory {
         })
     }
 
+    /// Create a consensus engine with a pre-configured KvExecutor
+    ///
+    /// This method is designed for shard server integration where the KvStoreExecutor
+    /// is already created and needs to be connected to RSML's execution notifier.
+    ///
+    /// # Arguments
+    /// * `executor` - Pre-configured KV executor (typically wrapped KvStoreExecutor)
+    ///
+    /// # Returns
+    /// * `Ok(Box<dyn ConsensusEngine>)` - Successfully created consensus engine
+    /// * `Err(RsmlError)` - Engine creation failed
+    #[cfg(feature = "rsml")]
+    pub async fn create_engine_with_executor(
+        &self,
+        executor: Arc<dyn crate::execution::KvExecutor>,
+    ) -> RsmlResult<Box<dyn ConsensusEngine>> {
+        info!("Creating RSML consensus engine with external executor for node: {}", self.config.base.node_id);
+
+        // Create the appropriate engine based on configuration
+        match self.config.transport.transport_type {
+            crate::config::TransportType::InMemory => {
+                self.create_in_memory_engine_with_executor(executor).await
+            }
+            #[cfg(feature = "tcp")]
+            crate::config::TransportType::Tcp => {
+                self.create_tcp_engine_with_executor(executor).await
+            }
+        }
+    }
+
+    /// Create a consensus engine with a pre-configured KvExecutor (stub for when rsml feature is disabled)
+    ///
+    /// # Arguments
+    /// * `executor` - Pre-configured KV executor
+    ///
+    /// # Returns
+    /// * `Err(RsmlError)` - RSML feature not enabled
+    #[cfg(not(feature = "rsml"))]
+    pub async fn create_engine_with_executor(
+        &self,
+        _executor: Arc<dyn crate::execution::KvExecutor>,
+    ) -> RsmlResult<Box<dyn ConsensusEngine>> {
+        Err(crate::RsmlError::ConfigurationError {
+            field: "rsml".to_string(),
+            message: "RSML feature not enabled. Enable with --features rsml".to_string(),
+        })
+    }
+
     /// Get a reference to the factory's configuration
     pub fn config(&self) -> &RsmlConfig {
         &self.config
@@ -151,6 +199,43 @@ impl RsmlConsensusFactory {
 
         // Create the RSML consensus engine with TCP transport
         let engine = RsmlConsensusEngine::new(self.config.clone(), state_machine).await?;
+
+        Ok(Box::new(engine))
+    }
+
+    /// Create an in-memory consensus engine with external executor
+    #[cfg(feature = "rsml")]
+    async fn create_in_memory_engine_with_executor(
+        &self,
+        executor: Arc<dyn crate::execution::KvExecutor>,
+    ) -> RsmlResult<Box<dyn ConsensusEngine>> {
+        info!("Creating in-memory RSML consensus engine with external executor");
+
+        // Create the RSML consensus engine with external executor
+        let engine = RsmlConsensusEngine::new_with_executor(self.config.clone(), executor).await?;
+
+        Ok(Box::new(engine))
+    }
+
+    /// Create a TCP-based consensus engine with external executor
+    #[cfg(all(feature = "rsml", feature = "tcp"))]
+    async fn create_tcp_engine_with_executor(
+        &self,
+        executor: Arc<dyn crate::execution::KvExecutor>,
+    ) -> RsmlResult<Box<dyn ConsensusEngine>> {
+        info!("Creating TCP RSML consensus engine with external executor");
+
+        let tcp_config = self.config.transport.tcp_config.as_ref()
+            .ok_or_else(|| RsmlError::ConfigurationError {
+                field: "transport.tcp_config".to_string(),
+                message: "TCP configuration required for TCP transport".to_string(),
+            })?;
+
+        info!("TCP engine will bind to: {}", tcp_config.bind_address);
+        info!("TCP engine cluster size: {}", tcp_config.cluster_addresses.len());
+
+        // Create the RSML consensus engine with TCP transport and external executor
+        let engine = RsmlConsensusEngine::new_with_executor(self.config.clone(), executor).await?;
 
         Ok(Box::new(engine))
     }

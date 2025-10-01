@@ -1,6 +1,3 @@
-[workspace]
-# Empty workspace table to allow this crate to work independently
-
 [package]
 name = "consensus-rsml"
 version = "0.1.0"

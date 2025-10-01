@@ -71,7 +71,7 @@ pub trait KvExecutor: Send + Sync {
 ///     }
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KvExecutionNotifier<E: KvExecutor> {
     /// The KV store executor that applies operations
     executor: Arc<E>,

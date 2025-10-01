@@ -24,6 +24,11 @@ use rocksdb_server::lib::consensus_transport::GeneratedThriftTransport;
 use rocksdb_server::lib::consensus_thrift::ConsensusThriftServer;
 use std::collections::HashMap;
 
+#[cfg(feature = "rsml")]
+use consensus_rsml::{RsmlConsensusFactory, RsmlConfig, TransportType, TcpConfig, ExecutorTrait, KvStoreExecutorAdapter};
+#[cfg(feature = "rsml")]
+use consensus_api::ConsensusEngine;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -50,6 +55,10 @@ struct Args {
     /// Directory to write log files (defaults to logs/)
     #[arg(long, default_value = "logs")]
     log_dir: String,
+
+    /// Use RSML consensus instead of Mock consensus (requires --features rsml)
+    #[arg(long, default_value_t = false)]
+    use_rsml: bool,
 }
 
 #[tokio::main]
@@ -279,27 +288,120 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Create state machine with executor
         let executor = Arc::new(KvStoreExecutor::new(database.clone()));
-        let state_machine = Box::new(KvStateMachine::new(executor));
 
-        // Create consensus engine
-        let consensus_engine = if node_id == 0 {
-            // Node 0 starts as leader
-            MockConsensusEngine::with_network_transport(
-                node_id.to_string(),
-                state_machine,
-                Arc::new(transport),
-            )
+        // Create consensus engine based on configuration
+        let consensus_engine: Box<dyn consensus_api::ConsensusEngine> = if args.use_rsml {
+            // RSML consensus path
+            #[cfg(feature = "rsml")]
+            {
+                info!("Using RSML consensus for Node {}", node_id);
+
+                // Create executor adapter that bridges KvStoreExecutor to RSML's KvExecutor trait
+                struct KvStoreExecutorWrapper {
+                    executor: Arc<KvStoreExecutor>,
+                }
+
+                #[async_trait::async_trait]
+                impl ExecutorTrait for KvStoreExecutorWrapper {
+                    async fn apply_serialized_operation(
+                        &self,
+                        sequence: u64,
+                        operation_bytes: Vec<u8>,
+                    ) -> Result<Vec<u8>, String> {
+                        // Deserialize KvOperation
+                        let operation: rocksdb_server::lib::operations::KvOperation = bincode::deserialize(&operation_bytes)
+                            .map_err(|e| format!("Failed to deserialize KvOperation: {}", e))?;
+
+                        // Apply via KvStoreExecutor
+                        let result = self.executor.apply_operation(sequence, operation).await
+                            .map_err(|e| format!("Execution failed: {}", e))?;
+
+                        // Serialize OperationResult
+                        bincode::serialize(&result)
+                            .map_err(|e| format!("Failed to serialize OperationResult: {}", e))
+                    }
+                }
+
+                let executor_wrapper = Arc::new(KvStoreExecutorWrapper {
+                    executor: executor.clone(),
+                });
+                let adapter = Arc::new(KvStoreExecutorAdapter::new(executor_wrapper));
+
+                // Build RSML configuration
+                let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc
+                let bind_address = format!("0.0.0.0:{}", consensus_port);
+
+                let mut rsml_config = RsmlConfig::default();
+                rsml_config.base.node_id = node_id.to_string();
+
+                // Convert consensus_endpoints to cluster_members HashMap
+                let mut cluster_members = HashMap::new();
+                for (i, endpoint) in consensus_endpoints.iter().enumerate() {
+                    cluster_members.insert(i.to_string(), endpoint.clone());
+                }
+                rsml_config.base.cluster_members = cluster_members.clone();
+
+                // Configure TCP transport
+                rsml_config.transport.transport_type = TransportType::Tcp;
+                rsml_config.transport.tcp_config = Some(TcpConfig {
+                    bind_address: bind_address.clone(),
+                    cluster_addresses: cluster_members,
+                    connection_timeout: std::time::Duration::from_secs(10),
+                    read_timeout: std::time::Duration::from_secs(30),
+                    max_message_size: 10 * 1024 * 1024, // 10MB
+                    max_connection_retries: 3,
+                    retry_delay: std::time::Duration::from_millis(100),
+                    enable_auto_reconnect: true,
+                    initial_reconnect_delay: std::time::Duration::from_millis(100),
+                    max_reconnect_delay: std::time::Duration::from_secs(30),
+                    reconnect_backoff_multiplier: 2.0,
+                    max_reconnect_attempts: Some(10),
+                    heartbeat_interval: std::time::Duration::from_secs(5),
+                    connection_pool_size: 4,
+                });
+
+                info!("RSML config: node_id={}, bind={}", rsml_config.base.node_id, bind_address);
+                info!("RSML cluster size: {}", rsml_config.base.cluster_members.len());
+
+                // Create RSML factory and engine
+                let factory = RsmlConsensusFactory::new(rsml_config)
+                    .map_err(|e| format!("Failed to create RSML factory: {}", e))?;
+
+                let engine = factory.create_engine_with_executor(adapter).await
+                    .map_err(|e| format!("Failed to create RSML engine: {}", e))?;
+
+                info!("RSML consensus engine created successfully for Node {}", node_id);
+                engine
+            }
+            #[cfg(not(feature = "rsml"))]
+            {
+                error!("RSML feature not enabled. Build with --features rsml");
+                return Err("RSML feature not enabled".into());
+            }
         } else {
-            // Other nodes start as followers
-            MockConsensusEngine::follower_with_network_transport(
-                node_id.to_string(),
-                state_machine,
-                Arc::new(transport),
-            )
+            // Mock consensus path (existing code)
+            info!("Using Mock consensus for Node {}", node_id);
+            let state_machine = Box::new(KvStateMachine::new(executor));
+
+            Box::new(if node_id == 0 {
+                // Node 0 starts as leader
+                MockConsensusEngine::with_network_transport(
+                    node_id.to_string(),
+                    state_machine,
+                    Arc::new(transport),
+                )
+            } else {
+                // Other nodes start as followers
+                MockConsensusEngine::follower_with_network_transport(
+                    node_id.to_string(),
+                    state_machine,
+                    Arc::new(transport),
+                )
+            })
         };
 
         let consensus_db = ConsensusKvDatabase::new(
-            Box::new(consensus_engine),
+            consensus_engine,
             database as Arc<dyn KvDatabase>
         );
 
@@ -343,9 +445,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     info!("Consensus engine started successfully");
 
-    // For multi-node mode, start the consensus service
-        let _consensus_server_handle = if is_multi_node {
-            let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
+    // For multi-node mode, start the consensus service (only for mock consensus)
+    // RSML has its own internal networking, so we don't need a separate Thrift server
+    let _consensus_server_handle = if is_multi_node && !args.use_rsml {
+        let consensus_port = args.port - 2000; // Consensus on port 7090, 7091, etc when KV is on 9090, 9091, etc
 
         // Start real Thrift consensus server using generated processor + adapter
         let consensus_server = ConsensusThriftServer::with_consensus_engine(
@@ -357,6 +460,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let handle = consensus_server.start()?;
         Some(handle)
     } else {
+        if is_multi_node && args.use_rsml {
+            info!("Skipping separate consensus Thrift server (RSML has internal networking)");
+        }
         None
     };
 

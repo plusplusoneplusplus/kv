@@ -225,6 +225,142 @@ impl RsmlConsensusEngine {
         })
     }
 
+    /// Create a new RSML consensus engine with a pre-configured KvExecutor
+    ///
+    /// This constructor is designed for shard server integration where the KvStoreExecutor
+    /// is already created and needs to be connected to RSML's execution system.
+    ///
+    /// # Arguments
+    /// * `config` - RSML configuration
+    /// * `executor` - Pre-configured KV executor (typically KvStoreExecutorAdapter)
+    ///
+    /// # Returns
+    /// * `Ok(RsmlConsensusEngine)` - Successfully created engine
+    /// * `Err(RsmlError)` - Engine creation failed
+    pub async fn new_with_executor(
+        config: RsmlConfig,
+        executor: Arc<dyn crate::execution::KvExecutor>,
+    ) -> RsmlResult<Self> {
+        info!("Creating RSML consensus engine with external executor for node: {}", config.base.node_id);
+
+        // Parse replica ID from node ID
+        let replica_id = ReplicaId::new(
+            config.base.node_id.parse::<u64>()
+                .map_err(|e| RsmlError::ConfigurationError {
+                    field: "base.node_id".to_string(),
+                    message: format!("Node ID must be numeric: {}", e),
+                })?
+        );
+
+        // Create shared state
+        let current_term = Arc::new(AtomicU64::new(1));
+        let last_applied_index = Arc::new(AtomicU64::new(0));
+        let result_cache = Arc::new(DashMap::new());
+
+        // Create an adapter struct that wraps the KvExecutor trait object
+        // This is needed because KvExecutionNotifier requires a concrete type parameter
+        #[derive(Clone)]
+        struct KvExecutorAdapter {
+            executor: Arc<dyn crate::execution::KvExecutor>,
+        }
+
+        impl KvExecutorAdapter {
+            fn new(executor: Arc<dyn crate::execution::KvExecutor>) -> Self {
+                Self { executor }
+            }
+        }
+
+        #[async_trait]
+        impl crate::execution::KvExecutor for KvExecutorAdapter {
+            async fn apply_operation(&self, sequence: u64, operation_bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+                self.executor.apply_operation(sequence, operation_bytes).await
+            }
+        }
+
+        // Create KvExecutionNotifier with the adapter
+        let adapter = Arc::new(KvExecutorAdapter::new(executor));
+        let kv_notifier = crate::execution::KvExecutionNotifier::new(adapter, 10000);
+        let kv_notifier_arc = Arc::new(RwLock::new(kv_notifier));
+
+        // For compatibility, also create a StateMachineExecutionNotifier stub
+        // (not used in execution, but kept for structural consistency)
+        #[derive(Debug)]
+        struct DummyStateMachine;
+        #[async_trait]
+        impl StateMachine for DummyStateMachine {
+            fn apply(&self, _entry: &LogEntry) -> ConsensusResult<Vec<u8>> {
+                Ok(Vec::new())
+            }
+            fn snapshot(&self) -> ConsensusResult<Vec<u8>> { Ok(Vec::new()) }
+            fn restore_snapshot(&self, _snapshot: &[u8]) -> ConsensusResult<()> { Ok(()) }
+        }
+        let execution_notifier = Arc::new(RwLock::new(StateMachineExecutionNotifier::new(
+            Arc::new(DummyStateMachine),
+            last_applied_index.clone(),
+            result_cache.clone(),
+        )));
+
+        // Create RSML configuration
+        let rsml_config = Self::create_rsml_configuration(&config, replica_id)?;
+
+        // Create network manager based on transport type
+        let network_manager = Self::create_network_manager(&config, replica_id, &rsml_config).await?;
+
+        // Create consensus replica configuration
+        let replica_config = rsml::consensus::ConsensusReplicaConfig {
+            static_config: rsml::consensus::StaticConfiguration {
+                replica_id,
+                paxos_config: rsml_config.clone(),
+                instance_id: format!("consensus-replica-{}", replica_id.as_u64()),
+                config_epoch: 1,
+                bootstrap_mode: rsml::consensus::BootstrapMode::CreateNew,
+            },
+            runtime_config: rsml::consensus::RuntimeConfiguration {
+                max_concurrent_requests: 1000,
+                request_timeout: std::time::Duration::from_secs(30),
+                log_level: rsml::consensus::LogLevel::Info,
+                performance_params: rsml::consensus::PerformanceParameters::default(),
+            },
+            component_configs: rsml::consensus::ComponentConfigurations {
+                view_manager: ViewConfig::default(),
+                proposer: ProposerConfig::default(),
+                acceptor: AcceptorConfig::default(),
+                learner: LearnerConfig::default(),
+            },
+            network_config: rsml::consensus::NetworkConfiguration {
+                bind_address: "0.0.0.0:0".to_string(),
+                replica_addresses: std::collections::HashMap::new(),
+                connection_timeout: std::time::Duration::from_secs(5),
+                retry_config: rsml::consensus::RetryConfig::default(),
+            },
+        };
+
+        // Create consensus replica with KvExecutionNotifier
+        // This uses the actual KvStoreExecutor for state machine execution
+        let notifier = Box::new(kv_notifier_arc.write().await.clone());
+        let consensus_replica = ConsensusReplica::new_with_execution_notifier(
+            replica_id,
+            replica_config,
+            network_manager.clone(),
+            Some(notifier),
+        ).await
+        .map_err(|e| RsmlError::InternalError {
+            component: "consensus_replica".to_string(),
+            message: format!("Failed to create ConsensusReplica: {}", e),
+        })?;
+
+        Ok(Self {
+            consensus_replica: Arc::new(TokioMutex::new(consensus_replica)),
+            replica_id,
+            current_term,
+            last_applied_index,
+            execution_notifier,
+            result_cache,
+            network_manager,
+            config,
+        })
+    }
+
     /// Create RSML configuration from RsmlConfig
     fn create_rsml_configuration(
         config: &RsmlConfig,
@@ -348,8 +484,9 @@ impl RsmlConsensusEngine {
         debug!("Proposing operation through RSML with request_id: {}", request_id);
 
         // Create RSML client request
+        // Note: RSML doesn't accept client_id=0, so we use replica_id + 1
         let client_request = rsml::proposer::ClientRequest {
-            client_id: self.replica_id.as_u64(),
+            client_id: self.replica_id.as_u64() + 1,
             request_id: request_id.as_u128() as u64,
             payload: data,
             received_at: std::time::Instant::now(),
