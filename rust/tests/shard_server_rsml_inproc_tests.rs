@@ -8,7 +8,6 @@
 #![cfg(feature = "rsml")]
 
 use rocksdb_server::lib::cluster::ClusterManager;
-use rocksdb_server::lib::config::DeploymentMode;
 use rocksdb_server::lib::operations::KvOperation;
 use rocksdb_server::lib::replication::executor::KvStoreExecutor;
 use rocksdb_server::{Config, TransactionalKvDatabase, ConsensusKvDatabase, KvDatabase};
@@ -275,7 +274,8 @@ impl RsmlInProcCluster {
         Err("Failed to find leader".into())
     }
 
-    /// Get a node by ID
+    /// Get a node by ID (unused in current tests)
+    #[allow(dead_code)]
     fn get_node(&self, node_id: u32) -> Option<&RsmlNode> {
         self.nodes.iter().find(|n| n.node_id == node_id)
     }

@@ -439,7 +439,7 @@ async fn test_rsml_leader_follower_operations() {
 
     match result {
         Ok(mut cluster) => {
-            info!("Testing leader-follower operations on 3-node RSML cluster");
+            info!("Testing leader-follower operations on 3-node InMemory cluster");
 
             let start_result = cluster.start_all().await;
             if start_result.is_err() {
@@ -447,7 +447,17 @@ async fn test_rsml_leader_follower_operations() {
                 return;
             }
 
-            // Test 1: SET operation through leader
+            info!("All InMemory nodes started successfully");
+
+            // NOTE: Leader election won't work for InMemory transport in this test setup
+            // because each node creates its own separate message bus. InMemory transport
+            // requires all nodes to share the same message bus for inter-node communication.
+            // For actual leader election testing, see test_rsml_tcp_leader_follower_replication.
+
+            // Give nodes time to attempt leader election (will fail due to isolated message buses)
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            // Test 1: SET operation through leader (will fail if no leader elected)
             let propose_result = cluster.propose_operation("SET key1 value1").await;
             if propose_result.is_ok() {
                 info!("Successfully proposed SET operation");
@@ -468,12 +478,14 @@ async fn test_rsml_leader_follower_operations() {
                     let _ = cluster.wait_for_consensus(3).await;
                     let _ = cluster.verify_state_consistency();
                 }
+            } else {
+                assert!(false, "Proposal failed (expected due to no leader election in InMemory transport): {:?}", propose_result);
             }
 
             let _ = cluster.stop_all().await;
         }
         Err(e) => {
-            info!("RSML cluster creation failed (expected in test environment): {}", e);
+            assert!(false, "RSML cluster creation failed (expected in test environment): {}", e);
         }
     }
 }

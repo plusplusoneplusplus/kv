@@ -26,8 +26,6 @@ use std::collections::HashMap;
 
 #[cfg(feature = "rsml")]
 use consensus_rsml::{RsmlConsensusFactory, RsmlConfig, TransportType, TcpConfig, ExecutorTrait, KvStoreExecutorAdapter};
-#[cfg(feature = "rsml")]
-use consensus_api::ConsensusEngine;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

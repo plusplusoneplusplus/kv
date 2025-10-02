@@ -8,7 +8,10 @@ use rsml::prelude::*;
 use rsml::consensus::ConsensusReplica;
 use rsml::learner::notification::ExecutionNotifier;
 use rsml::network::{NetworkManager, InMemoryTransport};
+use rsml::network::memory_transport::MessageBus;
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use tokio::sync::{Mutex as TokioMutex, RwLock};
@@ -406,8 +409,12 @@ impl RsmlConsensusEngine {
         match config.transport.transport_type {
             crate::config::TransportType::InMemory => {
                 info!("Creating in-memory network manager");
-                let message_bus = rsml::network::create_shared_message_bus();
-                let transport = Arc::new(InMemoryTransport::new(message_bus));
+                // Use a single shared message bus across all in-process replicas
+                // so that in-memory transport can communicate between nodes.
+                static SHARED_MESSAGE_BUS: Lazy<Arc<Mutex<MessageBus>>> = Lazy::new(|| {
+                    rsml::network::create_shared_message_bus()
+                });
+                let transport = Arc::new(InMemoryTransport::new(Arc::clone(&SHARED_MESSAGE_BUS)));
 
                 NetworkManager::new(replica_id, rsml_config.clone(), transport)
                     .map_err(|e| RsmlError::NetworkError {
